@@ -1,7 +1,8 @@
 // Drives the home page: fades sections in on first sight, and runs the one-claim walk as a
 // stepper. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
-// is unchanged, only what moves the dial. Autoplay suggests the rhythm; the pointer, focus,
-// pause button, keys, or a tab click take it over at any moment.
+// is unchanged, only what moves the dial. Autoplay suggests the rhythm; a mouse over the panel,
+// keyboard focus, the pause button, keys, or a tab click take it over at any moment. A finger
+// resting on the panel to scroll never pauses it.
 const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Sections play once, when about a third of them is on screen.
@@ -30,10 +31,11 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const capTitle = panel.querySelector(".panel-caption h3");
   const capText = panel.querySelector(".panel-caption p");
   const playBtn = panel.querySelector(".walk-play");
-  const parts = Array.from(panel.querySelectorAll("[data-on]")).map((el) => {
+  function readPart(el) {
     const [a, b] = el.dataset.on.split("-");
     return { el, from: Number(a), to: b ? Number(b) : Infinity };
-  });
+  }
+  const parts = Array.from(panel.querySelectorAll("[data-on]")).map(readPart);
 
   const STEPS = tabs.length;              // 5
   const CYCLE = 22000;                    // ms for p to run 1 → STEPS + 0.95
@@ -57,6 +59,10 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let userHoldUntil = 0;
   let panelVisible = false;
   let hasPlayed = false;
+  // Whether the reader's last input was the keyboard. Browsers disagree on :focus-visible after
+  // a tap (Safari can match it when a script focuses a tapped tab), which used to hold the walk
+  // with no way to see why, so the page tracks the input itself.
+  let keyboardInput = false;
 
   // The first claim types itself out the first time it becomes visible.
   const typed = panel.querySelector(".claim .claimtext");
@@ -84,7 +90,10 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function paint() {
     const p = progressFor(t);
     const n = Math.min(STEPS, Math.max(1, Math.floor(p)));
-    const frac = Math.max(0, Math.min(1, p - n));
+    // The last step's underline fills by the end of its run (p stops at MAX_P), not at 95%,
+    // so the hold before the loop reads as finished rather than stuck.
+    const span = n === STEPS ? MAX_P - STEPS : 1;
+    const frac = Math.max(0, Math.min(1, (p - n) / span));
     tabs.forEach((btn, i) => {
       const stepN = i + 1;
       const active = stepN === n;
@@ -118,7 +127,9 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function tick(ts) {
     if (last !== null && playing(ts)) {
-      const dt = ts - last;
+      // A frame gap longer than this means the tab or phone was asleep: carry on from where the
+      // walk was instead of jumping ahead.
+      const dt = Math.min(ts - last, 100);
       t += dt;
       if (t > CYCLE + DWELL) t = 0;
     }
@@ -160,17 +171,19 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     });
   });
 
-  panel.addEventListener("pointerenter", () => { pointerPaused = true; });
+  // Hover holds the walk only for a mouse. On a phone, pointerenter fires whenever a finger lands
+  // on the panel to scroll, and the matching pointerleave is not always sent, which froze the
+  // walk at random.
+  panel.addEventListener("pointerenter", (e) => { pointerPaused = e.pointerType === "mouse"; });
   panel.addEventListener("pointerleave", () => { pointerPaused = false; });
+  document.addEventListener("keydown", (e) => {
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) keyboardInput = true;
+  }, true);
+  document.addEventListener("pointerdown", () => { keyboardInput = false; }, true);
   // Keyboard focus inside the panel holds autoplay until it leaves, so the step never changes
-  // under a keyboard reader. A mouse click focuses a tab too, but only holds for USER_HOLD.
-  function keyboardFocus(el) {
-    try { return el.matches(":focus-visible"); } catch (err) { return true; }
-  }
+  // under a keyboard reader. A click or tap on a tab holds it for USER_HOLD (goToStep).
   panel.addEventListener("focusin", (e) => {
-    if (e.target === playBtn) { focusHeld = false; return; }
-    focusHeld = keyboardFocus(e.target);
-    userHoldUntil = performance.now() + USER_HOLD;
+    focusHeld = e.target !== playBtn && keyboardInput;
   });
   panel.addEventListener("focusout", (e) => {
     if (!panel.contains(e.relatedTarget)) focusHeld = false;
@@ -190,6 +203,66 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
   panel.classList.add("live");
+
+  // Keep the panel one height through the whole walk: lay out a hidden copy at every point where
+  // something appears or the step changes, and give the caption and body the tallest size seen.
+  // Without this the panel grew and shrank each step, the page below jumped, and on a phone the
+  // panel could jump out of view, which stops the walk.
+  const walkPanel = panel.querySelector(".walk-panel");
+  const caption = walkPanel && walkPanel.querySelector(".panel-caption");
+  const body = walkPanel && walkPanel.querySelector(".panel-body");
+  const samples = Array.from(new Set(
+    parts.map((q) => q.from).filter((v) => v >= 1 && v <= MAX_P)
+      .concat(tabs.map((_, i) => Math.min(MAX_P, i + 1.95)))
+  )).sort((a, b) => a - b);
+  let measuredWidth = -1;
+  function measure() {
+    if (!walkPanel || !caption || !body) return;
+    measuredWidth = panel.clientWidth;
+    const copy = walkPanel.cloneNode(true);
+    copy.classList.add("walk-measure");
+    copy.setAttribute("aria-hidden", "true");
+    ["id", "role", "tabindex", "aria-labelledby"].forEach((a) => copy.removeAttribute(a));
+    copy.querySelectorAll("[id], [aria-live]").forEach((el) => {
+      el.removeAttribute("id");
+      el.removeAttribute("aria-live");
+    });
+    const cCap = copy.querySelector(".panel-caption");
+    const cBody = copy.querySelector(".panel-body");
+    const cTitle = cCap.querySelector("h3");
+    const cText = cCap.querySelector("p");
+    cCap.style.minHeight = "0";
+    cBody.style.minHeight = "0";
+    const cTyped = copy.querySelector(".claim .claimtext");
+    if (cTyped) cTyped.textContent = fullText;
+    const cParts = Array.from(copy.querySelectorAll("[data-on]")).map(readPart);
+    panel.append(copy);
+    let capMax = 0;
+    let bodyMax = 0;
+    samples.forEach((p) => {
+      const tab = tabs[Math.min(STEPS, Math.max(1, Math.floor(p))) - 1];
+      if (cTitle) cTitle.textContent = tab.dataset.title || "";
+      if (cText) cText.textContent = tab.dataset.desc || "";
+      cParts.forEach((q) => q.el.classList.toggle("on", p >= q.from && p < q.to));
+      capMax = Math.max(capMax, cCap.getBoundingClientRect().height);
+      bodyMax = Math.max(bodyMax, cBody.getBoundingClientRect().height);
+    });
+    copy.remove();
+    caption.style.minHeight = Math.ceil(capMax) + "px";
+    body.style.minHeight = Math.ceil(bodyMax) + "px";
+  }
+  measure();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  // Phones fire resize when the address bar slides; only a new width can change the layout.
+  let resizeQueued = false;
+  window.addEventListener("resize", () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      if (panel.clientWidth !== measuredWidth) measure();
+    });
+  });
   // One paint at step 1 so the panel renders its initial state immediately — the .live class
   // hides every data-on part until paint() tags the current ones, and without this call the
   // panel reads as empty for the frames between page load and the IO firing.
