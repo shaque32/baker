@@ -1353,7 +1353,7 @@ _EVENT_TIE_RE = re.compile(
 # Codex on #201).
 _EVENT_TIE_LEAD_RE = re.compile(
     r"\b(?:for|throughout|across|spanning|lasting|full|straight|consecutive|continuous|"
-    r"rest|remaining|both|"
+    r"rest|remaining|both|starting|beginning|commencing|effective|continuing|as|of|ever|"
     r"about|approximately|approx|around|roughly|nearly|almost|some|within|in|by|until|"
     r"till|since|before|after|from|between|through|thru|at|least|most|than|more|less|over|"
     r"under|up|to|the|and|or|during|prior|following|past|first|last|every|each|only|just|"
@@ -1375,6 +1375,15 @@ _EVENT_LOOSE_TIME_RE = re.compile(
     r"\b(?:at|about|around|approximately|between|from|until|till|by|before|after)\s+"
     r"(?:\d{1,2}(?::\d{2})?(?!\s*,?\s*(?:19|20)\d\d)(?!\s+days?\b)|(?:one|two|three|four|five|six"
     r"|seven|eight|nine|ten|eleven|twelve)(?!\s+days?\b)(?:\s+(?:thirty|fifteen|forty-five))?)\b",
+    re.IGNORECASE,
+)
+# Words anywhere in the claim that carry its range past one day ("Starting the day after the
+# RAID", "the day after the RAID and from then on", "no longer", "again"): a tie is read as a
+# whole day only when nothing else in the claim leaves its end open (Codex on #201).
+_EVENT_OPEN_RE = re.compile(
+    r"\b(?:since|onwards?|forward|thereafter|henceforth|hereafter|afterwards?|subsequently|"
+    r"starting|beginning|commencing|continuing|continuously|ongoing|until|till|through|thru|"
+    r"throughout|anymore|again|ever|still|longer|on\s+from|from\s+then|from\s+that)\b",
     re.IGNORECASE,
 )
 # Any zone the text writes, read or not ("in UTC", "Eastern Time", "+03:00"): an event's day is
@@ -1401,6 +1410,8 @@ def event_windows(text: str, events: list[case_events.CaseEvent]) -> list[Stated
     if _ANY_TIME_RE.search(plain) or _EVENT_PART_RE.search(plain) or _NUM_DATE_RE.search(plain):
         return None
     if _EVENT_LOOSE_TIME_RE.search(plain) or _EVENT_ZONE_RE.search(plain):
+        return None
+    if _EVENT_OPEN_RE.search(plain):
         return None
     if any(_has_word(plain.lower(), w) for w in _WEEKDAYS):
         return None

@@ -305,6 +305,15 @@ def test_a_whole_day_tied_to_a_one_day_event_is_read(events, tie, day):
         "PETROV and REYES had no contact for the day after the RAID.",
         "For the full two days after the RAID, PETROV and REYES had no contact of any kind.",
         "Throughout the day before the RAID, PETROV and REYES had no contact of any kind.",
+        # a tie that starts a range with no end is more than that day (Codex on #201)
+        "Starting the day after the RAID, PETROV and REYES had no contact of any kind.",
+        "Beginning the day after the RAID, PETROV and REYES had no contact of any kind.",
+        "Commencing two days after the RAID, PETROV and REYES had no contact of any kind.",
+        "As of the day after the RAID, PETROV and REYES had no contact of any kind.",
+        "From the day after the RAID on, PETROV and REYES had no contact of any kind.",
+        "The day after the RAID, PETROV and REYES no longer had contact of any kind.",
+        "The day after the RAID, PETROV and REYES stopped contact and never spoke again.",
+        "PETROV and REYES had no contact since the day after the RAID.",
         "A few days before the RAID, PETROV and REYES had no contact of any kind.",
         "The day after the RAID of the unit, PETROV and REYES had no contact of any kind.",
         # a clock time with no a.m. or p.m., or a zone: never widened or moved (Codex on #201)
