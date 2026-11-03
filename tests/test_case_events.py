@@ -250,6 +250,7 @@ def _day(conn, date_words: str):
         ("3 days after the RAID", "March 23, 2026"),
         ("A day before the RAID", "March 19, 2026"),
         ("Sixty days after the RAID", "May 19, 2026"),
+        ("Twenty-two days after the RAID", "April 11, 2026"),
     ],
 )
 def test_a_whole_day_tied_to_a_one_day_event_is_read(events, tie, day):
@@ -295,6 +296,15 @@ def test_a_whole_day_tied_to_a_one_day_event_is_read(events, tie, day):
         "PETROV and REYES had no contact the day after the RAID-related arrests.",
         # counts it cannot read or past 60 days, and a name that runs on into other words
         "Sixty-one days after the RAID, PETROV and REYES had no contact of any kind.",
+        # a number that starts before the count's last word is never read by its end (Codex)
+        "Twenty two days after the RAID, PETROV and REYES had no contact of any kind.",
+        "One hundred two days after the RAID, PETROV and REYES had no contact of any kind.",
+        "PETROV and REYES had no contact 1 2 days after the RAID.",
+        # a span that ends on the tied day is more than that day (Codex on #201)
+        "For two days after the RAID, PETROV and REYES had no contact of any kind.",
+        "PETROV and REYES had no contact for the day after the RAID.",
+        "For the full two days after the RAID, PETROV and REYES had no contact of any kind.",
+        "Throughout the day before the RAID, PETROV and REYES had no contact of any kind.",
         "A few days before the RAID, PETROV and REYES had no contact of any kind.",
         "The day after the RAID of the unit, PETROV and REYES had no contact of any kind.",
         # a clock time with no a.m. or p.m., or a zone: never widened or moved (Codex on #201)
