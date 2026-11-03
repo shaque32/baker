@@ -54,8 +54,9 @@
     single quotes), quoted_text on a call's time range (record_time with channel "call") is
     dropped, and the drop is logged with the words, instead of refusing the time range: a
     call holds no words, so its check rests on parties, app and time. Everything else keeps
-    refusing words the claim does not quote: a sender, a meaning, a contact's saved name, a
-    weekday, and a message's time range, which is picked by its words.
+    its rule: a sender's, a meaning's and a message's time range's words must lie inside the
+    claim's quotation marks (a message's time range is picked by its words), and a contact's
+    saved name or a weekday must be written in the claim, quoted or not.
   - **Code reads a plainly stated time.** When the words a model gives for a range state one
     plain range, code's reading of them is the range, not the model's arithmetic: "at about
     11:50 p.m. on November 14, 2025" is 11:42 to 11:58 p.m. (8 minutes either side, as

@@ -874,8 +874,9 @@ def unquoted_time_quote(claim_text: str, p: _ProposalOut) -> tuple[_ProposalOut,
     noted, rather than refusing the time range. Nothing else changes: a claim that quotes
     anything (straight, curly or single quotes) keeps the rule that the words lie inside its
     quotes, a message's time range is picked by its words and still needs them, and every
-    other template that takes words (a sender, a meaning, a contact's saved name, a weekday)
-    rests on them and keeps refusing."""
+    other template that takes words keeps its own rule for them (a sender's and a meaning's
+    lie inside the claim's quotes; a contact's saved name or a weekday is written in the
+    claim)."""
     words = p.quoted_text.strip()
     if (
         p.template_id != "record_time"
