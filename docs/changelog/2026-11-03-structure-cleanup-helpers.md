@@ -1,4 +1,4 @@
-## 2026-11-03: Code structure cleanup: one escape helper, shared source labels, Mabillon download names
+## 2026-11-03: Code structure cleanup: one escape helper, shared source labels, Mabillon download names (#207)
 - Changed: From the code structure review (plan in the project's plans/code-structure-review.md).
   Downloads from the review screen are named `mabillon-report.html`, `mabillon-activity.csv`,
   `mabillon-request-draft.txt`, `mabillon-flag-summary.json` and
@@ -10,7 +10,7 @@
   (escape) and one `q()` (cited span) in `core/report/fmt.py`, in place of eight and five copies, and
   the screen's "Coverage" column on Set up and run reads from the report's `COVERAGE` table
   instead of its own copy. No verdict, rule, prompt, stored value or report byte changes.
-- Where: branch claude/project-thread-viahfk
+- Where: PR #207
 - Verified: `make check` green. Every app page of the paired demo case (85 pages, every claim,
   40 evidence items, report on screen and as a download) rendered before and after: the only
   differences are the italic font line, the removed token, the download names, and the
