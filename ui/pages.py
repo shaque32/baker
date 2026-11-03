@@ -31,11 +31,13 @@ from core.contracts import (
     Stance,
     StipulationStatus,
     Verdict,
+    VerdictDecision,
     display_tier,
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
+from core.report import why
 from core.report.fmt import e, q
 from core.report.html import (
     COVERAGE,
@@ -1259,12 +1261,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append(forwarded_warning(conn, st))
     out.append(mixed_app_note(conn, st))
     if d is not None:
-        out.append(
-            "<details><summary>Why</summary><ul>"
-            + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
-            + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
-            f"{e(d.pipeline_run_id)}.</p></details>"
-        )
+        out.append(_why(conn, st, d))
         if d.confirmed_by:
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
@@ -1361,6 +1358,22 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
+    """Why the verdict: one plain line per reason (core/report/why.py), then the reasons exactly
+    as the rules stored them, with the rule version and run, folded as Technical details."""
+    plain = why.lines(
+        conn, d.reasons, st.assumptions, st.checks, st.evidence, href=why.record_href(st.evidence)
+    )
+    return (
+        "<details class='why'><summary>Why</summary><ul class='why-lines'>"
+        + "".join(f"<li>{ln.html}</li>" for ln in plain)
+        + "</ul><details class='why-tech'><summary>Technical details</summary><ul>"
+        + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
+        + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
+        f"{e(d.pipeline_run_id)}.</p></details></details>"
+    )
 
 
 def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
