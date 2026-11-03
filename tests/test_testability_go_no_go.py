@@ -12,8 +12,10 @@ import json
 
 import pytest
 
+from core.audit._llm_json import prompt_body
 from core.contracts import Prediction
 from core.llm.runtime import FakeModel as RuntimeFake
+from eval import run_eval
 from eval import run_pipeline as rp
 from tests.test_testability import ROOT, _eval_answers
 
@@ -283,10 +285,13 @@ def test_no_claim_the_agent_changed_never_passes_the_false_supported_bar(tmp_pat
     )
 
 
-def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(tmp_path, monkeypatch):
+def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(
+    tmp_path, monkeypatch, capsys
+):
     """--no-stance: no stance model runs (a stand-in labels every candidate irrelevant), the
     step's measures are recorded as usual, and the go/no-go is none given, even on a held-out
-    case with every other condition met."""
+    case with every other condition met. Its verdicts are never read as eval numbers: the
+    summary says so first, and the scorer refuses them (Baker Eval on #210)."""
     monkeypatch.setattr(rp, "TESTABILITY_GO_NO_GO_CASES", frozenset({"case01"}))
     monkeypatch.setattr(rp, "TESTABILITY_X_PERCENT", 40.0)
     monkeypatch.setattr(rp, "TESTABILITY_Y_BUDGET", {"calls": 1, "seconds": 600})
@@ -316,7 +321,14 @@ def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(tmp_
                 stance=False,
             )
         )
-    assert not any('"stance"' in _eval_answers(p) for p in calls)  # no stance prompt was sent
+    # every prompt sent is the filler's or the step's, and none is the stance prompt
+    stance_prompt = prompt_body((ROOT / "core/audit/prompts/stance.md").read_text("utf-8"))
+    assert calls and all("Templates you may use for this claim" in p for p in calls)
+    assert not any(stance_prompt[:120] in p for p in calls)
+    assert rp.NO_STANCE_NOTE in capsys.readouterr().out
+    gold = ["--case", str(ROOT / "eval/gold/case01"), "--predictions"]
+    assert run_eval.main([*gold, str(tmp_path / "predictions.jsonl")]) == 1
+    assert "not scored" in capsys.readouterr().out
     t = json.loads((tmp_path / "run.json").read_text("utf-8"))["testability"]
     assert t["stance"] == "skipped" and t["tries"] >= 1
     r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", runs[0], runs[1])

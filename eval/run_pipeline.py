@@ -963,9 +963,19 @@ def print_hidden_summary(s: dict) -> None:
         print_testability(s["testability"])
 
 
+# What a --no-stance run prints first, so its verdicts are never read as eval numbers.
+NO_STANCE_NOTE = (
+    "stance skipped (--no-stance, a dev check): no model labeled any evidence, so these"
+    " verdicts and figures are not eval numbers; only the filler's and the testability step's"
+    " measures mean anything"
+)
+
+
 def print_summary(s: dict) -> None:
     r = s["readiness"]
     e = s["simulated_expert"]
+    if s.get("testability", {}).get("stance") == "skipped":
+        print(f"pipeline: {NO_STANCE_NOTE}")
     print(
         f"pipeline: {s['case']} {s['mode']}: {s['claims']} claims, {s['stored_items']} items "
         f"stored, {s['dropped_labels']} labels dropped"
