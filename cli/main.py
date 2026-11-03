@@ -852,7 +852,7 @@ def parser() -> argparse.ArgumentParser:
         "flag-log", help="combine redacted flag summaries into the per-pilot error log"
     )
     sp.set_defaults(fn=cmd_flag_log)
-    sp.add_argument("summaries", type=Path, nargs="+", help="baker-flag-summary .json files")
+    sp.add_argument("summaries", type=Path, nargs="+", help="flag summary .json files")
     sp.add_argument("--out", type=Path, help="write Markdown here instead of printing it")
 
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")

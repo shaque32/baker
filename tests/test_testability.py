@@ -150,6 +150,42 @@ def test_the_draft_prompt_and_any_signed_copy_have_every_placeholder():
         )
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        'Item 1 holds the number +1 (212) 555-0122 saved as "Marc Garage".',
+        "Item 1 holds the number +1 (212) 555-0122 saved as Marc Garage.",
+    ],
+)
+def test_a_saved_name_goes_in_quoted_text_quoted_or_not(conn, text):
+    # Baker Eval on #210: v1.1 sent a saved name to "quoted_text" while saying it takes only
+    # quoted words, so `saved as Marc Garage` had nowhere to go. The filler's contact entry
+    # needs the name written in the claim, not inside quotes (only a message's words must be),
+    # and the draft now says that.
+    flat = " ".join(DRAFT.split())
+    assert (
+        '"quoted_text": for a message, only words that stand inside quotation marks' in flat
+        and "For a contact entry, the name the contact was saved as, exactly as the claim"
+        " writes it, with or without quotation marks."
+        in flat
+    )
+    c = claim("C01").model_copy(update={"id": "X-saved", "text": text})
+    filler = LocalAssumptionFiller(FakeModel(GOOD_C01), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    (made,) = [a for a in builder.build(c) if a.template_id == "contact_entry"]
+    assert made.params.quoted_text == "Marc Garage"
+
+
+def test_a_messages_words_still_need_the_claims_quotation_marks(conn):
+    text = "On March 18, 2026, PETROV wrote are you coming tonight to REYES."
+    c = claim("C01").model_copy(update={"id": "X-said", "text": text})
+    answer = {"assumptions": [P("sender", people=["PETROV"], quoted_text="are you coming tonight")]}
+    filler = LocalAssumptionFiller(FakeModel(answer), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    assert not [a for a in builder.build(c) if a.template_id == "sender"]
+    assert "not inside quotation marks" in json.dumps(builder.refused("X-said"))
+
+
 def test_the_answer_has_no_field_for_the_claim():
     fields = set(assumption_filler._ProposalOut.model_fields)
     assert not fields & {"claim", "text", "claim_text", "claim_id"}

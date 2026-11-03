@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -410,6 +410,49 @@ def test_code_dates_a_quoted_message_by_the_tie(events):
     )
 
 
+@pytest.mark.parametrize("day, made", [("March 21", True), ("March 22", False)])
+def test_a_models_range_must_be_the_day_the_claims_tie_names(events, day, made):
+    # Codex on #210: "On March 22, 2026, the day after the RAID" (the RAID on March 20) is
+    # refused when code reads its range; a model's range on the written date is refused too.
+    quote = "need 2 more by friday"
+    iso = {"March 21": "2026-03-21", "March 22": "2026-03-22"}[day]
+    nxt = {"March 21": "2026-03-22", "March 22": "2026-03-23"}[day]
+    window = {
+        "as_written": f"On {day}, 2026",
+        "start": f"{iso}T00:00",
+        "end": f"{nxt}T00:00",
+        "zone": "phone",
+    }
+    prop = {
+        "template_id": "record_time",
+        "people": ["PETROV"],
+        "accounts": [],
+        "handles": [],
+        "phones": [],
+        "channels": [],
+        "quoted_text": quote,
+        "count": None,
+        "duration": None,
+        "window": window,
+    }
+    filler = LocalAssumptionFiller(
+        FakeModel(json.dumps({"assumptions": [prop]})), events, template=DRAFT
+    )
+    c = Claim(
+        id="X5",
+        paragraph_id=PARA,
+        text=f'On {day}, 2026, the day after the RAID, PETROV wrote to @northstar: "{quote}".',
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+    timed = [
+        a for a in TemplateAssumptionBuilder(filler).build(c) if a.template_id == "record_time"
+    ]
+    assert bool(timed) == made, filler.drops
+    if not made:
+        assert any("tie to a defined event are not one day" in d.reason for d in filler.drops)
+
+
 def test_a_claim_dated_by_an_event_is_not_tested_on_its_sender_alone(events):
     c = Claim(
         id="X3",
@@ -433,6 +476,74 @@ def test_no_event_means_no_change(conn):
     assert event_windows("The day after the RAID, they met.", []) == []
     made, _ = _no_contact(conn, "The day after the RAID, PETROV and REYES had no contact.")
     assert made == []  # no event entered: refused as before
+
+
+SEARCH = 'On Friday, March 20, 2026, officers searched the car (the "SEARCH")'
+
+
+def _search(conn) -> sqlite3.Connection:
+    if not conn.execute("SELECT 1 FROM govdoc_paragraphs WHERE id = 'para:search'").fetchone():
+        conn.execute(
+            "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start,"
+            " char_end, text) SELECT 'para:search', govdoc_id, 9, 97, '97', 0, ?, ? FROM"
+            " govdoc_paragraphs WHERE id = ?",
+            (len(SEARCH) + 1, SEARCH + ".", PARA),
+        )
+    actions.add_event(conn, "SEARCH", "2026-03-20", "2026-03-20", "para:search", SEARCH, EXPERT)
+    return conn
+
+
+def test_an_event_named_in_capitals_is_read_only_in_capitals(conn):
+    # In lower case "the search" is an ordinary noun: it ties nothing to the SEARCH, and a claim
+    # with no other date is refused as before (validation thread on #209).
+    events = case_events.readable(_search(conn))
+    lower = "The day after the search, PETROV and REYES had no contact."
+    assert event_windows(lower, events) == []
+    assert _no_contact(conn, lower)[0] == []
+    assert event_windows("The day after the search of the car, they met.", events) == []
+    # the claim's own date stands; the lower-case words beside it are not a tie
+    dated = "On March 21, 2026, the day after the search, PETROV and REYES had no contact."
+    assert event_windows(dated, events) == []
+    (a,), _ = _no_contact(conn, dated)
+    assert a.params.window == _day(conn, "March 21, 2026").model_copy(
+        update={"raw": a.params.window.raw}
+    )
+    # in capitals, its "the" in any case, it is the event
+    for text in (
+        "The day after the SEARCH, PETROV and REYES had no contact.",
+        "The day after The SEARCH, PETROV and REYES had no contact.",
+    ):
+        (w,) = event_windows(text, events)
+        assert (w.start, w.end) == (datetime(2026, 3, 21), datetime(2026, 3, 22))
+        (a,), _ = _no_contact(conn, text)
+        assert a.params.window == _day(conn, "March 21, 2026").model_copy(
+            update={"raw": a.params.window.raw}
+        )
+
+
+@pytest.mark.parametrize(
+    "name, written", [("OP-7", "op-7"), ("KEDZIE YARD theft", "kedzie yard theft")]
+)
+def test_an_event_name_with_a_digit_or_a_lower_case_letter_matches_in_any_case(name, written):
+    ev = case_events.CaseEvent(
+        name, date(2026, 3, 20), date(2026, 3, 20), PARA, "", EXPERT, "2026-11-01T19:00:00Z"
+    )
+    (w,) = event_windows(f"The day after the {written}, they met.", [ev])
+    assert (w.start, w.end) == (datetime(2026, 3, 21), datetime(2026, 3, 22))
+
+
+def test_an_event_and_an_alias_differing_only_in_case_still_clash(conn):
+    # Matching reads capitals; clash checks still compare names in any case, so "the search"
+    # and "the SEARCH" can never name two things.
+    actions.set_aliases(conn, PETROV, ["the search"], EXPERT)
+    with pytest.raises(ReviewError, match="would also match the person"):
+        _search(conn)
+    actions.set_aliases(conn, PETROV, [], EXPERT)
+    _search(conn)
+    assert "search" in case_events.taken(conn)
+    assert [e.name for e in case_events.readable(conn)] == ["SEARCH"]
+    actions.set_aliases(conn, REYES, ["Search"], EXPERT)  # entered after the event
+    assert case_events.readable(conn) == []  # the SEARCH now dates nothing
 
 
 # ---------------------------------------------------------------- after a run, reports, bundles

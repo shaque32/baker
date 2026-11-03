@@ -9,13 +9,14 @@ prompt is a draft and gives no go/no-go.
 
 Changes from v1.0, each a rule the templates already have, written out:
 - A retry changes what the reasons name. In the case05 go/no-go the second try repeated the
-  first word for word on nearly every claim, so the cap of 2 bought nothing.
+  first exactly on 23 of the 29 claims that had two, so the cap of 2 bought little.
 - A name the lookups list as an account (an expert's name for a number, "TARGET TELEPHONE 2")
   goes in "accounts", never "people". "people" takes people only, never a phone, an app or such
   a name; "accounts" never takes a person, an app or a phone.
-- "handles" takes handles only; a contact's saved name goes in "quoted_text".
-- "quoted_text" takes only words inside quotation marks in the claim, and is empty when there
-  are none. On calls the model copied the claim's own sentence there.
+- "handles" takes handles only; a contact's saved name goes in "quoted_text", as the claim
+  writes it, with or without quotation marks (the contact entry check reads it there).
+- "quoted_text" for a message takes only words inside quotation marks in the claim, and is empty
+  when there are none. On calls the model copied the claim's own sentence there.
 - "texting" means SMS and speaking by phone means a call, as code now reads them.
 - A "sender" names only the one who sent the message (a person, or the account it was sent
   from), never the recipient; a "message_count" names exactly its two sides.
@@ -96,9 +97,11 @@ For each assumption the claim needs, give one object with these fields. Leave a 
 - "channels": apps the claim names, from the list above. "texted" or "texting" means SMS; a
   phone call, or speaking by phone, means "call". If the claim names no app, leave it empty;
   never narrow it yourself.
-- "quoted_text": only words that stand inside quotation marks in the claim, copied exactly,
-  without the quotation marks. If the claim has no quotation marks, leave it "". Never copy
-  the claim's own sentence here. A call has no quoted words.
+- "quoted_text": for a message, only words that stand inside quotation marks in the claim,
+  copied exactly, without the quotation marks; if the claim has no quotation marks, leave it
+  "". For a contact entry, the name the contact was saved as, exactly as the claim writes it,
+  with or without quotation marks. Never copy the claim's own sentence here. A call has no
+  quoted words.
 - "count": {"value": N} when the claim states a number of messages or calls, else null.
 - "duration": {"as_written": "..."} with the call length exactly as written, else null.
 - "window": when the claim states a date or time, else null:

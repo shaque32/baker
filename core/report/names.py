@@ -12,9 +12,10 @@ forbidden-word check leaves it as written.
 
 from __future__ import annotations
 
-import html
 import re
 import sqlite3
+
+from core.report.fmt import e, q
 
 # An id starts after a space, a quote or a bracket, never inside another id
 # (stip:device_owner:dev:item1 stays whole). A sentence's closing period is not part of it.
@@ -33,12 +34,8 @@ _COUNT_WORD = {
 }
 
 
-def _e(text: str) -> str:
-    return html.escape(text)
-
-
 def _plain(text: str) -> str:
-    return _e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text))
+    return e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text))
 
 
 class Names:
@@ -90,10 +87,10 @@ class Names:
             out.append(_plain(text[at : m.start()]))
             shown = self.name(m[0])
             if shown == m[0]:
-                out.append(_e(m[0]))
+                out.append(e(m[0]))
             else:
                 self.used.setdefault(m[0].lower(), (m[0], shown))
-                out.append(f"<span title='{_e(m[0])}'><span class=\"q\">{_e(shown)}</span></span>")
+                out.append(f"<span title='{e(m[0])}'>{q(shown)}</span>")
             at = m.end()
         out.append(_plain(text[at:]))
         return "".join(out)
@@ -104,7 +101,7 @@ class Names:
         if not self.used:
             return ""
         rows = "".join(
-            f'<tr><td><span class="q">{_e(shown)}</span></td><td class="mono">{_e(i)}</td></tr>'
+            f'<tr><td>{q(shown)}</td><td class="mono">{e(i)}</td></tr>'
             for i, shown in sorted(self.used.values(), key=lambda v: (v[1].lower(), v[0]))
         )
         return (

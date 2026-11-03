@@ -16,20 +16,35 @@
   - **`--no-stance`.** With `--testability CAP`, a dev check of the filler and the step only: a
     stand-in labels every candidate irrelevant with no model call, the run's measures are
     recorded as usual, and the go/no-go says none given ("stance was skipped"). Output in
-    `<out>/no_stance/`.
+    `<out>/no_stance/`. Its verdicts are never eval numbers: the run's summary says so on its
+    first line, and eval.run_eval refuses to score predictions whose run.json says stance was
+    skipped (Baker Eval on #210).
+  - **Two figures for information, not bars** (Grok on #210). The go/no-go record and its
+    printout say how many of the claims the agent changed ended on the key's verdict (in the
+    case05 go/no-go, 3 of the 5 converted claims ended contradicted against the key, from
+    stance labels the rubber-stamp expert accepted), and the step's measures count the tries
+    code refused for words the claim does not write, first tries and retries apart, to show
+    whether v1.1's retry rule trades repeats for made-up values. Neither changes the decision.
   - **Prompt v1.1 draft** (`docs/prompts/agent_testability.md`), for Arsh to sign: a retry
     changes what the reasons name; a name the lookups list as an account goes in "accounts",
-    never "people"; "quoted_text" only holds words inside the claim's quotation marks; a
-    sender names only the sender; a message count names its two sides. Its header lists each
+    never "people"; "quoted_text" for a message only holds words inside the claim's quotation
+    marks, and for a contact entry the saved name as the claim writes it, quoted or not (as the
+    filler reads it); a sender names only the sender; a message count names its two sides. Its header lists each
     change. PROPOSED_CHANGES.md has the exact edit to the signed copy, which stays v1.0.
-- Where: branch claude/project-thread-6i2msb-case-setup (merge after #209)
+- Where: PR #210 (merge after #209)
 - Verified: tests/test_case_setup_names.py (case.json matches the generators; case04 and
   case05 setup enter the names under the eval's expert actor; the names resolve in the filler
   to the affidavit's phones and number; "COURIER" reads as the alias "the COURIER"; the FENCE
   is no account). tests/test_testability_go_no_go.py (a no-stance run records the step's
-  measures, sends no stance prompt and gives no go/no-go even on a held-out case with every
-  other condition met; no spent case is a go/no-go case; --no-stance needs --testability).
-  tests/test_testability.py passes with the v1.1 draft. make check: see the PR. No model run.
+  measures, sends only the filler's and the step's prompts, never the stance prompt, prints
+  that its verdicts are not eval numbers, is refused by eval.run_eval, and gives no go/no-go
+  even on a held-out case with every other condition met; no spent case is a go/no-go case;
+  --no-stance needs --testability). tests/test_testability.py: a saved name goes in
+  quoted_text quoted or not, and the draft says so; a message's words still need the claim's
+  quotation marks; the go/no-go record and printout carry both figures for information, and a
+  refused try is counted as unwritten words only when code's reason says so.
+  tests/test_synthetic_case05.py now checks case05 is spent. tests/test_testability.py passes
+  with the v1.1 draft. make check: see the PR. No model run.
 - Open: The dev check itself runs on Arsh's Mac (unmeasured: about 1 to 1.5 hours a case). A
   replay of case05's recorded answers through the filler 5 code (no model) converts 6 of 33,
   up from 5: most remaining misses need the model to answer differently (a number's name

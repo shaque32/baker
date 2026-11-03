@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import unicodedata
 
 from core.identity import aliases
 
@@ -42,10 +43,16 @@ def number_digits(words: str) -> str | None:
 
 def identifier_key(identifier: str) -> str:
     """How an identifier is compared: a number by its digits (a WhatsApp id by the number it
-    holds), anything else by its alias key."""
-    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", identifier.strip())
-    d = jid.group(1) if jid else number_digits(identifier)
-    return f"tel:{d}" if d is not None else f"id:{aliases.key(identifier)}"
+    holds), anything else whole, its punctuation kept, as the checks compare account ids
+    (core/audit/checks/_common.norm_identifier): "alice.smith@example.com" and
+    "alice-smith@example.com" are two accounts (Codex on #210). An address or handle with an
+    "@" is compared in any case, as an email or Instagram id is there."""
+    ident = unicodedata.normalize("NFC", identifier.strip())
+    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)
+    d = jid.group(1) if jid else number_digits(ident)
+    if d is not None:
+        return f"tel:{d}"
+    return f"id:{ident.casefold() if '@' in ident else ident}"
 
 
 def holders(conn: sqlite3.Connection, identifier: str) -> list[str]:
@@ -108,15 +115,33 @@ def written(conn: sqlite3.Connection, text: str) -> list[tuple[str, int, int]]:
     """(identifier as the expert wrote it, start, end) for each place the text writes a name
     the expert gave a number or an account, whole, with or without a leading "the" ("from the
     BURNER", "BURNER called"), the outermost where two overlap, in text order. Code reads each
-    as that number or id wherever it reads a party from a claim's own words."""
+    as that number or id wherever it reads a party from a claim's own words. A name in
+    capitals counts only written in capitals ("a burner phone" is no name: aliases.defined_spans);
+    where the text writes one in lower case is `lowered`."""
     found = {
         (ident, s, e)
         for ident, names in logged_names(conn).items()
         for n in names
         for form in {n, aliases.without_the(n)}
-        for s, e in aliases.spans(form, text)
+        for s, e in aliases.defined_spans(form, text)
     }
     return sorted(
         (m for m in found if not any(o[1] <= m[1] and m[2] <= o[2] and o != m for o in found)),
+        key=lambda m: (m[1], m[2]),
+    )
+
+
+def lowered(conn: sqlite3.Connection, text: str) -> list[tuple[str, int, int]]:
+    """(identifier, start, end) for each place the text writes, in lower case, a name in
+    capitals the expert gave a number or an account ("a burner phone" for "the BURNER"). The
+    filler refuses to read such words as the number, or as no number: they may be either."""
+    return sorted(
+        {
+            (ident, s, e)
+            for ident, names in logged_names(conn).items()
+            for n in names
+            for form in {n, aliases.without_the(n)}
+            for s, e in aliases.lowered_spans(form, text)
+        },
         key=lambda m: (m[1], m[2]),
     )

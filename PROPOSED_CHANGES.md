@@ -1149,7 +1149,7 @@ Below the headers both copies are the text at 78682cf byte for byte, and the two
 File: core/audit/prompts/agent_testability.md (signed v1.0; human-owned)
 Why: step 3 of plans/testability-pass.md (Arsh chose "Phone designations, then replay" on
 2026-11-03 and wrote "i need this to work"). In the case05 go/no-go (NO-GO, conversion 5 of 33)
-the second try repeated the first word for word on nearly every claim, a name the affidavit
+the second try repeated the first exactly on 23 of the 29 claims that had two, a name the affidavit
 gives a number went in "people", a phone and an app went in "accounts", and on calls the
 claim's own sentence went in "quoted_text". Draft v1.1 (`docs/prompts/agent_testability.md`)
 writes out rules the templates already have; its header lists each change. It is written

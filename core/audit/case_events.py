@@ -6,11 +6,13 @@ the BUYER offered ...". The expert records each such event with
 core/review/actions.add_event: its name as the document writes it, the first and last
 wall-clock day it covers, and the paragraph and words that define it, which code checks
 verbatim against the paragraph. Only an expert enters one, never a model. Code matches a name
-whole, in any case, as it matches a person's alias (core/identity/aliases.spans). A name that
-would also match a person or another event is refused when entered; if one ever does (a person
-added later), it matches nothing (`readable`). Every report lists each event as an expert
-statement. Which ties to an event the assumption filler reads is its allow list
-(core/audit/assumption_filler.event_windows).
+whole, as it matches a person's alias (core/identity/aliases.defined_spans): a name in capitals
+("the SEARCH") only where it is written in capitals, its "the" in any case, so "the day after
+the search of the car" dates nothing; a name with a digit or a lower-case letter in any case. A
+name that would also match a person or another event, compared in any case, is refused when
+entered; if one ever does (a person added later), it matches nothing (`readable`). Every
+report lists each event as an expert statement. Which ties to an event the assumption filler
+reads is its allow list (core/audit/assumption_filler.event_windows).
 """
 
 from __future__ import annotations
@@ -50,8 +52,10 @@ def key(name: str) -> str:
 
 
 def spans(name: str, text: str) -> list[tuple[int, int]]:
-    """Where the text writes the event's name, whole, as aliases.spans finds an alias."""
-    return aliases.spans(name, text)
+    """Where the text writes the event's name, whole, as aliases.defined_spans finds an alias:
+    "the search" in lower case is an ordinary noun, not the event "the SEARCH" (validation
+    thread on #209). Clash checks (`taken`, `readable`) still compare names in any case."""
+    return aliases.defined_spans(name, text)
 
 
 def plain(text: str) -> str:
