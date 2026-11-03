@@ -1,4 +1,4 @@
-## 2026-11-03: Claim page "Why" reads in plain English, rule text under Technical details (#PR)
+## 2026-11-03: Claim page "Why" reads in plain English, rule text under Technical details (#213)
 - Changed: the claim page's "Why" fold showed the verdict rules' stored reasons as written for
   replay ("Rule 1a: check time failed on 'The message "its done" (person:dev:item1:owner ...)':
   Outside the window: msg:item1:Chats!1011 at ..."), which Arsh found hard to read. Each reason
@@ -14,7 +14,7 @@
   Display only: the lines read the stored reasons, assumptions, checks and evidence and decide
   nothing; `core/audit/rules.py`, the stored reasons and the exported report are unchanged (the
   report still prints every reason in full, with its key from names back to case ids).
-- Where: PR #PR
+- Where: PR #213
 - Verified: tests/test_why_lines.py makes the signed rules write each kind of reason (1a, 1a
   awaiting an expert, 1b grouped, 2 covered and not covered, unconfirmed owner, 3, 3a, 3c, 3d,
   3e) and checks every one gets a plain line with no rule text, nothing lost or reordered;
