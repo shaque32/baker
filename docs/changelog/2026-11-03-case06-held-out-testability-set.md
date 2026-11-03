@@ -48,7 +48,7 @@
   `TESTABILITY_GO_NO_GO_CASES` names case06 alone (registered before the build started).
   `PROPOSED_CHANGES.md` holds Arsh's signing entry with the commands that copy the drafts into
   `eval/gold/case06/`.
-- Where: branch `claude/project-thread-6i2msb-case06` (PR, merge after #210)
+- Where: PR #211 (branch `claude/project-thread-6i2msb-case06`, merge after #210)
 - Verified: `tests/test_synthetic_case06.py` (synthetic only, 38 tests): the generator gives the
   same bytes twice and the committed drafts match a fresh build; the importer reads all three
   reports, and every key and wrong-reading record exists at its story time with the right offset
