@@ -107,7 +107,7 @@ from core.contracts import (
     ModelRun,
     canonical_json,
 )
-from core.identity.aliases import person_names, without_the, written
+from core.identity.aliases import defined_written, in_lower_case, person_names, without_the
 from core.review import account_names
 from core.review.device_names import logged_names, name_key
 
@@ -167,22 +167,24 @@ def _written(words: str, texts: Sequence[str]) -> str | None:
 
 
 def _alias_written(alias: str, texts: Sequence[str]) -> str | None:
-    """An alias as a text writes it, or None (core/identity/aliases.written: whole, in any
-    case, "SUBJECT 1" for "SUBJECT-1", never "SUBJECT-12")."""
-    return next((w for t in texts if (w := written(alias, t)) is not None), None)
+    """An alias as a text writes it, or None (core/identity/aliases.defined_written: whole,
+    "SUBJECT 1" for "SUBJECT-1", never "SUBJECT-12", and a name in capitals only in
+    capitals, as the filler reads it)."""
+    return next((w for t in texts if (w := defined_written(alias, t)) is not None), None)
 
 
-def _phone_written(name: str, texts: Sequence[str]) -> str | None:
+def _phone_written(name: str, texts: Sequence[str], defined: bool = False) -> str | None:
     """A phone's name as a text writes it, compared as the filler compares phone names: case
-    and spacing do not count ("Item 1" is the phone whose source is "item1")."""
+    and spacing do not count ("Item 1" is the phone whose source is "item1"), except that a
+    name the expert gave it (`defined`) in capitals counts only in capitals."""
     chars = [re.escape(ch) for ch in name_key(name)]
     if not chars:
         return None
     pattern = re.compile(r"(?<![\w@+])" + r"\s*".join(chars) + r"(?![\w])", re.IGNORECASE)
     for t in texts:
-        m = pattern.search(_nfc(t))
-        if m:
-            return m.group(0)
+        for m in pattern.finditer(_nfc(t)):
+            if not (defined and in_lower_case(name, m.group(0))):
+                return m.group(0)
     return None
 
 
@@ -211,9 +213,10 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
                 break
     names = logged_names(conn)
     for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
-        given = (label, *names.get(did, []), sid, did)
-        for words in dict.fromkeys(f for x in given if x for f in _either(x)):
-            w = _phone_written(words, texts)
+        own = names.get(did, [])
+        tries = [(f, x in own) for x in (label, *own, sid, did) if x for f in _either(x)]
+        for words, defined in dict.fromkeys(tries):
+            w = _phone_written(words, texts, defined)
             if w is not None:
                 out.append((Lookup("phone", w, f"a phone ({label or did}), not an account"), did))
                 break

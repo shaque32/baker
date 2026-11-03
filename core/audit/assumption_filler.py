@@ -136,8 +136,8 @@ from core.audit.checks._common import (
 )
 from core.contracts import Claim, ClaimType, ModelRun, TimeWindow
 from core.identity.aliases import answers as alias_answers
+from core.identity.aliases import defined_spans, in_lower_case, lowered_spans, person_names
 from core.identity.aliases import key as alias_key
-from core.identity.aliases import person_names
 from core.identity.aliases import spans as alias_spans
 from core.review import account_names
 from core.review.device_names import keys as phone_keys
@@ -845,6 +845,15 @@ def _flat(text: str) -> str:
     """The text with each line break or other whitespace character as one space, same length,
     so a quote a PDF wrapped over two lines is still one quoted span (Codex on #160)."""
     return re.sub(r"\s", " ", text)
+
+
+def _lowered(words: str, what: str) -> str:
+    """Why words that write a name in capitals in lower case are refused
+    (core/identity/aliases.in_lower_case)."""
+    return (
+        f"{words!r} writes {what} in lower case: a term the document defines in capitals is read"
+        " only in capitals, as the same words in lower case may be an ordinary word"
+    )
 
 
 def unquoted_time_quote(claim_text: str, p: _ProposalOut) -> tuple[_ProposalOut, str | None]:
@@ -3422,7 +3431,7 @@ class LocalAssumptionFiller:
                 span
                 for _, aliases in persons.values()
                 for a in aliases
-                for span in alias_spans(a, between)
+                for span in defined_spans(a, between)
             ),
             key=lambda span: (span[0], -span[1]),
         )
@@ -3488,8 +3497,12 @@ class LocalAssumptionFiller:
         and read as every alias reader reads it (core/identity/aliases.spans). An alias two
         persons share names neither (core/identity/aliases.person_names)."""
         persons = person_names(self.conn)
+        for _, aliases in persons.values():
+            for a in aliases:
+                if low := lowered_spans(a, text):
+                    raise Reject(_lowered(_nfc(text)[slice(*low[0])], f"the alias {a!r}"))
         by_alias = {
-            pid: [sp for a in aliases for sp in alias_spans(a, text)]
+            pid: [sp for a in aliases for sp in defined_spans(a, text)]
             for pid, (_, aliases) in persons.items()
         }
         found = {
@@ -3556,20 +3569,28 @@ class LocalAssumptionFiller:
     def _phone_spans(self, text: str) -> list[tuple[str, int, int]]:
         """(device, start, end) for each place `_written_phones` finds a device written."""
         named = logged_names(self.conn)
-        return [
-            (did, *m.span())
-            for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices")
-            for x in (did, sid, label, *named.get(did, []))
-            if x and name_key(x)
-            for m in re.finditer(
-                r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I
-            )
-        ]
+        out = []
+        for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices"):
+            for x in (did, sid, label, *named.get(did, [])):
+                if not (x and name_key(x)):
+                    continue
+                pattern = r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)"
+                for m in re.finditer(pattern, text, re.I):
+                    if x in named.get(did, []) and in_lower_case(x, m.group(0)):
+                        # "the samsung" for the expert's "the SAMSUNG": it may be any Samsung
+                        raise Reject(_lowered(m.group(0), f"the phone name {x!r}"))
+                    out.append((did, *m.span()))
+        return out
 
     def _numbers_named(self, text: str) -> list[tuple[str, int, int]]:
         """(identifier, start, end) where the text writes a name the expert gave a number or an
         account ("the BURNER", core/review/account_names.py): code reads it as that number or
-        id wherever it reads a party from the claim's words, and never as a person."""
+        id wherever it reads a party from the claim's words, and never as a person. A name in
+        capitals written in lower case ("a burner phone") is refused: it may be the number or
+        an ordinary word."""
+        if low := account_names.lowered(self.conn, text):
+            ident, start, end = low[0]
+            raise Reject(_lowered(_nfc(text)[start:end], f"the name the expert gave {ident}"))
         return account_names.written(self.conn, text)
 
     def _named_spans(self, text: str, identifier: str) -> list[tuple[int, int]]:
@@ -3607,8 +3628,9 @@ class LocalAssumptionFiller:
             for did, sid, label in self.conn.execute(
                 "SELECT id, source_id, label FROM devices ORDER BY id"
             )
-            if want
-            & set().union(*(phone_keys(x) for x in (did, sid, label, *named.get(did, [])) if x))
+            if want & set().union(*(phone_keys(x) for x in (did, sid, label) if x))
+            # a name in capitals only in capitals: "samsung" is not "the SAMSUNG" (#209)
+            or any(want & phone_keys(n) and not in_lower_case(n, phone) for n in named.get(did, []))
         ]
 
     def _named_device(self, words: str) -> str | None:

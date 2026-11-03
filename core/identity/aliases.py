@@ -62,10 +62,10 @@ def answers(alias: str, answer: str) -> bool:
     "the" on either side: a model's "COURIER" for the alias "the COURIER", or "the HAL" for
     "HAL". Still whole, so "@courier" (a handle) and "COURIER VAN" are not "the COURIER"."""
     written = unicodedata.normalize("NFC", answer.strip())
-    if written and spans(alias, written) == [(0, len(written))]:
+    if written and defined_spans(alias, written) == [(0, len(written))]:
         return True
     a, w = without_the(alias), without_the(written)
-    return (a, w) != (alias, written) and bool(key(w)) and spans(a, w) == [(0, len(w))]
+    return (a, w) != (alias, written) and bool(key(w)) and defined_spans(a, w) == [(0, len(w))]
 
 
 def name_keys(name: str) -> set[str]:
@@ -111,6 +111,50 @@ def spans(alias: str, text: str) -> list[tuple[int, int]]:
 def written(alias: str, text: str) -> str | None:
     """The alias as the text writes it (`spans`, the first place), or None."""
     found = spans(alias, text)
+    return unicodedata.normalize("NFC", text)[slice(*found[0])] if found else None
+
+
+def in_capitals(name: str) -> bool:
+    """True when the name, without a leading "the", is made of letters only, at least two,
+    each a capital: a term a document defines that is also an ordinary word or phrase in lower
+    case ("the COURIER", "the BURNER", "the TARGET PHONE"). A name with a digit ("SUBJECT-1",
+    "CW-1") is no ordinary word, and is matched in any case as before (Codex on #181)."""
+    core = without_the(name)
+    cased = [c for c in core if c.isupper() or c.islower()]
+    return (
+        len(cased) >= 2
+        and not any(c.islower() for c in cased)
+        and not any(c.isdigit() for c in core)
+    )
+
+
+def in_lower_case(name: str, words: str) -> bool:
+    """True when the name is in capitals (`in_capitals`) and these words, written for it, are
+    not: "the courier" for "the COURIER". The words' leading "the" may be in any case."""
+    return in_capitals(name) and any(c.islower() for c in without_the(words))
+
+
+def defined_spans(alias: str, text: str) -> list[tuple[int, int]]:
+    """`spans`, but a name in capitals (`in_capitals`) counts only where the text writes it in
+    capitals too, its "the" in any case. A document writes a term it defines the same way each
+    time, and in lower case the same words are an ordinary noun: "the courier dropped off the
+    package" does not write "the COURIER", nor "a burner phone" "the BURNER" (Baker Eval on
+    #209). A name with a lower-case letter in it is matched in any case, as `spans` matches."""
+    norm = unicodedata.normalize("NFC", text)
+    return [(s, e) for s, e in spans(alias, text) if not in_lower_case(alias, norm[s:e])]
+
+
+def lowered_spans(alias: str, text: str) -> list[tuple[int, int]]:
+    """Where the text writes a name in capitals in lower case (the spans `defined_spans`
+    leaves out). A reader that would take such words for the name refuses instead: they may
+    be the ordinary noun, or the name written loosely, and code cannot tell which."""
+    norm = unicodedata.normalize("NFC", text)
+    return [(s, e) for s, e in spans(alias, text) if in_lower_case(alias, norm[s:e])]
+
+
+def defined_written(alias: str, text: str) -> str | None:
+    """The alias as the text writes it (`defined_spans`, the first place), or None."""
+    found = defined_spans(alias, text)
     return unicodedata.normalize("NFC", text)[slice(*found[0])] if found else None
 
 
