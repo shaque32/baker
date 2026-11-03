@@ -441,7 +441,21 @@ def test_the_testability_step_looks_up_a_numbers_name_as_every_account_holding_i
     ]
     assert {x.kind for x, _ in found} == {"account"}
     assert {aid for _, aid in found} == set(account_names.holders(conn, GARAGE))
-    assert "not a person" in found[0][0].means
+    assert all("not a person" in x.means and GARAGE in x.means for x, _ in found)
+    shown = {x.means for x in testability.lookups(filler, claim, "") if x.written == "the BURNER"}
+    assert {m.split(":")[0] for m in shown} >= {"an account on Phone", "an account on SMS"}
+    # written without its "the", the name is still looked up
+    bare = _claim(conn, "On March 9, 2026, BURNER called PETROV.", ClaimType.COMMUNICATION)
+    assert [x for x in testability.lookups(filler, bare, "") if x.written == "BURNER"]
+
+
+def test_the_testability_step_looks_up_aliases_and_phone_names_without_their_the(conn):
+    actions.set_aliases(conn, REYES, ["the COURIER"], EXPERT, _clock)
+    actions.name_device(conn, "dev:item1", ["the SAMSUNG"], EXPERT, _clock)
+    filler = _filler(conn)
+    claim = _claim(conn, "On March 9, 2026, COURIER texted SAMSUNG.", ClaimType.COMMUNICATION)
+    got = {(x.kind, x.written) for x in testability.lookups(filler, claim, "")}
+    assert {("person", "COURIER"), ("phone", "SAMSUNG")} <= got
 
 
 # ---------------------------------------------------------------- quoted words and channels

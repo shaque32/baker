@@ -4153,6 +4153,13 @@ class LocalAssumptionFiller:
         if zone is None and w.zone == "UTC":
             raise Reject("the range does not say UTC")
         check_window(start, end, w.as_written, claim_text, para, template_id)
+        # When the range's own words state one plain range, code's reading of them is the
+        # range, not the model's arithmetic: "at about 11:50 p.m." is 11:42 to 11:58, never the
+        # 11:50 to midnight a model may give and the 15 minutes check_window allows let pass.
+        plain = stated_windows(w.as_written, f"{claim_text}\n{para}")
+        if plain is not None and len(plain) == 1 and (plain[0].start, plain[0].end) != (start, end):
+            start, end = plain[0].start, plain[0].end
+            check_window(start, end, w.as_written, claim_text, para, template_id)
         return self._zoned_window(zone, start, end, device_ids, w.as_written.strip())
 
     def _zoned_window(

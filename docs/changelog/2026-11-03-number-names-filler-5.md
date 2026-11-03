@@ -1,4 +1,4 @@
-## 2026-11-03: The expert names a number as the document does; filler 5 reads names with or without "the" (#PR)
+## 2026-11-03: The expert names a number as the document does; filler 5 reads names with or without "the"
 - Changed: In the case05 testability go/no-go (NO-GO, conversion 5 of 33), 11 of the 28 claims
   the step did not convert were stopped by a name code could not resolve. Affidavits name a
   number ("+1 (720) 555-0186 (the "BURNER")") and then write only "the BURNER", which had no
@@ -35,11 +35,22 @@
     call holds no words, so its check rests on parties, app and time. Everything else keeps
     refusing words the claim does not quote: a sender, a meaning, a contact's saved name, a
     weekday, and a message's time range, which is picked by its words.
+  - **Code reads a plainly stated time.** When the words a model gives for a range state one
+    plain range, code's reading of them is the range, not the model's arithmetic: "at about
+    11:50 p.m. on November 14, 2025" is 11:42 to 11:58 p.m. (8 minutes either side, as
+    stated_windows already reads it), where a model gave 11:50 to midnight and check_window's
+    15 minutes let it through. Without this, dropping a call's stray quote would have let such
+    a try reach the sheet check and count as a wrong-window try. A range the words leave
+    open, or that holds more than one date, keeps the model's checked times as before.
+  - **Lookups.** The testability step's lookups find a person alias, a phone name or a
+    number's name written with or without its "the", and list a number's name once per app
+    that holds it ("an account on SMS: +1 (720) 555-0186, as the expert named it, not a
+    person").
   - **Vocabulary.** "texting" names SMS; "spoke by phone", "talked by phone" and "spoke on the
     phone" name a call.
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
-- Where: PR #PR (branch claude/project-thread-6i2msb-designations; merge after #201)
+- Where: branch claude/project-thread-6i2msb-designations (merge after #201)
 - Verified: tests/test_account_names.py (52 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the

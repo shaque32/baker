@@ -107,7 +107,7 @@ from core.contracts import (
     ModelRun,
     canonical_json,
 )
-from core.identity.aliases import person_names, written
+from core.identity.aliases import person_names, without_the, written
 from core.review import account_names
 from core.review.device_names import logged_names, name_key
 
@@ -186,6 +186,12 @@ def _phone_written(name: str, texts: Sequence[str]) -> str | None:
     return None
 
 
+def _either(name: str) -> list[str]:
+    """A name, then the same without a leading "the" when it has one: the claim may write
+    "COURIER" for "the COURIER" (core/identity/aliases.answers)."""
+    return list(dict.fromkeys([name, without_the(name)]))
+
+
 def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lookup, str]]:
     """Each lookup the texts give, with the person, device or account id it names."""
     conn = filler.conn
@@ -196,7 +202,8 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
     for pid, (name, aliases) in person_names(conn).items():
         parts = name.split()
         tries = [(_written, w) for w in dict.fromkeys([name, parts[-1]] if parts else [])]
-        tries += [(_alias_written, a) for a in aliases]
+        # with or without a leading "the": "COURIER" for the alias "the COURIER"
+        tries += [(_alias_written, f) for a in aliases for f in _either(a)]
         for match, words in tries:
             w = match(words, texts)
             if w is not None:
@@ -204,7 +211,8 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
                 break
     names = logged_names(conn)
     for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
-        for words in dict.fromkeys(x for x in (label, *names.get(did, []), sid, did) if x):
+        given = (label, *names.get(did, []), sid, did)
+        for words in dict.fromkeys(f for x in given if x for f in _either(x)):
             w = _phone_written(words, texts)
             if w is not None:
                 out.append((Lookup("phone", w, f"a phone ({label or did}), not an account"), did))
@@ -216,13 +224,15 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
         if (d := phone_digits(m.group(0))) is not None
     ]
     # A name the expert gave a number or an account ("the BURNER"): the number, never a person.
-    for ident, given in account_names.logged_names(conn).items():
+    for ident, named_as in account_names.logged_names(conn).items():
         holders = account_names.holders(conn, ident)
-        for words in given:
+        for words in (f for n in named_as for f in _either(n)):
             w = _alias_written(words, texts)
             if w is not None and holders:
-                what = f"the number {ident} as the expert named it: an account, not a person"
-                out += [(Lookup("account", w, what), aid) for aid in holders]
+                for aid in holders:
+                    app = filler.data.accounts[aid].app if aid in filler.data.accounts else "?"
+                    what = f"an account on {app}: {ident}, as the expert named it, not a person"
+                    out.append((Lookup("account", w, what), aid))
                 break
     for a in sorted(filler.data.accounts.values(), key=lambda a: a.id):
         w = _written(a.identifier, texts) if len(a.identifier.strip()) >= MIN_NAME else None
