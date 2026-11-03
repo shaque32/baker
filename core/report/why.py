@@ -25,7 +25,6 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
-from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.contracts import Assumption, AssumptionKind, CheckResult, EvidenceItem
@@ -82,10 +81,6 @@ class Line:
 
     html: str
     reasons: list[str] = field(default_factory=list)
-
-
-def _link(path: str, **params: str) -> str:
-    return path + "?" + "&".join(f"{k}={quote(v, safe='')}" for k, v in params.items())
 
 
 def _clock(dt: datetime) -> str:
@@ -510,18 +505,3 @@ def lines(
     for key, (line, rids) in groups.items():
         line.html = w.group_line(key, rids)
     return out
-
-
-def record_href(evidence: list[EvidenceItem]) -> Callable[[str], str | None]:
-    """The review screen's link for a record: its evidence item on this claim when it has one,
-    else the message in its conversation."""
-    items = {x.record_id: x.id for x in evidence}
-
-    def href(rid: str) -> str | None:
-        if rid in items:
-            return _link("/evidence", id=items[rid])
-        if rid.startswith("msg:"):
-            return _link("/selection/context", id=rid)
-        return None
-
-    return href

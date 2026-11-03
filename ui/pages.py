@@ -1363,9 +1363,15 @@ AROUND = 1  # messages either side of each evidence record on the claim page
 def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
     """Why the verdict: one plain line per reason (core/report/why.py), then the reasons exactly
     as the rules stored them, with the rule version and run, folded as Technical details."""
-    plain = why.lines(
-        conn, d.reasons, st.assumptions, st.checks, st.evidence, href=why.record_href(st.evidence)
-    )
+    items = {x.record_id: x.id for x in st.evidence}
+
+    def href(rid: str) -> str | None:
+        """A record's link: its evidence item on this claim, else the message in its thread."""
+        if rid in items:
+            return link("/evidence", id=items[rid])
+        return link("/selection/context", id=rid) if rid.startswith("msg:") else None
+
+    plain = why.lines(conn, d.reasons, st.assumptions, st.checks, st.evidence, href=href)
     return (
         "<details class='why'><summary>Why</summary><ul class='why-lines'>"
         + "".join(f"<li>{ln.html}</li>" for ln in plain)
