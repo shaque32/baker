@@ -29,7 +29,8 @@
   is no account). tests/test_testability_go_no_go.py (a no-stance run records the step's
   measures, sends no stance prompt and gives no go/no-go even on a held-out case with every
   other condition met; no spent case is a go/no-go case; --no-stance needs --testability).
-  tests/test_testability.py passes with the v1.1 draft. make check: see the PR. No model run.
+  tests/test_synthetic_case05.py now checks case05 is spent. tests/test_testability.py passes
+  with the v1.1 draft. make check: see the PR. No model run.
 - Open: The dev check itself runs on Arsh's Mac (unmeasured: about 1 to 1.5 hours a case). A
   replay of case05's recorded answers through the filler 5 code (no model) converts 6 of 33,
   up from 5: most remaining misses need the model to answer differently (a number's name
