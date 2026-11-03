@@ -2825,7 +2825,7 @@ class LocalAssumptionFiller:
             if i and i.strip():
                 spans += _ident_spans(clause, i)
         for a in found:  # "the BURNER" for its number, as the expert named it
-            spans += self._named_spans(clause, a.identifier)
+            spans += self._named_spans(clause, a.id)
         numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
         written_numbers = set()
         for m in _PHONE_RE.finditer(clause):
@@ -2839,7 +2839,7 @@ class LocalAssumptionFiller:
             if (
                 not any(_ident_spans(clause, x) for x in names)
                 and not any(phone_digits(x) in written_numbers for x in names)
-                and not self._named_spans(clause, a.identifier)
+                and not self._named_spans(clause, a.id)
             ):
                 # An account the clause does not write: the count would credit its messages
                 # to a side the claim names otherwise (Codex on #172).
@@ -2888,7 +2888,8 @@ class LocalAssumptionFiller:
                 if i and i.strip():
                     # whole only: "7001002" inside "70010023" is another account (Codex on #172)
                     out += [("accounts", s, e, False) for s, e in _ident_spans(text, i)]
-                    out += [("accounts", s, e, False) for s, e in self._named_spans(text, i)]
+            for a in accounts:  # "the BURNER sent ...", for the number the expert named
+                out += [("accounts", s, e, False) for s, e in self._named_spans(text, a)]
             # one number written another way ("+1 (212) 555-0122" for +12125550122; R6)
             numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
             for m in _PHONE_RE.finditer(text):
@@ -2946,7 +2947,7 @@ class LocalAssumptionFiller:
             for a in accounts:
                 i = (self.data.accounts[a].identifier or "").strip()
                 d = phone_digits(i) if i else None
-                if i and (_ident_spans(text, i) or self._named_spans(text, i)):
+                if i and (_ident_spans(text, i) or self._named_spans(text, a)):
                     out.add(a)
                 elif d is not None and any(
                     phone_digits(m.group(0).strip(" .,-")) == d for m in _PHONE_RE.finditer(text)
@@ -3157,11 +3158,20 @@ class LocalAssumptionFiller:
     ) -> list[Proposal]:
         """Code's own fills after the model's items, in order: sender, time, call count and
         meaning. The first pass and the testability step's repair both run exactly these
-        (Codex on #169)."""
-        out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call_id)
-        out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call_id)
-        out = self._shaped(claim, self._add_call_count(claim, out, allowed_ids), call_id)
-        return self._add_meaning(claim, out, allowed_ids, call_id)
+        (Codex on #169).
+
+        Where code cannot read the claim's own words for a fill ("on the samsung" for the
+        phone the expert named "the SAMSUNG": the words may be the phone or any Samsung), it
+        keeps nothing for the claim and records why: the claim stays unproven, and the audit
+        goes on (Codex on #211)."""
+        try:
+            out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call_id)
+            out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call_id)
+            out = self._shaped(claim, self._add_call_count(claim, out, allowed_ids), call_id)
+            return self._add_meaning(claim, out, allowed_ids, call_id)
+        except Reject as e:
+            self._drop(claim, None, f"code could not read the claim's own words: {e}", call_id)
+            return []
 
     def _add_call_count(
         self, claim: Claim, out: list[Proposal], allowed_ids: set[str]
@@ -3626,13 +3636,17 @@ class LocalAssumptionFiller:
             raise Reject(_lowered(_nfc(text)[start:end], f"the name the expert gave {ident}"))
         return account_names.written(self.conn, text)
 
-    def _named_spans(self, text: str, identifier: str) -> list[tuple[int, int]]:
-        """Where the text writes a name the expert gave this number or id."""
-        want = account_names.identifier_key(identifier)
+    def _named_spans(self, text: str, account_id: str) -> list[tuple[int, int]]:
+        """Where the text writes a name the expert gave a number or id this account holds
+        (account_names.holds: a call log's bare digits hold the number; a Telegram user id's
+        digits hold no number, Codex on #211)."""
+        a = self.data.accounts.get(account_id)
+        if a is None:
+            return []
         return [
             (start, end)
             for ident, start, end in self._numbers_named(text)
-            if account_names.identifier_key(ident) == want
+            if account_names.holds(ident, a.identifier or "", a.app or "")
         ]
 
     def _names_a_number(self, claim_text: str) -> bool:
@@ -3854,8 +3868,11 @@ class LocalAssumptionFiller:
                 numbers.append(m.group(0).strip(" .,-"))
                 spans.append(m.span())
         for ident, start, end in self._numbers_named(bare):
-            # "the BURNER called ...": the number or id the expert named, never a person
-            written.append(ident)
+            # "the BURNER called ...": the number or id the expert named, never a person. A
+            # number named as bare digits or a WhatsApp id is read as the number, so the call
+            # log's guard and lookup below take it as they take one written (Codex on #211).
+            d = self._named_number(ident)
+            written.append(f"+{d}" if d is not None else ident)
             spans.append((start, end))
         for m in _QUOTE_SPAN_RE.finditer(_flat(text)):
             if m.group(0)[1:-1].strip():
@@ -4244,8 +4261,20 @@ class LocalAssumptionFiller:
         # When the range's own words state one plain range, code's reading of them is the
         # range, not the model's arithmetic: "at about 11:50 p.m." is 11:42 to 11:58, never the
         # 11:50 to midnight a model may give and the 15 minutes check_window allows let pass.
+        # Only within those 15 minutes: further off, the words are part of the range or open
+        # ("March 9, 2026" copied from "between March 9, 2026 and March 12, 2026", "first made
+        # contact ... on March 12", "at 10:05 p.m. ... and after that call"), so code's reading
+        # of them is not the claim's range, and the model's, held to the claim's dates and
+        # times by check_window, stands. Read as written, "March 9, 2026" would search an
+        # absence on one day of four (Codex on #211).
         plain = stated_windows(w.as_written, f"{claim_text}\n{para}")
-        if plain is not None and len(plain) == 1 and (plain[0].start, plain[0].end) != (start, end):
+        if (
+            plain is not None
+            and len(plain) == 1
+            and (plain[0].start, plain[0].end) != (start, end)
+            and abs(plain[0].start - start) <= TIME_SLACK
+            and abs(plain[0].end - end) <= TIME_SLACK
+        ):
             start, end = plain[0].start, plain[0].end
             check_window(start, end, w.as_written, claim_text, para, template_id)
         return self._zoned_window(zone, start, end, device_ids, w.as_written.strip())

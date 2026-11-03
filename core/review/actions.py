@@ -774,7 +774,7 @@ def name_account(
         if not key(name):
             raise ReviewError(f"{name} has no letter or digit, so the audit could not match it")
         other = account_names.holders(conn, name)
-        if other and account_names.identifier_key(name) != account_names.identifier_key(ident):
+        if other and account_names.entry_key(conn, name) != account_names.entry_key(conn, ident):
             # a name that is itself another account's number or id would read as both
             raise ReviewError(f"{name} is itself a number or id in the case ({other[0]})")
         if key(name) not in {key(n) for n in clean}:

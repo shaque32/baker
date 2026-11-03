@@ -31,7 +31,12 @@
     than picking one (Codex on #209). A no-contact party named by such a WhatsApp id or bare
     digits reads as the number too; an id other than a number is compared whole, its
     punctuation kept, so "alice.smith@example.com" and "alice-smith@example.com" are two
-    accounts with their own names (Codex on #210).
+    accounts with their own names (Codex on #210). Bare digits are a number only on a phone
+    app or the call log, as the filler already read them: a Telegram user id is held only by
+    its digits whole, so "7185550199" and "17185550199" are two users, each with its own names,
+    while "12125550182" and "+1 (212) 555-0182" are one entry for a number a phone app holds. A
+    call on no named app reads a number named by bare digits or a WhatsApp id as that number in
+    the call log (Codex on #211).
   - **"the" either way.** A model's answer matches a person alias or a phone name whole, with
     or without a leading "the" on either side (core/identity/aliases.answers,
     device_names.keys): "COURIER" for "the COURIER", and so does the claim's own wording when
@@ -69,14 +74,25 @@
     stated_windows already reads it), where a model gave 11:50 to midnight and check_window's
     15 minutes let it through. Without this, dropping a call's stray quote would have let such
     a try reach the sheet check and count as a wrong-window try. A range the words leave
-    open, or that holds more than one date, keeps the model's checked times as before. It runs
-    only after check_window passed the model's range, so it moves each end by at most a few
-    minutes. A call just outside code's range stays inconclusive (calls are picked by their
+    open, or that holds more than one date, keeps the model's checked times as before. It applies
+    only when code's reading lies within check_window's 15 minutes of the model's range at both
+    ends, so it moves each end by at most a few minutes. Further off, the words are part of the
+    range or open, and the model's checked range stands (Codex on #211): "March 9, 2026" copied
+    from "between March 9, 2026 and March 12, 2026" would have searched an absence on one day
+    of four, and case01's own good answers for C04 ("first made contact ... on March 12", read
+    as March 12 alone) and C11 ("at 10:05 p.m. ... and after that call", read as that minute)
+    were narrowed by the first version of this change without changing their test outcomes. A
+    call just outside code's range stays inconclusive (calls are picked by their
     parties, so the time check never fails on one); a message picked by its words, every copy
     just outside, fails, as it already did whenever a model wrote code's range. In the
     recorded case04 and case05 runs it changes one answer in each: case04 C13 (3:15 to 3:25
     a.m. read as 3:12 to 3:28) and case05 C14 (the call above, whose try now reaches the sheet
     check, where case05's sheet ends at 11:59, a minute later than code's reading).
+  - **Code's own fills never stop the audit** (Codex on #211). Where code reads the claim's own
+    words for a fill (a sender, a time range) and finds a name in capitals written in lower
+    case ("on the samsung" for the phone named "the SAMSUNG"), it keeps nothing for the claim
+    and records why, in the first pass and in a testability repair; the claim stays unproven.
+    Before, that refusal escaped and stopped the whole audit.
   - **Lookups.** The testability step's lookups find a person alias, a phone name or a
     number's name written with or without its "the", and list a number's name once per app
     that holds it ("an account on SMS: +1 (720) 555-0186, as the expert named it, not a
@@ -86,7 +102,7 @@
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
 - Where: PR #209 (merge after #201)
-- Verified: tests/test_account_names.py (71 tests on synthetic case01): entering, replacing
+- Verified: tests/test_account_names.py (83 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the
   report line passes the word check; the CLI; a model's account answer, a code-read call
@@ -111,7 +127,12 @@
   written date that is not the tied day is refused. Codex on #210: no contact with a number
   named by its WhatsApp id or bare digits; "SAMSUNG exchanged ..." reads the phone named "the
   SAMSUNG", once, and a count on the other phone is refused; two email ids differing only in
-  punctuation keep their own names. make check: see the PR.
+  punctuation keep their own names. Codex on #211: a lower-case phone name met by code's own
+  sender fill leaves the claim unproven, recorded, in the first pass and a repair, and the
+  audit goes on; window words that are part of a range or open keep the model's range, and
+  within 15 minutes code's reading still wins; a call-log call to a number named by bare digits
+  or a WhatsApp id is searched on that number; two Telegram ids, one a "1" before the other,
+  keep their own names, and a Telegram id holds no phone number. make check: see the PR.
 - Open: Not measured on any model run. The case05 claims these address are development data
   (case05 is spent); the go/no-go of record is a fresh case06 on Arsh's Mac. A blocker fixed
   does not mean a claim converts: some case05 claims had two. The case screen has no form for

@@ -26,6 +26,7 @@ from core.audit.assumption_filler import (
     Reject,
     _Account,
     _ProposalOut,
+    _Window,
     unquoted_time_quote,
 )
 from core.audit.assumptions import TemplateAssumptionBuilder
@@ -827,3 +828,127 @@ def test_ids_that_differ_only_in_punctuation_are_two_accounts(conn):
         "alice.smith@example.com": ["the MAILBOX"],
         "alice-smith@example.com": ["the DROPBOX"],
     }
+
+
+# ---------------------------------------------------------------- Codex on #211
+
+
+def test_a_lower_case_phone_name_in_code_fills_leaves_the_claim_unproven_and_goes_on(conn):
+    # The model left the sender to code; code reads the claim's phone, and "the samsung" may be
+    # the phone the expert named "the SAMSUNG" or any Samsung. The audit must not stop: the
+    # claim keeps nothing and the reason is recorded, in the first pass and in a repair.
+    actions.name_device(conn, "dev:item1", ["the SAMSUNG"], EXPERT, _clock)
+    text = 'On March 9, 2026, PETROV texted REYES "see you at 8" on the samsung.'
+    assumptions, filler = build(conn, text, ClaimType.COMMUNICATION, [])
+    assert assumptions == []
+    assert any("could not read the claim's own words" in d.reason for d in filler.drops)
+    assert any("in lower case" in d.reason for d in filler.drops)
+    claim = _claim(conn, text, ClaimType.COMMUNICATION)
+    outcome, reasons, _, kept = testability.check_answer(
+        _filler(conn), claim, [], None, testability.CLAIM_CHECK
+    )
+    assert outcome == "refused" and kept == []
+    assert any("could not read the claim's own words" in r for r in reasons)
+    # written in capitals, code fills the sender on that phone
+    text = 'On March 9, 2026, PETROV texted REYES "see you at 8" on the SAMSUNG.'
+    assumptions, filler = build(conn, text, ClaimType.COMMUNICATION, [])
+    assert not any("could not read" in d.reason for d in filler.drops)
+
+
+@pytest.mark.parametrize(
+    ("text", "window", "first", "last"),
+    [
+        # "March 9, 2026" copied from "between March 9, 2026 and March 12, 2026": read as
+        # written it is one day, and the absence would be searched on one day of four
+        (
+            "Between March 9, 2026 and March 12, 2026, PETROV and REYES had no contact.",
+            W("March 9, 2026", "2026-03-09T00:00", "2026-03-13T00:00"),
+            datetime(2026, 3, 9),
+            datetime(2026, 3, 13),
+        ),
+        # "first ... on March 12" leaves the start open: never only March 12
+        (
+            "PETROV first made contact with @northstar on March 12, 2026.",
+            W(
+                "first made contact with @northstar on March 12, 2026",
+                "2026-01-01T00:00",
+                "2026-03-12T00:00",
+            ),
+            datetime(2026, 1, 1),
+            datetime(2026, 3, 12),
+        ),
+        # within 15 minutes, code's reading of a plainly stated time wins
+        (
+            "At about 11:50 p.m. on March 9, 2026, PETROV and REYES had no contact.",
+            W("At about 11:50 p.m. on March 9, 2026", "2026-03-09T23:50", "2026-03-10T00:00"),
+            datetime(2026, 3, 9, 23, 42),
+            datetime(2026, 3, 9, 23, 58),
+        ),
+    ],
+)
+def test_window_words_that_are_part_of_the_claims_range_never_shorten_it(
+    conn, text, window, first, last
+):
+    # Code's reading of the window's own words replaces the model's range only within the 15
+    # minutes check_window allows (Codex on #211).
+    ny = ZoneInfo("America/New_York")
+    got = _filler(conn)._window(text, "", _Window.model_validate(window), [], "no_contact")
+    assert got.start_utc == first.replace(tzinfo=ny).astimezone(UTC)
+    assert got.end_utc == last.replace(tzinfo=ny).astimezone(UTC) - timedelta(microseconds=1)
+
+
+@pytest.fixture
+def call_log(conn):
+    # The phone's call log stores one number two ways, as a UFDR from two databases does.
+    for aid, ident in [("acct:t:log1", "+12125550199"), ("acct:t:log2", "2125550199")]:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+            " VALUES (?, 'item1', 'x', NULL, 'unknown', ?)",
+            (aid, ident),
+        )
+    return conn
+
+
+@pytest.mark.parametrize(
+    "identifier", ["+1 (212) 555-0199", "12125550199", "12125550199@s.whatsapp.net"]
+)
+def test_a_call_log_call_reads_a_number_named_by_bare_digits_or_whatsapp_id(call_log, identifier):
+    # No app named and the other party a number the expert named: the phone's call log, with
+    # the number whichever way the expert entered it.
+    actions.name_account(call_log, identifier, ["the BURNER"], EXPERT, _clock)
+    text = (
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 placed an outgoing telephone"
+        " call to the BURNER."
+    )
+    assumptions, filler = build(
+        call_log, text, ClaimType.COMMUNICATION, [P("record_time", channels=["call"])]
+    )
+    (t,) = [a.params for a in assumptions if a.template_id == "record_time"]
+    assert t.account_ids == ("acct:t:log1", "acct:t:log2"), filler.drops
+    assert t.channels == ("call", "unknown")
+
+
+def test_a_user_ids_digits_are_never_a_number_and_two_ids_stay_two(call_log):
+    for i in ["7185550199", "17185550199"]:
+        call_log.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+            f" VALUES ('acct:item1:Telegram:{i}', 'item1', 'Contacts!{i}', 'dev:item1',"
+            " 'Telegram', ?)",
+            (i,),
+        )
+    holders = account_names.holders
+    assert holders(call_log, "7185550199") == ["acct:item1:Telegram:7185550199"]
+    assert holders(call_log, "17185550199") == ["acct:item1:Telegram:17185550199"]
+    assert holders(call_log, "+1 (718) 555-0199") == []  # a number, not a user id
+    # bare digits on the call log are the number, however the expert writes it
+    for written in ("+1 (212) 555-0199", "12125550199", "2125550199"):
+        assert {"acct:t:log1", "acct:t:log2"} <= set(holders(call_log, written)), written
+    actions.name_account(call_log, "7185550199", ["the BROKER"], EXPERT, _clock)
+    actions.name_account(call_log, "17185550199", ["the COURIER"], EXPERT, _clock)
+    assert account_names.logged_names(call_log) == {
+        "7185550199": ["the BROKER"],
+        "17185550199": ["the COURIER"],
+    }
+    filler = _filler(call_log)
+    assert filler._named_spans("a call to the BROKER", "acct:item1:Telegram:7185550199")
+    assert not filler._named_spans("a call to the BROKER", "acct:item1:Telegram:17185550199")
