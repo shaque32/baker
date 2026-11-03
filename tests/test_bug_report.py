@@ -163,7 +163,7 @@ def test_help_page_shows_contact_and_the_same_report_without_a_case(tmp_path: Pa
     page = r.text
     assert SUPPORT_EMAIL in page and "the Mabillon team sets the real address" not in page
     assert "/help/bug-report.json" in page and "Never send case content" in page
-    assert "takes the scrolling, not the judgment" in page
+    assert "verification layer on top of Cellebrite and AXIOM" in page
     low = page.lower()
     assert "<script" not in low and " src=" not in low
     assert r.header("Referrer-Policy") == "same-origin"
