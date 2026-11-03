@@ -16,19 +16,26 @@
   - **`--no-stance`.** With `--testability CAP`, a dev check of the filler and the step only: a
     stand-in labels every candidate irrelevant with no model call, the run's measures are
     recorded as usual, and the go/no-go says none given ("stance was skipped"). Output in
-    `<out>/no_stance/`.
+    `<out>/no_stance/`. Its verdicts are never eval numbers: the run's summary says so on its
+    first line, and eval.run_eval refuses to score predictions whose run.json says stance was
+    skipped (Baker Eval on #210).
   - **Prompt v1.1 draft** (`docs/prompts/agent_testability.md`), for Arsh to sign: a retry
     changes what the reasons name; a name the lookups list as an account goes in "accounts",
-    never "people"; "quoted_text" only holds words inside the claim's quotation marks; a
-    sender names only the sender; a message count names its two sides. Its header lists each
+    never "people"; "quoted_text" for a message only holds words inside the claim's quotation
+    marks, and for a contact entry the saved name as the claim writes it, quoted or not (as the
+    filler reads it); a sender names only the sender; a message count names its two sides. Its header lists each
     change. PROPOSED_CHANGES.md has the exact edit to the signed copy, which stays v1.0.
 - Where: PR #210 (merge after #209)
 - Verified: tests/test_case_setup_names.py (case.json matches the generators; case04 and
   case05 setup enter the names under the eval's expert actor; the names resolve in the filler
   to the affidavit's phones and number; "COURIER" reads as the alias "the COURIER"; the FENCE
   is no account). tests/test_testability_go_no_go.py (a no-stance run records the step's
-  measures, sends no stance prompt and gives no go/no-go even on a held-out case with every
-  other condition met; no spent case is a go/no-go case; --no-stance needs --testability).
+  measures, sends only the filler's and the step's prompts, never the stance prompt, prints
+  that its verdicts are not eval numbers, is refused by eval.run_eval, and gives no go/no-go
+  even on a held-out case with every other condition met; no spent case is a go/no-go case;
+  --no-stance needs --testability). tests/test_testability.py: a saved name goes in
+  quoted_text quoted or not, and the draft says so; a message's words still need the claim's
+  quotation marks.
   tests/test_synthetic_case05.py now checks case05 is spent. tests/test_testability.py passes
   with the v1.1 draft. make check: see the PR. No model run.
 - Open: The dev check itself runs on Arsh's Mac (unmeasured: about 1 to 1.5 hours a case). A
