@@ -41,28 +41,73 @@ def number_digits(words: str) -> str | None:
     return d if 8 <= len(d) <= 15 else None
 
 
+_JID = re.compile(r"(\d{8,15})@s\.whatsapp\.net")
+# The import's app for a phone's own call log (core/audit/assumption_filler.NATIVE_CALL_APP).
+_CALL_LOG_APP = "unknown"
+
+
 def identifier_key(identifier: str) -> str:
-    """How an identifier is compared: a number by its digits (a WhatsApp id by the number it
-    holds), anything else whole, its punctuation kept, as the checks compare account ids
+    """How an identifier the expert wrote is compared with another the expert wrote: a number
+    written as one ("+1 (720) 555-0186", a WhatsApp id) by its digits; bare digits whole, since
+    they may be an app's user id ("7185550199" and "17185550199" are two Telegram users; Codex
+    on #211); anything else whole, its punctuation kept, as the checks compare account ids
     (core/audit/checks/_common.norm_identifier): "alice.smith@example.com" and
     "alice-smith@example.com" are two accounts (Codex on #210). An address or handle with an
-    "@" is compared in any case, as an email or Instagram id is there."""
+    "@" is compared in any case, as an email or Instagram id is there. Which accounts hold an
+    identifier is `holds`."""
     ident = unicodedata.normalize("NFC", identifier.strip())
-    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)
+    if ident.isdigit():
+        return f"id:{ident}"
+    jid = _JID.fullmatch(ident)
     d = jid.group(1) if jid else number_digits(ident)
     if d is not None:
         return f"tel:{d}"
     return f"id:{ident.casefold() if '@' in ident else ident}"
 
 
+def holds(identifier: str, account_identifier: str, app: str) -> bool:
+    """True when an account with this identifier, on this app, holds the number or id the
+    expert wrote: the same identifier, or the same phone number however either is written. An
+    account's identifier is a number when it is a WhatsApp id, a number written with "+" or
+    formatting, or bare digits on a phone app or the call log; bare digits on any other app are
+    a user id, never a number, as the filler reads them (assumption_filler._same_number)."""
+    from core.audit.checks._common import namespace
+
+    if identifier_key(identifier) == identifier_key(account_identifier):
+        return True
+    ident = unicodedata.normalize("NFC", identifier.strip())
+    jid = _JID.fullmatch(ident)
+    number = jid.group(1) if jid else number_digits(ident)
+    if number is None:
+        return False
+    theirs = unicodedata.normalize("NFC", account_identifier.strip())
+    if (their_jid := _JID.fullmatch(theirs)) is not None:
+        return their_jid.group(1) == number
+    if theirs.isdigit() and not (namespace(app) == "tel" or app == _CALL_LOG_APP):
+        return False
+    return number_digits(theirs) == number
+
+
+def entry_key(conn: sqlite3.Connection, identifier: str) -> str:
+    """Which of the expert's entries an identifier's names replace: `identifier_key`, except
+    that bare digits a phone app's account or the call log holds as a number are that number,
+    so "12125550182" and "+1 (212) 555-0182" are one entry. Bare digits nothing holds as a
+    number stay whole: two Telegram users "7185550199" and "17185550199" keep their own
+    names (Codex on #211)."""
+    ident = unicodedata.normalize("NFC", identifier.strip())
+    d = number_digits(ident) if ident.isdigit() else None
+    if d is not None and holders(conn, f"+{d}"):
+        return f"tel:{d}"
+    return identifier_key(ident)
+
+
 def holders(conn: sqlite3.Connection, identifier: str) -> list[str]:
-    """The ids of the accounts in the case whose identifier is this number or id, on any app,
+    """The ids of the accounts in the case that hold this number or id (`holds`), on any app,
     by account id."""
-    want = identifier_key(identifier)
     return [
         aid
-        for aid, ident in conn.execute("SELECT id, identifier FROM accounts ORDER BY id")
-        if identifier_key(ident or "") == want
+        for aid, ident, app in conn.execute("SELECT id, identifier, app FROM accounts ORDER BY id")
+        if holds(identifier, ident or "", app or "")
     ]
 
 
@@ -76,7 +121,8 @@ def named_by(conn: sqlite3.Connection) -> list[tuple[str, str, str, list[str]]]:
     ):
         p = json.loads(payload)
         ident = str(p["identifier"])
-        newest[identifier_key(ident)] = (ident, actor, at, [str(n) for n in p.get("names") or []])
+        names = [str(n) for n in p.get("names") or []]
+        newest[entry_key(conn, ident)] = (ident, actor, at, names)
     return [v for _, v in sorted(newest.items()) if v[3]]
 
 
@@ -101,9 +147,9 @@ def forms(conn: sqlite3.Connection, but: str = "") -> dict[str, str]:
     ("the number +1 (720) 555-0186"), for the clash checks of persons, phones and events. `but`
     is an identifier to leave out."""
     out: dict[str, str] = {}
-    skip = identifier_key(but) if but else ""
+    skip = entry_key(conn, but) if but else ""
     for ident, names in logged_names(conn).items():
-        if identifier_key(ident) == skip:
+        if entry_key(conn, ident) == skip:
             continue
         for n in names:
             for f in aliases.forms(n):
