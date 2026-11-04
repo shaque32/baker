@@ -34,6 +34,18 @@ _COUNT_WORD = {
 }
 
 
+# Words in double quotes inside Mabillon's own sentence: an assumption's text or a rule's reason
+# ("The words \"Done. It's been deleted.\" mean ...") carries the claim's quoted message.
+_QUOTED = re.compile(r'"([^"]+)"|\u201c([^\u201d]+)\u201d')
+
+
+def _fold(text: str) -> str:
+    """Case, curly quotes and runs of spaces do not count: a check's search line prints the
+    claim's words lowercased."""
+    text = text.translate(str.maketrans("\u2018\u2019\u201c\u201d", "''\"\""))
+    return " ".join(text.casefold().split())
+
+
 def _plain(text: str) -> str:
     return e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text))
 
@@ -45,6 +57,20 @@ class Names:
         self.conn = conn
         # each id shown, once whatever its case (a check writes acct:item1:telegram:5551234)
         self.used: dict[str, tuple[str, str]] = {}  # lowercased id -> (id, the name shown)
+        self._claims: list[str] | None = None
+
+    def _cited(self, words: str) -> bool:
+        """True when the words stand verbatim in one of the case's claims: the document's words,
+        not Mabillon's (validation run 3, where a claim quoting "It's been deleted." stopped the
+        report)."""
+        if self._claims is None:
+            try:
+                rows = self.conn.execute("SELECT text FROM claims")
+                self._claims = [_fold(r[0]) for r in rows]
+            except sqlite3.OperationalError:
+                self._claims = []
+        folded = _fold(words)
+        return bool(folded) and any(folded in c for c in self._claims)
 
     def _account(self, aid: str) -> str:
         row = self.conn.execute(
@@ -78,10 +104,21 @@ class Names:
         return f"{row[0]} ({token})" if shared else row[0]
 
     def html(self, text: str | None) -> str:
-        """The text as HTML, each id shown by name with the id in its hover title, and the count
-        operators (eq, ge, ...) in words."""
+        """The text as HTML, each id shown by name with the id in its hover title, the count
+        operators (eq, ge, ...) in words, and words it quotes from a claim as cited."""
         if not text:
             return ""
+        out, at = [], 0
+        for m in _QUOTED.finditer(text):
+            words = m[1] or m[2]
+            if not self._cited(words):
+                continue  # quoted words no claim holds stay Mabillon's own, checked whole
+            out += [self._ids(text[at : m.start()]), e(m[0][0]), q(words), e(m[0][-1])]
+            at = m.end()
+        out.append(self._ids(text[at:]))
+        return "".join(out)
+
+    def _ids(self, text: str) -> str:
         out, at = [], 0
         for m in _CASE_ID.finditer(text):
             out.append(_plain(text[at : m.start()]))
