@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import sqlite3
 
+from core import db
 from core.report.fmt import e, q
 
 # An id starts after a space, a quote or a bracket, never inside another id
@@ -67,7 +68,7 @@ class Names:
             try:
                 rows = self.conn.execute("SELECT text FROM claims")
                 self._claims = [_fold(r[0]) for r in rows]
-            except sqlite3.OperationalError:
+            except db.OperationalError:  # a table built without claims (tests)
                 self._claims = []
         folded = _fold(words)
         return bool(folded) and any(folded in c for c in self._claims)

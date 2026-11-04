@@ -7,8 +7,10 @@
   verbatim in one of the case's claims (case, curly quotes and runs of spaces not counted).
   Quoted words no claim holds stay the tool's own and are still checked. Report 0.33.0. Found
   on a validation run on a public test phone, where the report for the run was not written.
-- Where: PR (branch claude/project-thread-ds0ify)
-- Verified: 4 new tests in `tests/test_report_names.py`; 3 fail without the fix. The run's
+- Where: branch claude/project-thread-ds0ify
+- Verified: 4 new tests in `tests/test_report_names.py`; 3 fail without the fix. The claim
+  page test in `tests/test_agent_fail_confirm.py` now reads the detail with the cited marks
+  stripped, since its quoted name is the claim's. The run's
   own case database renders and passes the forbidden-word check with the fix, and failed
   without it. make check (see the PR).
 - Open: The app screens use the same names helper, so they gain the same marking; no screen
