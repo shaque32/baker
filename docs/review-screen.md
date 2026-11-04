@@ -224,7 +224,10 @@ SameSite=Strict cookie named for the port, and every other request without it ge
 the app sees it. Another account on a shared computer cannot read an open case or the form token
 on its pages. The key changes on every launch and is kept, while the screen runs, in
 `~/.mabillon/screen/<port>.key` (this account only) for this account's tools, such as the
-install smoke tests. Typing `http://127.0.0.1:8765` into a browser that has not been through
+install smoke tests. Known limit in a browser: cookies are not kept apart by port, so if the
+expert opens a page that another account's program serves on another 127.0.0.1 port, in the same
+browser, that page receives the key; Mabillon's own window never visits another port. A request
+with no Host header naming this server, or with more than one, is refused at the same gate. Typing `http://127.0.0.1:8765` into a browser that has not been through
 the launch link shows "This Mabillon screen opens only in the browser Mabillon started".
 
 Another web page open in the same browser can send requests to `127.0.0.1`, so the server

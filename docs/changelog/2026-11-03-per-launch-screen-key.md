@@ -17,7 +17,11 @@
   headless Chromium through the launch link (403 without the key; case opened and claims queue
   shown with it; no failed requests); SIGINT, SIGTERM and SIGHUP each removed the key file. The
   Mac and Windows install smoke tests run in CI on this PR; Safari on a real Mac unverified.
-- Open: guards against other accounts, not against programs running as the expert. A browser that
+- Open: guards against other accounts, not against programs running as the expert. Browsers
+  send a 127.0.0.1 cookie to every port on 127.0.0.1, so if the expert opens a page served by
+  another account's program on another loopback port in the same browser, that program receives
+  the key (Codex review on #215). Mabillon's own window (next PR) never visits another port; in a
+  browser it is a known limit. Two Host headers are refused at the gate (Codex review on #215). A browser that
   was quit loses the session cookie; the expert double-clicks the launcher again (the server keeps
   running). A key file left by a killed process is replaced at the next launch.
 - Affects: privacy (stronger: an open case is no longer readable by other accounts on the

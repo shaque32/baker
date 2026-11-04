@@ -24,6 +24,7 @@ HOST = "127.0.0.1"  # never anything else: the screen is for this computer only
 DEFAULT_PORT = 8765
 _SECURITY = App._security_headers()
 _PLAIN = ("Content-Type", "text/plain; charset=utf-8")
+WRONG_HOST = "This screen only answers requests from this computer."
 UNEXPECTED = (
     "Mabillon hit an unexpected error and did not finish this request. Open /help to save a bug "
     "report (it holds no case data) and send it to support."
@@ -88,10 +89,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _gate(self) -> Response | None:
         """The per-launch key: GET /open?key=<key> sets it as a cookie and goes to the screen;
-        any other request without it is refused here. A request naming another host goes on to
-        the app, which refuses it (400)."""
-        if self.headers.get("Host") not in self.app.allowed_hosts():
-            return None
+        any other request without it is refused here. A request must name this server in exactly
+        one Host header: the app reads the headers as a dictionary (the last value wins), so a
+        second Host header must never let a request past this gate on the first one's value."""
+        hosts = self.headers.get_all("Host") or []
+        if len(hosts) != 1 or hosts[0] not in self.app.allowed_hosts():
+            return Response(400, WRONG_HOST.encode("utf-8"), [_PLAIN, *_SECURITY])
         parts = urlsplit(self.path)
         if parts.path == OPEN_PATH:
             given = dict(parse_qsl(parts.query)).get("key")

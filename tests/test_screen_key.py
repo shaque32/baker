@@ -103,9 +103,34 @@ def test_with_the_key_the_app_still_checks_its_own_form_token(server):
     assert server.app.expert == "Test Expert"
 
 
-def test_another_host_is_left_to_the_app(server):
+def test_another_host_or_a_second_host_header_is_refused_at_the_gate(server):
     status, _, _ = ask(server, "GET", "/cases", {"Host": "evil.example:80"})
     assert status == 400
+    # Two Host headers: the gate must not read the first while the app reads the last.
+    port = server.server_address[1]
+    for first, last in (("evil.example", f"127.0.0.1:{port}"), (f"127.0.0.1:{port}", "x")):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        c.putrequest("GET", "/cases", skip_host=True)
+        c.putheader("Host", first)
+        c.putheader("Host", last)
+        c.endheaders()
+        r = c.getresponse()
+        body = r.read().decode()
+        t.join(10)
+        assert r.status == 400 and "Cases folder" not in body and server.app.token not in body
+    # Even with the key, two Host headers are refused.
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    t = threading.Thread(target=server.handle_request)
+    t.start()
+    c.putrequest("GET", "/cases", skip_host=True)
+    c.putheader("Host", f"127.0.0.1:{port}")
+    c.putheader("Host", f"127.0.0.1:{port}")
+    c.putheader("Cookie", cookie_of(server)["Cookie"])
+    c.endheaders()
+    assert c.getresponse().status == 400
+    t.join(10)
 
 
 def test_each_launch_has_its_own_key_and_cookie(tmp_path: Path):
