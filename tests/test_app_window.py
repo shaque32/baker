@@ -26,6 +26,12 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return h
 
 
+@pytest.fixture(autouse=True)
+def webview2(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stand-in web view is WebView2 on Windows too (the real check needs pywebview)."""
+    monkeypatch.setattr(window, "windows_renderer", lambda: window.GUI["win32"])
+
+
 class FakeWindow:
     def __init__(self) -> None:
         self.confirm_close = False
@@ -184,7 +190,9 @@ def attachment(name: str = "mabillon-report.html", body: bytes = b"<p>report</p>
 def test_attachment_names_are_safe_file_names():
     assert downloads.attachment_name(attachment()) == "mabillon-report.html"
     assert downloads.attachment_name(attachment("../../evil.sh")) == "evil.sh"
-    assert downloads.attachment_name(attachment("a/b\\c:d.txt")) == "b_c_d.txt"
+    # / and \ both end a folder name on every system, as they would on Windows
+    assert downloads.attachment_name(attachment("a/b\\c:d.txt")) == "c_d.txt"
+    assert downloads.attachment_name(attachment("..\\..\\evil.bat")) == "evil.bat"
     assert downloads.attachment_name(Response(200, b"", [("Content-Type", "text/html")])) is None
     assert (
         downloads.attachment_name(Response(500, b"", [("Content-Disposition", "attachment")]))

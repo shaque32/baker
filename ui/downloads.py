@@ -31,7 +31,9 @@ def attachment_name(resp: Response) -> str | None:
     if resp.status != 200 or not header.lower().startswith("attachment"):
         return None
     m = _NAME.search(header)
-    name = _SAFE.sub("_", Path(m.group(1)).name if m else "").strip(" .")
+    # the last part after any / or \, on every system (Path would split on \ only on Windows)
+    last = re.split(r"[/\\]", m.group(1))[-1] if m else ""
+    name = _SAFE.sub("_", last).strip(" .")
     return name or "mabillon-download"
 
 
