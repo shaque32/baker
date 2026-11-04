@@ -48,7 +48,8 @@ When it says **Done**, two icons are on your Desktop:
 Each opens a Terminal window; closing that window stops Mabillon. Mabillon's address is
 `http://127.0.0.1:8765` (8766 for the demo), which only this Mac can open, and only through the
 link the launcher opens: it carries a key that changes every launch, so another account on the
-Mac cannot open your cases. If you close the browser, double-click the launcher again.
+Mac cannot open your cases. If you quit the browser, close the Terminal window and double-click
+the launcher again.
 
 ## Offline computer
 

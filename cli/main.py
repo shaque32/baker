@@ -535,6 +535,56 @@ def cmd_redecide(a: argparse.Namespace) -> int:
     return 0
 
 
+PORT_TRIES = 10  # ports after the asked one tried when another program holds it
+
+
+def _in_use(e: OSError) -> bool:
+    import errno
+
+    return e.errno in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE))
+
+
+def _mabillon_on(port: int) -> bool:
+    """Whether a Mabillon screen answers on 127.0.0.1:port. A HEAD request, which the screen
+    does not handle, so it is answered before any page runs and nothing is logged in a case."""
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    try:
+        conn.request("HEAD", "/")
+        return (conn.getresponse().getheader("Server") or "").startswith("Mabillon")
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        conn.close()
+
+
+def _bind(port: int, make):  # noqa: ANN001, ANN202
+    """Open the screen on `port`, or, when the port is taken, on the next free one of the
+    PORT_TRIES after it, with a line saying why. A Mabillon already on the port is never reused:
+    it may hold another case, folder or examiner, or a demo case a reset has just replaced."""
+    try:
+        return make(port), ""
+    except OSError as e:
+        if not _in_use(e):
+            raise SystemExit(f"cannot open port {port} on 127.0.0.1 ({e})") from e
+    holder = (
+        "another Mabillon (stop it with Ctrl+C in its window)"
+        if _mabillon_on(port)
+        else "another program"
+    )
+    for other in range(port + 1, port + 1 + PORT_TRIES):
+        try:
+            return make(other), f"Port {port} is used by {holder}; using {other}."
+        except OSError as e:
+            if not _in_use(e):
+                raise SystemExit(f"cannot open port {other} on 127.0.0.1 ({e})") from e
+    raise SystemExit(
+        f"ports {port} to {port + PORT_TRIES} are all in use on 127.0.0.1; choose a free one "
+        "with --port"
+    )
+
+
 def _open_in_browser(link: str) -> None:
     import webbrowser
 
@@ -571,19 +621,9 @@ def cmd_serve(a: argparse.Namespace) -> int:
     else:
         home = a.cases or cases_home()
         home.mkdir(parents=True, exist_ok=True)
-    try:
-        server = make_server(a.db, a.port, a.expert, home=home)
-    except OSError as e:
-        running = screen_key.read_key(a.port)
-        if running is None:
-            raise SystemExit(
-                f"cannot open port {a.port} on 127.0.0.1 ({e}); try --port 8766"
-            ) from e
-        # Started again while it runs (a second click on the launcher): open the running screen.
-        print(f"Mabillon is already running: {running.launch_url()}")
-        if a.open:
-            _open_in_browser(running.launch_url())
-        return 0
+    server, note = _bind(a.port, lambda port: make_server(a.db, port, a.expert, home=home))
+    if note:
+        print(note)
     key = server.key  # type: ignore[attr-defined]
     try:
         screen_key.write_key(key)

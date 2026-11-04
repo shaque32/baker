@@ -167,18 +167,24 @@ def test_serve_opens_the_launch_link_and_cleans_up(home, tmp_path, monkeypatch, 
     assert list(screen_key.key_dir().glob("*.key")) == []  # removed on exit
 
 
-def test_starting_again_while_running_opens_the_running_screen(home, tmp_path, monkeypatch, capsys):
+def test_a_second_launch_on_a_busy_port_gets_its_own_port_and_key(
+    home, tmp_path, monkeypatch, capsys
+):
     running = make_server(home=tmp_path / "cases", port=0)
+    seen: dict[str, object] = {}
+
+    def stop(self) -> None:  # noqa: ANN001
+        seen["port"] = self.server_address[1]
+        seen["key"] = screen_key.read_key(self.server_address[1])
+        raise KeyboardInterrupt
+
     try:
         port = running.server_address[1]
-        screen_key.write_key(running.key)
-        opened: list[str] = []
-        monkeypatch.setattr(cli, "_open_in_browser", opened.append)
+        monkeypatch.setattr(cli, "_open_in_browser", lambda link: None)
+        monkeypatch.setattr(http.server.HTTPServer, "serve_forever", stop)
         assert cli.cmd_serve(serve_args(tmp_path, port)) == 0
-        assert opened == [running.key.launch_url()]
-        assert "already running" in capsys.readouterr().out
-        screen_key.remove_key(running.key)
-        with pytest.raises(SystemExit, match="cannot open port"):  # busy, and no key: say so
-            cli.cmd_serve(serve_args(tmp_path, port))
+        assert seen["port"] != port and seen["key"] is not None
+        assert seen["key"] != running.key  # its own key, never the running screen's
+        assert f"Port {port} is used by" in capsys.readouterr().out
     finally:
         running.server_close()

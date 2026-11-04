@@ -223,8 +223,8 @@ random screen key (`ui/screen_key.py`). `mabillon serve --open` opens the browse
 SameSite=Strict cookie named for the port, and every other request without it gets 403 before
 the app sees it. Another account on a shared computer cannot read an open case or the form token
 on its pages. The key changes on every launch and is kept, while the screen runs, in
-`~/.mabillon/screen/<port>.key` (this account only), so starting Mabillon again while it runs
-opens the running screen. Typing `http://127.0.0.1:8765` into a browser that has not been through
+`~/.mabillon/screen/<port>.key` (this account only) for this account's tools, such as the
+install smoke tests. Typing `http://127.0.0.1:8765` into a browser that has not been through
 the launch link shows "This Mabillon screen opens only in the browser Mabillon started".
 
 Another web page open in the same browser can send requests to `127.0.0.1`, so the server

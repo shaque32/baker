@@ -11,8 +11,9 @@ reach. Without a key, another account on a shared lab computer could read an ope
 - The cookie is named for the port, because cookies are not kept apart by port: a demo on 8766
   and a real screen on 8765 each keep their own.
 - The key is written to ~/.mabillon/screen/<port>.key, readable by this account only, while the
-  screen runs, so starting Mabillon again while it runs opens the running screen instead of
-  failing on a busy port, and so the install smoke tests can sign in. It is removed on exit.
+  screen runs, so tools of this account (the install smoke tests, Mabillon's own window) can
+  open it. It is removed on exit. Starting Mabillon again while it runs opens a new screen on
+  the next free port with a key of its own (cli/main.py _bind).
 
 The key changes on every launch and is never in a page, a log or the case. It guards against
 other accounts on the computer, not against programs running as the expert, which could read the

@@ -144,6 +144,12 @@ class _Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"mabillon serve: {self.command} {urlsplit(self.path).path}\n")
 
 
+class _Server(HTTPServer):
+    # On Windows SO_REUSEADDR lets a second server bind a port another one holds, so a second
+    # Mabillon would bind without an error; there, the port is not reused and the bind fails.
+    allow_reuse_address = sys.platform != "win32"
+
+
 def make_server(
     db: Path | None = None,
     port: int = DEFAULT_PORT,
@@ -155,7 +161,7 @@ def make_server(
     only launch_url(server) opens the screen."""
     app = App(db, expert=expert, home=home)
     handler = type("Handler", (_Handler,), {"app": app})
-    server = HTTPServer((HOST, port), handler)
+    server = _Server((HOST, port), handler)
     app.port = server.server_address[1]
     handler.key = ScreenKey(app.port)
     server.app = app  # type: ignore[attr-defined]
