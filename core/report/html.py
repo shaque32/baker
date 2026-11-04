@@ -108,7 +108,7 @@ from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
 from core.report.fmt import e, q, said
-from core.review import activity, audit_log, device_names
+from core.review import account_names, activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
     CONTRADICTION_FOUND,
@@ -208,7 +208,10 @@ from core.review.withheld import summary as withheld_summary
 # 0.31.0: Limitations list each event the expert entered for the document ("the SEARCH"), with
 # its days, the paragraph and words that define it, and who entered it and when
 # (core/audit/case_events.py, schema 0.7.0).
-REPORT_VERSION = "0.31.0"
+# 0.32.0: Limitations list each name the expert gave a number or an account for the document
+# ("the BURNER"), with who gave it and when, and that it names the number only, never a person
+# (core/review/account_names.py).
+REPORT_VERSION = "0.32.0"
 
 
 @dataclass(frozen=True)
@@ -712,6 +715,15 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
             f"{q(label)} ({e(did)}). Mabillon did not verify it. Every claim that names the "
             "phone this way was audited on that device.</li>"
+        )
+    for ident, by, at, names in account_names.named_by(conn):
+        said = ", ".join(q(n) for n in names)
+        items.append(
+            "<li><strong>Which number or account the document means is an expert statement, not "
+            f"a finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
+            f"{q(ident)}. Mabillon did not verify it. A claim that names it this way was audited "
+            "on the accounts that hold that number or id. The name says nothing about who used "
+            "it.</li>"
         )
     people = dict(conn.execute("SELECT id, name FROM persons"))
     given: dict[tuple[str, str, str], list[str]] = {}
