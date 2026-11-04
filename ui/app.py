@@ -107,6 +107,8 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/person/remove": ("audit",),
     "/person/aliases": ("audit",),
     "/person/alias/add": ("audit",),
+    "/event/add": ("audit",),
+    "/event/remove": ("audit",),
     "/identity/decide": ("audit",),
     "/identity/link": ("audit",),
     "/identity/look": ("audit",),
@@ -614,6 +616,8 @@ class App:
             "/person/remove": lambda: self._remove_person(conn, f),  # type: ignore[arg-type]
             "/person/aliases": lambda: self._set_aliases(conn, f),  # type: ignore[arg-type]
             "/person/alias/add": lambda: self._add_alias(conn, f),  # type: ignore[arg-type]
+            "/event/add": lambda: self._add_event(conn, f),  # type: ignore[arg-type]
+            "/event/remove": lambda: self._remove_event(conn, f),  # type: ignore[arg-type]
             "/identity/decide": lambda: self._decide_link(conn, f),  # type: ignore[arg-type]
             "/identity/link": lambda: self._link_account(conn, f),  # type: ignore[arg-type]
             "/identity/look": lambda: self._look_for_links(conn),  # type: ignore[arg-type]
@@ -893,6 +897,23 @@ class App:
         have = [a.alias for a in aliases.stored(conn) if a.person_id == pid]
         kept = actions.set_aliases(conn, pid, [*have, f.get("alias", "")], self.actor)
         return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+
+    def _add_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        first = f.get("first_day", "")
+        name = actions.add_event(
+            conn,
+            f.get("name", ""),
+            first,
+            f.get("last_day", "") or first,
+            f.get("paragraph", ""),
+            f.get("defined_as", ""),
+            self.actor,
+        )
+        return f"Saved the event {name}. Run the audit again so claims dated by it are tested."
+
+    def _remove_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        actions.remove_event(conn, f.get("name", ""), self.actor)
+        return "Event removed. It applies on the next audit run."
 
     def _decide_link(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         status = IdentityLinkStatus(f.get("status", ""))

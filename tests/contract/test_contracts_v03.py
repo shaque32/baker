@@ -23,7 +23,7 @@ def db() -> sqlite3.Connection:
 
 
 def test_version_bumped():
-    assert c.CONTRACTS_VERSION == "0.6.0"
+    assert c.CONTRACTS_VERSION == "0.7.0"
 
 
 # ------------------------------------------------------------ run progress
