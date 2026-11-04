@@ -645,7 +645,7 @@ def testability_step(
     step = testability.create(
         conn,
         filler,  # type: ignore[arg-type]
-        testability.sheet_named(rows, sheet_people(conn)),
+        testability.sheet_named(rows, sheet_people(conn), testability.account_copies(conn)),
         cap,
         model=model,
         template=prompt_body(path.read_text(encoding="utf-8")),

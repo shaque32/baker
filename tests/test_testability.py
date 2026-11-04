@@ -249,6 +249,35 @@ def test_sheet_windows_compare_by_their_utc_ends():
     assert facts.windows == {("2026-03-12T04:00:00+00:00", "2026-03-13T03:59:59.999999+00:00")}
 
 
+def test_a_claim_the_sheet_ties_to_no_phone_takes_any_reports_copy_of_its_account(conn):
+    # Codex on #211: for a claim that names no phone the filler finds the number in every
+    # report that holds it (+1 212-555-0122 on SMS is on Item 1 and Item 2), while a sheet row
+    # names one report's copy; compared id by id, a right answer was rejected as naming an
+    # account the sheet does not.
+    one, two = "acct:item1:SMS:+12125550122", "acct:item2:SMS:+12125550122"
+    copies = testability.account_copies(conn)
+    assert copies(one) == copies(two) == {one, two}
+    assert copies("acct:item1:SMS:+12125550182") == {"acct:item1:SMS:+12125550182"}
+    assert copies("acct:nowhere") == {"acct:nowhere"}
+    row = {"claim_id": "X", "template_id": "sender", "is_core": True}
+    free = [{**row, "params": {"account_ids": [one], "channels": ["SMS"]}}]
+    both = testability.Named(accounts=frozenset({one, two}))
+    assert testability.sheet_named(free, None, copies)["X"].accounts == {one, two}
+    assert testability.mismatch(both, testability.sheet_named(free, None, copies)["X"]) == []
+    assert testability.mismatch(both, testability.sheet_named(free)["X"])  # id by id, as before
+    # A claim the sheet ties to a phone keeps that phone's copy only.
+    tied = [
+        {**row, "params": {"account_ids": [one], "channels": ["SMS"], "device_ids": ["dev:item1"]}}
+    ]
+    facts = testability.sheet_named(tied, None, copies)["X"]
+    assert facts.accounts == {one}
+    (why,) = testability.mismatch(testability.Named(accounts=frozenset({two})), facts)
+    assert why == f"names the account {two!r}, which the signed sheet does not name"
+    # Another number never joins.
+    other = testability.Named(accounts=frozenset({"acct:item1:SMS:+12125550182"}))
+    assert testability.mismatch(other, testability.sheet_named(free, None, copies)["X"])
+
+
 # ---------------------------------------------------------------- the claim-only check
 
 # C09's call, with the party the claim writes and the length it states.

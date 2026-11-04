@@ -55,7 +55,25 @@
   `PROPOSED_CHANGES.md` entries: `eval/gold/case06/gold.jsonl` and `assumptions.jsonl` are the
   drafts with only `labeled_by` and `labeled_at` changed, and
   `core/audit/prompts/agent_testability.md` is v1.1, its body the draft's word for word.
-- Where: PR #211 (branch `claude/project-thread-6i2msb-case06`, merge after #210)
+
+  Codex's review of the synced head (4168585) found two things that would have biased the
+  case06 run, both fixed here before any run:
+  - Prompt draft v1.2, waiting for Arsh's signature (`PROPOSED_CHANGES.md`). v1.1 had narrowed
+    "handles" to "handles exactly as written" and sent saved names to "quoted_text", but the
+    same-account check resolves a handle from account names, thread titles, printed sender text
+    and saved contacts, and `same_account` takes only handles. A claim that names accounts by
+    display names had no field for them. Draft v1.2 restores v1.0's "handles or display names";
+    a contact entry's saved name stays in "quoted_text". That is the only change to the body.
+  - The eval's sheet check (`core/audit/testability.sheet_named`, with the new
+    `account_copies`). For a claim that names no phone, the filler finds a number in every
+    report that holds it, while a sheet row names one report's copy, and the check compared
+    account ids one by one. So a right answer was rejected as naming an account the sheet does
+    not name. Now, when a claim's core rows name no phone, an account they name counts in any
+    report that holds it on the same app (same key, ruling R6). A claim the rows tie to a phone
+    keeps exact ids. Account mismatches never counted toward the wrong person, phone or window
+    bar; they cost conversion and the sheet-reject figure beside it. The signed sheet is
+    unchanged.
+- Where: PR #211 (branch `claude/project-thread-6i2msb-case06`; #201, #209 and #210 are merged)
 - Verified: `tests/test_synthetic_case06.py` (synthetic only, 38 tests): the generator gives the
   same bytes twice and the committed drafts match a fresh build; the importer reads all three
   reports, and every key and wrong-reading record exists at its story time with the right offset
@@ -75,7 +93,8 @@
   run is the result of record. Nothing is tuned on case06 before it (plans/testability-pass.md,
   "Frozen before the case06 run"). The model-free result shows only that the right sheet gives
   the signed verdicts, not that the hazards trap a model. Prompt v1.1 is unmeasured on any
-  model run.
-- Affects: the testability agent's prompt (v1.1; eval only, the agent stays off by default); no
+  model run, and so is v1.2. The case06 run waits for Arsh to sign v1.2.
+- Affects: the testability agent's prompt (v1.1, draft v1.2; eval only, the agent stays off by
+  default) and how the eval compares a try's accounts with the sheet (go/no-go measurement); no
   privacy, network or verdict rule change; no customer-facing claim.
 - Status doc: no change
