@@ -176,6 +176,29 @@ def test_a_saved_name_goes_in_quoted_text_quoted_or_not(conn, text):
     assert made.params.quoted_text == "Marc Garage"
 
 
+def test_handles_take_display_names_for_a_same_account_claim(conn):
+    # Codex on #211: v1.1 said "handles exactly as written" and sent saved names elsewhere, so a
+    # claim naming accounts by display names had no field for them, while the same-account
+    # check resolves a handle from account names, thread titles and printed sender text. Draft
+    # v1.2 says display names again, as v1.0 did; a contact entry's saved name stays in
+    # quoted_text (the test above).
+    flat = " ".join(DRAFT.split())
+    assert '"handles": handles or display names exactly as written' in flat
+    assert 'For a contact entry, the name the contact was saved as goes in "quoted_text"' in flat
+    text = (
+        "PETROV exchanged Telegram messages on Item 1 with a single Telegram account, which"
+        " appears as Alex and as @northstar."
+    )
+    c = claim("C02").model_copy(update={"id": "X-display", "text": text})
+    answer = {
+        "assumptions": [P("same_account", handles=["Alex", "@northstar"], channels=["Telegram"])]
+    }
+    filler = LocalAssumptionFiller(FakeModel(answer), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    (made,) = [a for a in builder.build(c) if a.template_id == "same_account"]
+    assert made.params.handles == ("Alex", "@northstar")
+
+
 def test_a_messages_words_still_need_the_claims_quotation_marks(conn):
     text = "On March 18, 2026, PETROV wrote are you coming tonight to REYES."
     c = claim("C01").model_copy(update={"id": "X-said", "text": text})

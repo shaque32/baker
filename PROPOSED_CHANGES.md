@@ -1203,3 +1203,30 @@ on the card the same minute: the share of changed claims on the key's verdict is
 it, not a bar). APPLIED on claude/project-thread-6i2msb-case06 (#211) with the commands above,
 D=2026-11-03: only `labeled_by` and `labeled_at` changed; `grep -c DRAFT` prints 0 for both, and
 both report as signed.
+
+## 2026-11-04 claude/project-thread-6i2msb-case06: sign the testability prompt v1.2
+File: core/audit/prompts/agent_testability.md (signed v1.1; human-owned)
+Why: Codex on #211 (4168585). v1.1 changed the "handles" rule from v1.0's "handles or display
+names exactly as written" to "handles exactly as written ... A name a contact was saved as goes
+in quoted_text". The same-account check (`core/audit/checks/identity.py`, `resolve_handle`)
+resolves a handle from account names, thread titles, the sender text a report printed and saved
+contacts, and `same_account` needs at least two handles and takes no accounts and no quoted
+words. So under v1.1 a claim that names accounts by display names had no field for them, and the
+testability step could not repair it, which would lower the case06 conversion measure for a
+reason that is the prompt's, not the agent's. Draft v1.2 (`docs/prompts/agent_testability.md`)
+changes only that rule: display names go in "handles" again; a contact entry's saved name stays
+in "quoted_text". It is written from the code and v1.0 and names no case's words. The case06
+go/no-go waits for this signature.
+Diff: the prompt body changes in one place:
+   -- "handles": handles exactly as written, e.g. "@bluefox". A name a contact was saved as goes
+   -  in "quoted_text", not here.
+   +- "handles": handles or display names exactly as written, e.g. "@bluefox", for an assumption
+   +  that names accounts by them. For a contact entry, the name the contact was saved as goes in
+   +  "quoted_text", not here.
+Once Arsh signs, replace everything from `<!-- prompt starts -->` down in
+`core/audit/prompts/agent_testability.md` with the draft's text from that line down (the same
+bytes as in `docs/prompts/agent_testability.md` at the commit Arsh signs), and change the
+header's second line to "v1.2, signed by Arsh on <date> from the
+docs/prompts/agent_testability.md draft v1.2 (v1.1: 2026-11-03; v1.0: 2026-10-28)." The draft's
+header then says signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md)
+<(sed -n '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
