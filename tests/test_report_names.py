@@ -110,3 +110,35 @@ def test_quoted_words_no_claim_holds_stay_the_tools_own(conn):
     out = _quoting(conn).html('The phone "was deleted" by person:dev:item1:owner')
     with pytest.raises(InvariantViolation, match="deleted"):
         check_report_text(f"<p>{out}</p>")
+
+
+def test_quoted_words_are_cited_only_as_whole_words(conn):
+    from core.audit.invariants import InvariantViolation, check_report_text
+
+    conn.executescript(
+        "CREATE TABLE claims (id TEXT, text TEXT);"
+        "INSERT INTO claims VALUES ('C1', 'He wrote \"the file stays undeleted here\".');"
+        "INSERT INTO claims VALUES ('C2', 'She wrote one word: \"leader\".');"
+    )
+    names = Names(conn)
+    marked = names.html('The record was marked "deleted".')
+    # "deleted" stands only inside "undeleted": the tool's own word, checked
+    with pytest.raises(InvariantViolation, match="deleted"):
+        check_report_text("<p>" + marked + "</p>")
+    # a one-word quote the claim makes is the document's word
+    check_report_text("<p>" + names.html('The words "leader" mean what the claim says') + "</p>")
+
+
+def test_a_claims_own_lines_cite_only_its_own_quotes(conn):
+    from core.audit.invariants import InvariantViolation, check_report_text
+
+    own, other = 'He wrote "it was deleted".', 'She wrote "see you at nine".'
+    conn.execute("CREATE TABLE claims (id TEXT, text TEXT)")
+    conn.executemany("INSERT INTO claims VALUES (?, ?)", [("C1", own), ("C2", other)])
+    line = 'The message "it was deleted" was sent by person:dev:item1:owner'
+    names = Names(conn)
+    check_report_text("<p>" + names.for_claim(own).html(line) + "</p>")
+    with pytest.raises(InvariantViolation, match="deleted"):  # another claim's words
+        check_report_text("<p>" + names.for_claim(other).html(line) + "</p>")
+    # the key of names shown stays shared with the report
+    assert "person:dev:item1:owner" in names.used

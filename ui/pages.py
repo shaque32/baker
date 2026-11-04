@@ -60,7 +60,7 @@ from core.report.html import (
 from core.report.html import CSS as REPORT_CSS
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
-from core.report.names import plain_ids
+from core.report.names import Names, plain_ids
 from core.report.paired import CSS as PAIRED_CSS
 from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
@@ -1341,7 +1341,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append("<div class='claim-more'>")
     if hidden:
         out.append(_irrelevant_list(conn, hidden, flagged, {w.evidence_id for w in st.withheld}))
-    out.append(_working(st))
+    out.append(_working(st, Names(conn).for_claim(st.claim.text)))
     if d is not None:  # a flag is about an audited claim
         out.append(_flag_missed_form(page, st, back))
     out.append("</div>")
@@ -1375,12 +1375,15 @@ def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
             return link("/evidence", id=items[0].id)
         return link("/selection/context", id=rid) if rid.startswith("msg:") else None
 
-    plain = why.lines(conn, d.reasons, st.assumptions, st.checks, st.evidence, href=href)
+    names = Names(conn).for_claim(st.claim.text)
+    plain = why.lines(
+        conn, d.reasons, st.assumptions, st.checks, st.evidence, names=names, href=href
+    )
     return (
         "<details class='why'><summary>Why</summary><ul class='why-lines'>"
         + "".join(f"<li>{ln.html}</li>" for ln in plain)
         + "</ul><details class='why-tech'><summary>Technical details</summary><ul>"
-        + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
+        + "".join(f"<li>{names.cite(r)}</li>" for r in d.reasons)
         + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
         f"{e(d.pipeline_run_id)}.</p></details></details>"
     )
@@ -1590,8 +1593,9 @@ def _must_be_true(
     )
 
 
-def _working(st: ClaimState) -> str:
-    """The rules' working: the assumption and check tables, folded."""
+def _working(st: ClaimState, names: Names) -> str:
+    """The rules' working: the assumption and check tables, folded, as stored (ids stay ids),
+    with the claim's own quoted words marked as cited."""
     d = st.decision
     out: list[str] = []
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
@@ -1610,7 +1614,7 @@ def _working(st: ClaimState) -> str:
                 else "no"
             )
             out.append(
-                f"<tr><td>{e(a.text)}</td><td>{e(a.kind.value)}</td>"
+                f"<tr><td>{names.cite(a.text)}</td><td>{e(a.kind.value)}</td>"
                 f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(cov)}</td></tr>"
             )
         out.append("</table>")
@@ -1622,7 +1626,8 @@ def _working(st: ClaimState) -> str:
         for ch in st.checks:
             out.append(
                 f"<tr><td>{e(ch.check_name)} {e(ch.check_version)}</td>"
-                f"<td>{e(ch.outcome.value)}</td><td>{e(ch.searched)}</td><td>{e(ch.detail)}</td>"
+                f"<td>{e(ch.outcome.value)}</td><td>{names.cite(ch.searched)}</td>"
+                f"<td>{names.cite(ch.detail)}</td>"
                 "</tr>"
             )
         out.append("</table>")

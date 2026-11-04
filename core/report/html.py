@@ -213,7 +213,9 @@ from core.review.withheld import summary as withheld_summary
 # (core/review/account_names.py).
 # 0.33.0: words an assumption, check line or verdict reason quotes from a claim print as cited,
 # so a claim that quotes "It's been deleted." no longer stops the report (validation run 3).
-REPORT_VERSION = "0.33.0"
+# 0.34.0: those words are cited only as whole words, and a claim's own lines cite only that
+# claim's quotes (a word another claim quotes is still checked as the tool's own).
+REPORT_VERSION = "0.34.0"
 
 
 @dataclass(frozen=True)
@@ -494,7 +496,7 @@ def verdict_trace(
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
     marks = marks or {}
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(st.claim.text)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -958,7 +960,7 @@ def _claim_block(
     assumptions that audit took from the testability step (repair_marks)."""
     marks = marks or {}
     claim, decision = st.claim, st.decision
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(claim.text)
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
         f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
