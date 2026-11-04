@@ -52,7 +52,7 @@ from core.contracts import (
     Verdict,
     VerdictDecision,
 )
-from core.review import device_names
+from core.review import account_names, device_names
 from core.review import withheld as withheld_rationales
 from core.review.withheld import Withheld
 
@@ -548,12 +548,12 @@ def _agent(conn: sqlite3.Connection, run: dict | None) -> _Agent:
 
 
 def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
-    """A stipulation, person, identity-link, device-name or defined-event decision the run's
-    verdicts did not see: case-wide, read once. A rules-only re-run reloads stipulations but
-    reuses the assumptions, checks and searches of the full audit it came from, so identity,
-    person, device-name and event changes (case_events: the filler reads a claim's day by them)
-    count from that audit's start. A proposed link counts too: it confirms nothing, but it
-    widens what the audit searches."""
+    """A stipulation, person, identity-link, device-name, account-name or defined-event decision
+    the run's verdicts did not see: case-wide, read once. A rules-only re-run reloads
+    stipulations but reuses the assumptions, checks and searches of the full audit it came from,
+    so identity, person, device-name, account-name and event changes (case_events: the filler
+    reads a claim's day by them) count from that audit's start. A proposed link counts too: it
+    confirms nothing, but it widens what the audit searches."""
     since = run["started_at_utc"]
     built = since
     source = run.get("evidence_from_run")
@@ -565,10 +565,10 @@ def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
     return (
         conn.execute(
             "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' AND at_utc > ?)"
-            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%' OR action = ?"
+            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%' OR action IN (?, ?)"
             " OR action LIKE 'case.event.%')"
             " AND at_utc > ?) LIMIT 1",
-            (since, device_names.ACTION, built),
+            (since, device_names.ACTION, account_names.ACTION, built),
         ).fetchone()
         is not None
     )

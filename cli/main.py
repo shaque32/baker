@@ -14,6 +14,8 @@
                             --by expert:<name>
     python -m cli name-device --db case.db --device dev:item1 --name "TARGET PHONE"
                             [--name ...] --by expert:<name>
+    python -m cli name-account --db case.db --identifier "+1 (720) 555-0186" --name "the BURNER"
+                            [--name ...] --by expert:<name>
     python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all] [--no-challenge]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
@@ -274,6 +276,14 @@ def cmd_name_device(a: argparse.Namespace) -> int:
     names = actions.name_device(conn, a.device, a.name or [], a.by)
     said = ", ".join(names) if names else "no names"
     print(f"{a.device} now has {said}; run the audit again to apply it")
+    return 0
+
+
+def cmd_name_account(a: argparse.Namespace) -> int:
+    conn = _open(a.db)
+    names = actions.name_account(conn, a.identifier, a.name or [], a.by)
+    said = ", ".join(names) if names else "no names"
+    print(f"{a.identifier} now has {said}; run the audit again to apply it")
     return 0
 
 
@@ -790,6 +800,15 @@ def parser() -> argparse.ArgumentParser:
 
     sp = add("name-device", cmd_name_device, "record the document's names for a device")
     sp.add_argument("--device", required=True)
+    sp.add_argument(
+        "--name", action="append", help="as the document writes it (repeatable; none clears)"
+    )
+    sp.add_argument("--by", required=True)
+
+    sp = add(
+        "name-account", cmd_name_account, "record the document's names for a number or account"
+    )
+    sp.add_argument("--identifier", required=True, help="the number or id, as the data holds it")
     sp.add_argument(
         "--name", action="append", help="as the document writes it (repeatable; none clears)"
     )
