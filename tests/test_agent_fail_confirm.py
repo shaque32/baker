@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sqlite3
 
 import pytest
@@ -303,7 +304,9 @@ def test_the_claim_page_shows_each_failure_and_confirms_one(tmp_path, failing):
     card = page.split("<section class='agent' id='agent-fail'>", 1)[1].split("</section>", 1)[0]
     assert testability.PROPOSED_MARK in card and html.escape(CONTRADICTION_FOUND) in card
     assert card.count("Confirm this failure") == 1 and card.count("value='reject'") == 1
-    assert html.escape(DETAIL) in card and "confirm all" not in page.lower()
+    # the claim's own quoted words in the detail print as cited (core/report/names.py)
+    shown = re.sub(r"</?span[^>]*>", "", card)
+    assert html.escape(DETAIL) in shown and "confirm all" not in page.lower()
     form = {
         "token": app.token,
         "claim": "C01",
