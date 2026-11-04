@@ -595,9 +595,34 @@ def _bind(port: int, make):  # noqa: ANN001, ANN202
     )
 
 
+def _open_in_browser(link: str) -> None:
+    import webbrowser
+
+    webbrowser.open(link)
+
+
+def _stop(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _stop_on_signals() -> dict[int, object]:
+    """Closing the Terminal window (SIGHUP) or a stop request (SIGTERM) ends `serve` like Ctrl+C,
+    so it closes cleanly and removes its screen key file. Returns the handlers it replaced.
+    A running audit's thread is a daemon: it stops with the process, as before."""
+    import signal
+
+    old: dict[int, object] = {}
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            old[sig] = signal.signal(sig, _stop)
+    return old
+
+
 def cmd_serve(a: argparse.Namespace) -> int:
     from core.casework.cases import cases_home
-    from ui.server import make_server, url
+    from ui import screen_key
+    from ui.server import launch_url, make_server
 
     home = None
     if a.db is not None:
@@ -609,19 +634,30 @@ def cmd_serve(a: argparse.Namespace) -> int:
     server, note = _bind(a.port, lambda port: make_server(a.db, port, a.expert, home=home))
     if note:
         print(note)
+    key = server.key  # type: ignore[attr-defined]
+    try:
+        screen_key.write_key(key)
+    except OSError as e:  # the screen still works from the printed link
+        print(f"(could not save the screen key in {screen_key.key_dir()}: {e})", file=sys.stderr)
     where = f"case {a.db}" if a.db is not None else f"cases in {home}"
-    print(f"Mabillon: {url(server)}  ({where}; this computer only; Ctrl+C stops it)")
+    print(f"Mabillon: {launch_url(server)}")
+    print(f"  ({where}; this computer only; Ctrl+C stops it)")
+    print("This link opens the screen; it changes each time Mabillon starts. Keep it private.")
     print("A running audit stops when this does; its finished claims are kept and resume later.")
     if a.open:
-        import webbrowser
-
-        webbrowser.open(url(server))
+        _open_in_browser(launch_url(server))
+    replaced = _stop_on_signals()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        screen_key.remove_key(key)
+        import signal
+
+        for sig, handler in replaced.items():
+            signal.signal(sig, handler)  # type: ignore[arg-type]
     return 0
 
 

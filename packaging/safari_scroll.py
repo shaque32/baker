@@ -19,7 +19,9 @@ import json
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from pathlib import Path
 
 ELEMENT = "element-6066-11e4-a52e-4f735466cecc"
 
@@ -98,6 +100,14 @@ return {
 """
 
 
+def launch_link(base: str) -> str:
+    """The running demo's launch link, from the screen key it keeps for this account in
+    ~/.mabillon/screen/<port>.key (ui/screen_key.py)."""
+    port = urllib.parse.urlsplit(base).port
+    key = (Path.home() / ".mabillon" / "screen" / f"{port}.key").read_text(encoding="ascii")
+    return f"{base}/open?key={key.strip()}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--demo", default="http://127.0.0.1:8766")
@@ -122,7 +132,7 @@ def main() -> int:
     try:
         d.s("POST", "/window/rect", {"width": 1440, "height": 900, "x": 0, "y": 0})
         print(json.dumps({"safari": d.js("return navigator.userAgent")}), flush=True)
-        d.get(demo + "/")
+        d.get(launch_link(demo))  # sets the screen key, then shows the screen
         name = d.find("form.nameform input[type=text], form.nameform input:not([type])")
         if name:
             d.type(name, "Safari Check")

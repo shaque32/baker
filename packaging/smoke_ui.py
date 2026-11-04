@@ -9,6 +9,10 @@ types a name, opens the synthetic demo case and sees its claims with their verdi
 error, browser console error (a Content-Security-Policy block counts) or failed request fails
 it. Synthetic data only: the demo case is case01. Needs `playwright` (CI installs it; Mabillon does
 not). --chrome uses the machine's Google Chrome instead of Playwright's own Chromium.
+
+Each screen opens only with its launch's screen key (ui/screen_key.py), which a running Mabillon
+keeps in ~/.mabillon/screen/<port>.key for this account; the test reads it like a second click on
+the launcher would, and opens /open?key=... first.
 """
 
 from __future__ import annotations
@@ -16,7 +20,10 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import urllib.error
 import urllib.request
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Page, sync_playwright
 
@@ -30,20 +37,31 @@ def need(ok: bool, why: str) -> None:
         raise SystemExit(f"FAIL: {why}")
 
 
-def wait_up(base: str, seconds: float = 90) -> None:
+def key_file(base: str) -> Path:
+    """Where a running Mabillon keeps its screen key (ui/screen_key.py; this script runs on its
+    own, without Mabillon installed beside it, so it names the place itself)."""
+    return Path.home() / ".mabillon" / "screen" / f"{urlsplit(base).port}.key"
+
+
+def wait_up(base: str, seconds: float = 90) -> str:
+    """Wait until the screen answers and its key is written; return its launch link."""
     need(base.startswith("http://127.0.0.1:"), f"{base} is not a Mabillon on this computer")
     deadline = time.monotonic() + seconds
     last = "no answer"
     while True:
         try:
             with NO_PROXY.open(base + "/cases", timeout=5) as r:
-                if r.status == 200:
-                    return
-                last = f"HTTP {r.status}"
+                need(False, f"{base}/cases answered {r.status} without the screen key")
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}"
+            if e.code == 403 and key_file(base).exists():
+                key = key_file(base).read_text(encoding="ascii").strip()
+                return f"{base}/open?key={key}"
         except OSError as e:
             last = repr(e)
         if time.monotonic() > deadline:
-            raise SystemExit(f"FAIL: nothing answered at {base} within {seconds:.0f} s ({last})")
+            why = f"no screen with a key at {base} within {seconds:.0f} s ({last})"
+            raise SystemExit(f"FAIL: {why}")
         time.sleep(1)
 
 
@@ -61,7 +79,7 @@ def watch(page: Page, problems: list[str]) -> None:
 
 
 def start_screen(page: Page, base: str) -> None:
-    page.goto(base + "/")
+    page.goto(base + "/")  # after its launch link, so the screen key is set
     need(page.url.endswith("/cases"), f"start screen went to {page.url}, not /cases")
     need("Mabillon" in page.title(), page.title())
     body = page.inner_text("body")
@@ -104,14 +122,15 @@ def main() -> int:
     ap.add_argument("--chrome", action="store_true", help="use the installed Google Chrome")
     ap.add_argument("--screenshots", help="folder for a screenshot of each screen")
     a = ap.parse_args()
-    for base in (a.serve, a.demo):
-        wait_up(base)
+    links = [wait_up(base) for base in (a.serve, a.demo)]
     problems: list[str] = []
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome" if a.chrome else None)
         page = browser.new_page()
         watch(page, problems)
         try:
+            for link in links:  # each sets its screen's key as a cookie, then shows the screen
+                page.goto(link)
             start_screen(page, a.serve)
             if a.screenshots:
                 page.screenshot(path=f"{a.screenshots}/start-screen.png", full_page=True)
