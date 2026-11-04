@@ -31,11 +31,13 @@ from core.contracts import (
     Stance,
     StipulationStatus,
     Verdict,
+    VerdictDecision,
     display_tier,
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
+from core.report import why
 from core.report.fmt import e, q
 from core.report.html import (
     COVERAGE,
@@ -1259,12 +1261,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append(forwarded_warning(conn, st))
     out.append(mixed_app_note(conn, st))
     if d is not None:
-        out.append(
-            "<details><summary>Why</summary><ul>"
-            + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
-            + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
-            f"{e(d.pipeline_run_id)}.</p></details>"
-        )
+        out.append(_why(conn, st, d))
         if d.confirmed_by:
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
@@ -1361,6 +1358,32 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
+    """Why the verdict: one plain line per reason (core/report/why.py), then the reasons exactly
+    as the rules stored them, with the rule version and run, folded as Technical details."""
+
+    def href(rid: str, assumption: str | None, stance: Stance | None) -> str | None:
+        """A record's link: its evidence item on this claim for the line's assumption (the one
+        read with the line's stance first), else the message in its thread."""
+        items = [
+            x for x in st.evidence if x.record_id == rid and assumption in (None, x.assumption_id)
+        ]
+        items.sort(key=lambda x: x.stance is not stance)
+        if items:
+            return link("/evidence", id=items[0].id)
+        return link("/selection/context", id=rid) if rid.startswith("msg:") else None
+
+    plain = why.lines(conn, d.reasons, st.assumptions, st.checks, st.evidence, href=href)
+    return (
+        "<details class='why'><summary>Why</summary><ul class='why-lines'>"
+        + "".join(f"<li>{ln.html}</li>" for ln in plain)
+        + "</ul><details class='why-tech'><summary>Technical details</summary><ul>"
+        + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
+        + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
+        f"{e(d.pipeline_run_id)}.</p></details></details>"
+    )
 
 
 def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
