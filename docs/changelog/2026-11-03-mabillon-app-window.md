@@ -1,4 +1,4 @@
-## 2026-11-03: Mabillon opens in its own window: a Mac app and Windows shortcuts (#PR)
+## 2026-11-03: Mabillon opens in its own window: a Mac app and Windows shortcuts (#219)
 - Changed: Arsh asked for a real desktop app (like Loom) instead of a browser tab and a Terminal
   window. `mabillon serve --window` and `mabillon demo --window` (`ui/window.py`) start the screen
   as before, on 127.0.0.1 with the per-launch screen key (#215), and show it in a native window
@@ -13,7 +13,7 @@
   to the Start menu and an optional desktop icon, run with pythonw (no console). New optional
   dependency group `app` (pywebview, pythonnet on Windows); the installers include it. Second PR
   of the desktop-app plan (plans/desktop-app-sign-in.md). No sign-in, no new network use.
-- Where: branch claude/project-thread-jvh1pc
+- Where: PR #219
 - Verified: `tests/test_app_window.py` (stand-in pywebview: launch link, private mode, close
   prompt only while auditing, fallback to the browser, second launch, downloads saved without
   overwriting, back to the page asked from); `make check` on Linux. Windows staging resolved
