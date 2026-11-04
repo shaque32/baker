@@ -636,3 +636,66 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
         if g != "you" and groups[g]:
             link = f"<a href='/claims#{g}'><span class='name t-{g}'>{name}</span> "
             assert f"{link}<b>{groups[g]}</b>" in status, g
+
+
+def test_the_why_fold_leads_with_plain_lines_and_keeps_the_rules_text(root):
+    """Each verdict reason gets a plain first line (core/report/why.py): names for ids, records as
+    links, times in the claim's zone. The rules' text stays whole under Technical details with the
+    rule version and run, and the report keeps printing it. Display only: no verdict changes."""
+    case = _case(root)
+    conn = connect(case.db)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    run = pipeline.last_run(conn)["run_id"]
+    report = render_report(conn)
+    for claim_id in _claim_ids():
+        page = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST))).body.decode()
+        reasons = json.loads(
+            conn.execute(
+                "SELECT reasons_json FROM verdicts WHERE claim_id = ? AND pipeline_run_id = ?",
+                (claim_id, run),
+            ).fetchone()[0]
+        )
+        fold = page.split("<details class='why'>", 1)[1]
+        plain = fold.split("<details class='why-tech'>", 1)[0]
+        tech = fold.split("<details class='why-tech'>", 1)[1].split("</details>", 1)[0]
+        for reason in reasons:  # every reason, exactly as the rules stored it
+            assert f"<li>{html.escape(reason)}</li>" in tech, (claim_id, reason)
+        assert "Rule version 0." in tech and run in tech
+        assert tech.count("<li>") == len(reasons)
+        text = re.sub(r"<span class=\"q\">.*?</span>", " ", plain)  # cited text is not ours
+        text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+        assert "Rule " not in text and "person:dev:" not in text and "stip:" not in text, claim_id
+        for word in ("guilty", "innocent", "leader", "deleted"):
+            assert word not in text.lower(), (claim_id, word)
+
+    c10 = app.handle(Request("GET", "/claim", {"id": "C10"}, dict(HOST))).body.decode()
+    plain = c10.split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    flat = html.unescape(re.sub(r"<[^>]+>", "", plain))
+    assert (
+        "Both phones record the message at 9:31 PM on March 4, 2026 (New York time), not "
+        "“At 2:31 a.m. on March 5, 2026” as the claim states." in flat
+    )
+    assert "prints it in UTC as “3/5/2026 2:31:00 AM(UTC+0)”" in flat
+    assert "href='/selection/context?id=msg%3Aitem1%3AChats%211011'" in plain
+    assert "Rule 1a: check time failed on" in report  # the report keeps the full trail
+
+    c19 = app.handle(Request("GET", "/claim", {"id": "C19"}, dict(HOST))).body.decode()
+    plain = c19.split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    assert plain.count("<li>") == 1 and "5 records contradict this" in plain
+    assert "An expert accepted each." in plain
+
+
+def test_a_phone_named_with_a_blocked_word_keeps_the_claim_page_open(root):
+    """An expert may name a phone anything the document calls it. The Why lines print that name
+    as the case's text, so the forbidden-word check reads it as cited and the page still opens."""
+    case = _case(root)
+    conn = connect(case.db)
+    actions.name_device(conn, "dev:item1", ["Leader's phone"], EXPERT)
+    conn.commit()
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    resp = app.handle(Request("GET", "/claim", {"id": "C10"}, dict(HOST)))
+    assert resp.status == 200
+    plain = resp.body.decode().split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    assert '<span class="q">Leader&#x27;s phone</span> prints it in UTC' in plain
