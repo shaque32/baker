@@ -361,9 +361,14 @@ def _row(st: StatedTime, data: CaseRecords, links: list[Link], s: Settings) -> T
                            notes=tuple(notes))  # fmt: skip
     if st.kind == "open":
         notes.append("One end of this range is open; only the stated end is compared.")
-    if st.zone is None and len(data.zones()) < len(data.phones):
+    # a phone whose own zone is missing or unusable: name it (comparing the number of distinct
+    # zones with the number of phones said this of two phones that share one zone)
+    zoneless = [p.label for p in data.phones.values() if not p.tz or zone(p.tz) is None]
+    if st.zone is None and zoneless:
         notes.append(
-            "A phone in this case does not state its time zone; its records are not compared."
+            f"{', '.join(zoneless)} {'does' if len(zoneless) == 1 else 'do'} not state "
+            f"{'its' if len(zoneless) == 1 else 'their'} time zone, so "
+            f"{'its' if len(zoneless) == 1 else 'their'} records are not compared here."
         )
 
     key = _sort_key(st, data)

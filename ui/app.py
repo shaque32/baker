@@ -239,6 +239,7 @@ class App:
         self.flash: tuple[str, bool] | None = None
         self.port = port
         self.path = ""  # the request being answered, so a page can mark its tab
+        self._stand_in = ""  # the open case's demo or test-run banner, set per request
         self._added: str | None = None
         self.jobs = jobs.Jobs()
         self._reported: jobs.Job | None = None  # the finished job whose result Set up showed
@@ -344,6 +345,7 @@ class App:
 
     def handle(self, req: Request) -> Response:
         self.path = req.path
+        self._stand_in = ""
         if req.headers.get("host") not in self.allowed_hosts():
             return self._plain(400, "This screen only answers requests from this computer.")
         if req.method not in ("GET", "POST"):
@@ -397,6 +399,10 @@ class App:
             what = "No report" if req.path in ("/report", "/report.html") else "Case closed"
             self.flash = (f"{what}: {err}", True)
             return self._redirect("/cases")
+        try:
+            self._stand_in = pages.stand_in_note(conn)
+        except db.Error:
+            self._stand_in = ""
         try:
             if req.method == "GET":
                 if req.path in activity.RECORD_FIRST:  # it shows the trail up to itself
@@ -546,6 +552,7 @@ class App:
             path=self.path,
             cloud=self._case_uses_cloud(),
             case_key="" if self.case is None else _case_key(self.case),
+            stand_in=self._stand_in if self.case is not None else "",
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:

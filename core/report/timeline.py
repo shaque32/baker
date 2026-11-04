@@ -279,7 +279,10 @@ def gap_card(g: Gap, data: CaseRecords, timeline_href: str = "/timeline") -> str
         f"{e(g.after.when())}: {e(fmt_delta(g.seconds))}."
     )
     elsewhere = (
-        "; ".join(f"{q(p)} holds {n} record{'s' if n != 1 else ''}" for p, n in g.elsewhere)
+        "; ".join(
+            f"{q(p)} holds {n} record{'s' if n != 1 else ''} of any app or call in this stretch"
+            for p, n in g.elsewhere
+        )
         or "No other phone in the case holds a record in this stretch."
     )
     stated = (
@@ -300,9 +303,11 @@ def gap_card(g: Gap, data: CaseRecords, timeline_href: str = "/timeline") -> str
         f"<div class='gap'><div class='meta'>{e(sr.scope)} · derived</div>"
         f"<div class='stmt'>{stmt}</div><dl>"
         f"<dt>Pace</dt><dd>{g.per_day:.1f} a day between this series' first and last record; "
-        f"about {g.expected:.0f} would fall in this stretch at that pace.</dd>"
-        f"<dt>Either side</dt><dd>Last before: {e(g.before.id)}; first after: "
-        f"{e(g.after.id)}.</dd>"
+        f"about {g.expected:.0f} would fall in this stretch at that pace. That is a rate, not "
+        "a count of missing records.</dd>"
+        f"<dt>Either side</dt><dd>Last before: {e(g.before.when())} "
+        f"<span class='mono'>{e(g.before.id)}</span>; first after: {e(g.after.when())} "
+        f"<span class='mono'>{e(g.after.id)}</span>.</dd>"
         f"<dt>Searched</dt><dd>{what} imported from {q(phone.file_name)}, "
         f"{e(FIDELITY.get(phone.fidelity, phone.fidelity))}.</dd>"
         f"<dt>Other phones</dt><dd>{elsewhere}</dd>{untimed}"

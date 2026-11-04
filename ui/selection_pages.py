@@ -66,6 +66,8 @@ def selection_page(conn: sqlite3.Connection, page: Page, timeline: Settings) -> 
     states = claim_states(conn)
     body = (
         "<div class='pg-selection'><h1>Selection audit</h1>"
+        "<p class='lede'>What the government quoted from the phones, each quote in its "
+        "conversation, and the messages around it that it left out.</p>"
         + _calmer(selection_html(audit, _links(), states))
         + paired_html(
             paired_check(conn, states, audit),

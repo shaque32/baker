@@ -164,7 +164,8 @@ from core.review.withheld import summary as withheld_summary
 # 0.17.0: Limitations list each name the expert gave a device for the document ("TARGET PHONE"),
 # with who gave it and when (core/review/device_names.py).
 # 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
-# every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
+# every claim that rests on the source: "Not tested: ..." (since 0.32.0 "Untested export
+# format: ...") outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
 # 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
 # Native Messages: iMessages and SMS together) says so, on the claim page too.
@@ -219,7 +220,10 @@ from core.review.withheld import summary as withheld_summary
 # 0.35.0: a claim's verdict sign-off reads "Verdict confirmed by <name>, <time> UTC" (or
 # overridden, or kept from the earlier run), apart from "expert-confirmed" evidence; a report
 # made on the screen opens with the case, the examiner and when it was made (`header`).
-REPORT_VERSION = "0.35.0"
+# 0.36.0: wording only. A source outside the tested set reads "Untested export format: ...",
+# not "Not tested: ...", so it is not read as the claim-level "Unproven, not tested"; the demo
+# banner's first line says the expert decisions are scripted, not made by a person.
+REPORT_VERSION = "0.36.0"
 
 
 @dataclass(frozen=True)
@@ -1623,10 +1627,10 @@ def stand_in_banner(run: dict) -> str:
     exactly what was scripted; any other stand-in run is a test run."""
     if pipeline.scripted_demo(run):
         return (
-            "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
+            "<div class='banner'><strong>Demo case: synthetic data. The evidence labels and "
+            "most expert decisions are scripted, not made by a person.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
-            "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key."
+            "ran: the labels and those decisions were scripted from the signed answer key."
             + (
                 " The testability agent's answers were scripted from the demo's own claims, "
                 "and so was the examiner who accepted one of its proposals. Its work here is "
