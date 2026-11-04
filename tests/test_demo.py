@@ -659,8 +659,11 @@ def test_the_why_fold_leads_with_plain_lines_and_keeps_the_rules_text(root):
         fold = page.split("<details class='why'>", 1)[1]
         plain = fold.split("<details class='why-tech'>", 1)[0]
         tech = fold.split("<details class='why-tech'>", 1)[1].split("</details>", 1)[0]
-        for reason in reasons:  # every reason, exactly as the rules stored it
-            assert f"<li>{html.escape(reason)}</li>" in tech, (claim_id, reason)
+        # every reason, exactly as the rules stored it; words quoted from the claim are marked
+        # as cited (core/report/names.Names.cite), which changes no character of the text
+        shown = re.sub(r'<span class="q">([^<]*)</span>', r"\1", tech)
+        for reason in reasons:
+            assert f"<li>{html.escape(reason)}</li>" in shown, (claim_id, reason)
         assert "Rule version 0." in tech and run in tech
         assert tech.count("<li>") == len(reasons)
         text = re.sub(r"<span class=\"q\">.*?</span>", " ", plain)  # cited text is not ours
