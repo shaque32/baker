@@ -64,7 +64,8 @@ Setup adds **Mabillon** and **Mabillon demo** to the Start menu (and, if you lea
 **Mabillon** to the desktop). Each opens Mabillon in its own window, drawn by Windows' own Edge
 WebView2; closing the window stops it, and it asks first while an audit runs. Files you download
 from the screen are saved in your Downloads folder, and the page says where. A PC without
-WebView2 opens the browser instead. Setup also adds the `mabillon` command to your PATH (`baker`
+WebView2 opens the browser instead. What Mabillon prints goes to
+`%LOCALAPPDATA%\Mabillon\Mabillon.log`. Setup also adds the `mabillon` command to your PATH (`baker`
 still works for a release) and a **Mabillon command prompt** shortcut to the Start menu.
 
 On a PC where it was installed under the name Baker, Setup updates that install in place: it

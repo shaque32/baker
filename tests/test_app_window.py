@@ -85,8 +85,36 @@ def test_no_window_means_the_browser(monkeypatch: pytest.MonkeyPatch):
     assert not window.show("x", lambda: False)
 
 
-def test_windows_never_falls_back_to_internet_explorer():
+def test_windows_never_falls_back_to_internet_explorer(monkeypatch: pytest.MonkeyPatch):
     assert window.GUI["win32"] == "edgechromium"
+    # pywebview falls back to Internet Explorer's engine without WebView2, even when asked for
+    # edgechromium: so without WebView2 there is no window, and the browser opens instead.
+    monkeypatch.setattr(window.sys, "platform", "win32")
+    for engine, shown in (("mshtml", False), (None, False), ("edgechromium", True)):
+        monkeypatch.setattr(window, "windows_renderer", lambda e=engine: e)
+        wv = FakeWebview()
+        assert window.show("x", lambda: False, webview=wv) is shown
+        assert bool(wv.created) is shown
+
+
+def test_with_no_console_the_output_goes_to_a_log_file(tmp_path, monkeypatch):
+    # pythonw (the Windows shortcuts) leaves sys.stdout and sys.stderr as None; the screen's
+    # request log writes to sys.stderr, so the first request would fail without a stream.
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli.sys, "stdout", None)
+    monkeypatch.setattr(cli.sys, "stderr", None)
+    cli._log_when_no_console()
+    log = cli.sys.stderr
+    try:
+        assert log is cli.sys.stdout and log is not None
+        log.write("mabillon serve: GET /open\n")
+        assert (
+            (tmp_path / "Mabillon" / "Mabillon.log")
+            .read_text(encoding="utf-8")
+            .endswith("GET /open\n")
+        )
+    finally:
+        log.close()
 
 
 def args(tmp_path: Path, port: int = 0, window_: bool = True) -> argparse.Namespace:

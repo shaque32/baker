@@ -478,6 +478,18 @@ def test_report_has_awaiting_versions_coverage_log_and_print_layout(conn, tmp_pa
     write_report(conn, tmp_path / "r.html")  # passes the forbidden-word check
 
 
+def test_report_on_screen_has_a_way_back_and_the_saved_copy_does_not(db):
+    # Mabillon's own window has no Back button: the report on screen links back to the case.
+    from ui.app import REPORT_BACK
+
+    app = App(db, expert="Test Expert", port=PORT)
+    on_screen = get(app, "/report").body.decode()
+    assert on_screen.count(REPORT_BACK) == 1 and "href='/claims'" in on_screen
+    assert "@media print{.screen-back{display:none}}" in on_screen
+    saved = get(app, "/report", download="1").body.decode()
+    assert "screen-back" not in saved
+
+
 def test_report_after_expert_review_says_expert_confirmed(conn):
     for eid in key_items(conn, "C05"):
         actions.decide_evidence(conn, eid, EvidenceStatus.ACCEPTED, EXPERT, "Matches.")

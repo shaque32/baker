@@ -1044,7 +1044,29 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _log_when_no_console() -> None:
+    """pythonw (the Windows Start-menu shortcuts) runs Mabillon with no console, so sys.stdout and
+    sys.stderr are None and anything that writes to them, such as the screen's request log, would
+    fail. Write them to this account's own log file instead."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    import os
+
+    base = os.environ.get("LOCALAPPDATA")
+    folder = Path(base) / "Mabillon" if base else Path.home() / ".mabillon"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        log = open(folder / "Mabillon.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    except OSError:
+        log = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    if sys.stdout is None:
+        sys.stdout = log
+    if sys.stderr is None:
+        sys.stderr = log
+
+
 def main(argv: list[str] | None = None) -> int:
+    _log_when_no_console()
     a = parser().parse_args(argv)
     try:
         return a.fn(a)

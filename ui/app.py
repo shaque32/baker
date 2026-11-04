@@ -92,6 +92,16 @@ CSP = (
     "frame-ancestors 'none'; base-uri 'none'"
 )
 FONT_PREFIX = "/static/fonts/"
+# The report on screen opens with a way back to the case and a way to save it; never printed, and
+# never in the saved copy.
+REPORT_BACK = (
+    "<nav class='screen-back'><a href='/claims'>Back to the claims</a>"
+    "<a href='/report?download=1'>Save the report</a></nav>"
+)
+REPORT_BACK_CSS = (
+    ".screen-back{display:flex;gap:1.5em;margin:0 0 1.5em;font-size:.9em}"
+    "@media print{.screen-back{display:none}}"
+)
 MAX_BODY = 1_000_000
 TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
@@ -578,7 +588,9 @@ class App:
             body = render_report(conn, timeline=self._timeline())
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
-                body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+                body = body.replace("<style>", f"<style>{theme.FONT_CSS}{REPORT_BACK_CSS}", 1)
+                # and a way back to the case: Mabillon's own window has no Back button
+                body = body.replace("<body>", f"<body>{REPORT_BACK}", 1)
             resp = self._html(body)
             if download:
                 resp.headers.append(

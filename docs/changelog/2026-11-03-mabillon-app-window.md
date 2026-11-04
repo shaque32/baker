@@ -7,10 +7,14 @@
   first while an audit runs. In the window, downloads (report, activity CSV, request draft, bug
   report, flag summary) are saved into the Downloads folder by the screen itself
   (`ui/downloads.py`), because WebKit's download path re-fetches without the key. Without
-  pywebview or a web view it opens the browser. The Mac installer builds "Mabillon" and "Mabillon
+  pywebview or a web view (on Windows, without Edge WebView2: pywebview would otherwise use
+  Internet Explorer's engine) it opens the browser. The report on screen now starts with "Back to
+  the claims" and "Save the report" links (never printed, never in the saved copy), since the
+  window has no Back button. The Mac installer builds "Mabillon" and "Mabillon
   Demo" apps in ~/Applications (icon from the app's mark; logs in ~/Library/Logs/Mabillon.log);
   the Desktop browser launchers stay. The Windows installer adds "Mabillon" and "Mabillon demo"
-  to the Start menu and an optional desktop icon, run with pythonw (no console). New optional
+  to the Start menu and an optional desktop icon, run with pythonw (no console; output goes to
+  %LOCALAPPDATA%\Mabillon\Mabillon.log). New optional
   dependency group `app` (pywebview, pythonnet on Windows); the installers include it. Second PR
   of the desktop-app plan (plans/desktop-app-sign-in.md). No sign-in, no new network use.
 - Where: PR #219

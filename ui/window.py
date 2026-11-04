@@ -27,7 +27,7 @@ TITLE = "Mabillon"
 SIZE = (1280, 860)
 MIN_SIZE = (900, 600)
 # The page engine to ask for. On Windows only WebView2: pywebview would otherwise fall back to
-# Internet Explorer's engine, which the screen does not support.
+# Internet Explorer's engine, which the screen does not support; show() checks before it opens.
 GUI = {"win32": "edgechromium", "darwin": "cocoa"}
 QUIT_WHILE_AUDITING = (
     "An audit is running. Closing Mabillon stops it; the claims it finished are kept, and you can "
@@ -44,6 +44,17 @@ def load_webview() -> Any | None:
         return importlib.import_module("webview")
     except ImportError:
         return None
+
+
+def windows_renderer() -> str | None:
+    """The page engine pywebview will use on Windows: "edgechromium" when WebView2 is installed.
+    pywebview picks it when its Windows backend is first imported and, without WebView2, falls
+    back to Internet Explorer's engine (MSHTML) even when asked for edgechromium."""
+    try:
+        winforms = importlib.import_module("webview.platforms.winforms")
+    except Exception:  # noqa: BLE001 - no backend at all: no window
+        return None
+    return getattr(winforms, "renderer", None)
 
 
 def _name_the_mac_app() -> None:
@@ -72,6 +83,9 @@ def show(
     webview = webview or load_webview()
     if webview is None:
         print("Mabillon's own window needs pywebview, which is not installed here.")
+        return False
+    if sys.platform == "win32" and (engine := windows_renderer()) != GUI["win32"]:
+        print(f"Mabillon's own window needs Microsoft Edge WebView2 (this PC has {engine}).")
         return False
     _name_the_mac_app()
 
