@@ -34,6 +34,12 @@ local = [
 cloud = [
     "anthropic>=1.0,<2",  # the cloud stance labeler (core/llm/cloud.py), the expert's own key (MIT)
 ]
+app = [
+    # Mabillon's own window (ui/window.py) on the system's web view: WebKit on a Mac, Edge WebView2
+    # on Windows (BSD-3; brings pyobjc on a Mac and pythonnet on Windows, both MIT)
+    "pywebview>=6.2.1,<7",
+    "pythonnet>=3.0.5,<4; sys_platform == 'win32'",  # named here too: see stage.py
+]
 bench = [
     "anthropic>=1.0,<2",  # eval/bench: the cloud benchmark (MIT)
 ]

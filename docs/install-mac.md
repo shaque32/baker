@@ -40,12 +40,19 @@ morning. A run can stop and resume: finished claims are kept.
 5. Wait. Building the model runtime takes 5 to 10 minutes, and downloading the model depends on
    your connection. If the download stops, run step 3 again: it picks up where it left off.
 
-When it says **Done**, two icons are on your Desktop:
+When it says **Done**, two apps are in the Applications folder of your home folder
+(`~/Applications`; Spotlight finds them too):
 
-- **Mabillon** opens your cases in your browser.
-- **Mabillon demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
+- **Mabillon** opens your cases in its own window.
+- **Mabillon Demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
 
-Each opens a Terminal window; closing that window stops Mabillon. Mabillon's address is
+Closing the window stops Mabillon; while an audit runs, it asks first. Drag Mabillon to the Dock to
+keep it there. Files you download from the screen (the report, the activity list) are saved in
+your Downloads folder, and the page says where. What Mabillon prints goes to
+`~/Library/Logs/Mabillon.log`.
+
+Two launchers are also on your Desktop, **Mabillon** and **Mabillon demo**. They open the same
+screens in your browser instead, with a Terminal window; closing that window stops Mabillon. Mabillon's address is
 `http://127.0.0.1:8765` (8766 for the demo), which only this Mac can open, and only through the
 link the launcher opens: it carries a key that changes every launch, so another account on the
 Mac cannot open your cases. If you quit the browser, close the Terminal window and double-click

@@ -53,6 +53,7 @@ SetupLogging=yes
 UninstallDisplayName=Mabillon {#AppVersion}
 
 [Tasks]
+Name: desktopicon; Description: "Put a Mabillon icon on the desktop"
 Name: addtopath; Description: "Add the mabillon command to PATH"
 Name: downloadmodel; Description: "Download the AI model {#ModelName} ({#ModelSizeGB} GB) from Hugging Face. Skip this on an offline computer and put the model file next to Setup instead."; Check: not ModelAvailable
 
@@ -73,8 +74,13 @@ Source: "{#Stage}\runtime\cuda\*"; DestDir: "{app}\python\Lib\site-packages"; Fl
 Source: "{#Stage}\baker.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\mabillon.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\BUILD_INFO.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "art\mabillon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
+; Mabillon in its own window (ui/window.py), with no console: pythonw runs `mabillon serve --window`.
+Name: "{group}\Mabillon"; Filename: "{app}\python\pythonw.exe"; Parameters: "-X utf8 -m cli serve --window"; WorkingDir: "{userdocs}"; IconFilename: "{app}\mabillon.ico"
+Name: "{group}\Mabillon demo"; Filename: "{app}\python\pythonw.exe"; Parameters: "-X utf8 -m cli demo --window"; WorkingDir: "{userdocs}"; IconFilename: "{app}\mabillon.ico"
+Name: "{autodesktop}\Mabillon"; Filename: "{app}\python\pythonw.exe"; Parameters: "-X utf8 -m cli serve --window"; WorkingDir: "{userdocs}"; IconFilename: "{app}\mabillon.ico"; Tasks: desktopicon
 Name: "{group}\Mabillon command prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\mabillon.cmd"" --help"; WorkingDir: "{userdocs}"
 Name: "{group}\Uninstall Mabillon"; Filename: "{uninstallexe}"
 

@@ -12,6 +12,11 @@ except `core/llm/cloud.py` (tests enforce it).
 - `mabillon serve` works on a cases folder (`--cases`, else `$MABILLON_CASES`, else `~/Mabillon/cases`):
   the expert makes and opens cases there.
 - `mabillon serve --db case.db` works on one existing case database, as before.
+- `mabillon serve --window` (and `mabillon demo --window`) shows the same screen in Mabillon's own
+  window instead of a browser (`ui/window.py`, pywebview on the system's web view: WebKit on a
+  Mac, Edge WebView2 on Windows). The Mac apps and the Windows shortcuts run it. Closing the
+  window stops Mabillon, asking first while an audit runs; downloads are saved into the
+  Downloads folder by the screen (`ui/downloads.py`); with no web view it opens the browser.
 
 ## Starting a case
 

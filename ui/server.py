@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from core.support import errors as support_errors
+from ui import downloads
 from ui.app import MAX_BODY, App, Request, Response
 from ui.screen_key import OPEN_PATH, REFUSED, ScreenKey
 
@@ -34,6 +35,7 @@ UNEXPECTED = (
 class _Handler(BaseHTTPRequestHandler):
     app: App
     key: ScreenKey
+    download_folder: Path | None = None  # in Mabillon's own window: where downloads are saved
     server_version = "Mabillon"
     sys_version = ""
 
@@ -87,6 +89,22 @@ class _Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass  # the browser went away
 
+    def _deliver(self, resp: Response) -> Response:
+        """In the window (download_folder set), the screen saves a download into that folder and
+        the expert goes back to the page they asked from, which says where it went
+        (ui/downloads.py). In a browser, the browser saves it."""
+        folder = self.download_folder
+        name = None if folder is None else downloads.attachment_name(resp)
+        if folder is None or name is None:
+            return resp
+        try:
+            path = downloads.save(resp, name, folder)
+            self.app.flash = (f"Saved {path.name} in {folder}.", False)
+        except OSError as err:
+            self.app.flash = (f"Not saved in {folder}: {err}", True)
+        back = downloads.back_to(self.headers.get("Referer"), self.app.allowed_hosts())
+        return Response(303, b"", [("Location", back), *_SECURITY])
+
     def _gate(self) -> Response | None:
         """The per-launch key: GET /open?key=<key> sets it as a cookie and goes to the screen;
         any other request without it is refused here. A request must name this server in exactly
@@ -120,7 +138,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         req = self._request("GET")
         if req is not None:
-            self._send(self.app.handle(req))
+            self._send(self._deliver(self.app.handle(req)))
 
     def _post(self) -> None:
         refused = self._gate()
@@ -141,7 +159,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         req = self._request("POST")
         if req is not None:
-            self._send(self.app.handle(req))
+            self._send(self._deliver(self.app.handle(req)))
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         sys.stderr.write(f"mabillon serve: {self.command} {urlsplit(self.path).path}\n")
@@ -158,12 +176,14 @@ def make_server(
     port: int = DEFAULT_PORT,
     expert: str | None = None,
     home: Path | None = None,
+    download_folder: Path | None = None,
 ) -> HTTPServer:
     """Bind 127.0.0.1:port (0 picks a free port). Nothing else is ever bound. On one case
     database (db) or on a cases folder (home). The server's screen key is new on every call;
-    only launch_url(server) opens the screen."""
+    only launch_url(server) opens the screen. With download_folder (Mabillon's own window), the
+    screen saves downloads into that folder itself."""
     app = App(db, expert=expert, home=home)
-    handler = type("Handler", (_Handler,), {"app": app})
+    handler = type("Handler", (_Handler,), {"app": app, "download_folder": download_folder})
     server = _Server((HOST, port), handler)
     app.port = server.server_address[1]
     handler.key = ScreenKey(app.port)
