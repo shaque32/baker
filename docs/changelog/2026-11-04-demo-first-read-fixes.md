@@ -21,7 +21,7 @@
   claim explains each claim type; `reportlab` is a base dependency, so a bare `pip install -e .`
   no longer crashes `mabillon demo`; the scripted demo adds one synthetic exhibit
   ("Government Exhibit 4 (synthetic demo)", two Item 1 messages next to paragraph 6).
-- Where: branch claude/project-thread-rjmej3 (PR pending)
+- Where: branch claude/project-thread-rjmej3 (PR #216)
 - Verified: tests/test_first_read_fixes.py (13 tests) and updated test_demo, test_tested_formats,
   test_ufdr; full `make check` on a cloud Linux box 2026-11-04 (numbers in the PR).
 - Open: not done here: the report's own reading changes (a tier legend, listing only the labels
