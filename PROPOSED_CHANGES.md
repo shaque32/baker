@@ -1144,3 +1144,22 @@ the card's words in place of "approved" (in the gold README too) and the lines r
 draft's own header now says signed, above its SYNTHETIC line and so outside the signed text,
 and the pin is that file's SHA-256, `4dafbb8560fa862685a31320f346f1e38bab7eb00ecfe2de2f60876114f7ede1`.
 Below the headers both copies are the text at 78682cf byte for byte, and the two tests pass.
+
+## 2026-11-03 claude/project-thread-6i2msb-case-setup: sign the testability prompt v1.1
+File: core/audit/prompts/agent_testability.md (signed v1.0; human-owned)
+Why: step 3 of plans/testability-pass.md (Arsh chose "Phone designations, then replay" on
+2026-11-03 and wrote "i need this to work"). In the case05 go/no-go (NO-GO, conversion 5 of 33)
+the second try repeated the first exactly on 23 of the 29 claims that had two, a name the affidavit
+gives a number went in "people", a phone and an app went in "accounts", and on calls the
+claim's own sentence went in "quoted_text". Draft v1.1 (`docs/prompts/agent_testability.md`)
+writes out rules the templates already have; its header lists each change. It is written
+generally: its one example name ("TARGET TELEPHONE 2") is no case's. The eval can run the draft
+now (`--testability-prompt docs/prompts/agent_testability.md`), reported as a draft with no
+go/no-go; the case06 go/no-go needs the signed copy.
+Diff: once Arsh signs, replace everything from `<!-- prompt starts -->` down in
+`core/audit/prompts/agent_testability.md` with the draft's text from that line down (the same
+bytes as in `docs/prompts/agent_testability.md` at the commit Arsh signs), keeping the six
+placeholders, and change the header's second line to "v1.1, signed by Arsh on <date> from the
+docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28)." The draft's header then says
+signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md) <(sed -n
+'/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.

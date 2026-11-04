@@ -47,6 +47,9 @@ from eval.synthetic.generate import (
 )
 from eval.synthetic.xlsx import write_xlsx
 
+# The reports print this version, so it stays 0.1.0 when only case.json's case setup changes
+# (2026-11-03: the document's names for a phone and a number, "names" and "numbers"): the
+# reports, the affidavit, the key and the sheet stay byte for byte the same.
 GENERATOR_VERSION = "case05-gen 0.1.0"
 TOOL_NAME = "baker-synth (Cellebrite-style layout)"
 CASE_NUMBER = "SYN-2025-0005"
@@ -813,6 +816,21 @@ def render_signing_sheet(gold: list[GoldClaim]) -> str:
     return "\n".join(out)
 
 
+# The names the affidavit gives a phone or a number (paragraph 2: the "SAMSUNG", the "iPHONE"
+# and the "ONEPLUS"; paragraph 3: MERROW's second number +1 (720) 555-0186 is the "BURNER"), as
+# the expert enters them at case setup (core/review/device_names.py,
+# core/review/account_names.py). The "FENCE" names a person who used a number, not the number,
+# so it stays out.
+PHONE_NAMES: dict[str, list[str]] = {
+    "item1": ["the SAMSUNG"],
+    "item2": ["the iPHONE"],
+    "item3": ["the ONEPLUS"],
+}
+NUMBER_NAMES: list[dict[str, object]] = [
+    {"identifier": "+1 (720) 555-0186", "names": ["the BURNER"]}
+]
+
+
 # The other names the affidavit defines for each phone's owner (paragraph 2: "MERROW" or
 # "SUBJECT-1", who goes by "TOBY"; "VARGA" or "SUBJECT-2"; "ODUM" or "SUBJECT-3", called "CAL",
 # the "COURIER"), as the expert enters them at case setup (core/identity/aliases.py). The eval's
@@ -845,12 +863,14 @@ def case_json(rendered: list[Rendered], out: Path) -> dict:
                 "extraction_type": r.device.extraction_type,
                 "owner": story.PEOPLE[r.device.owner],
                 "aliases": ALIASES.get(r.device.owner, []),
+                "names": PHONE_NAMES.get(r.device.key, []),
                 "messages": len(r.messages),
                 "calls": len(r.calls),
                 "contacts": len(r.contacts),
             }
             for r in rendered
         ],
+        "numbers": NUMBER_NAMES,
         "sources": [
             {
                 "source_id": r.device.key,

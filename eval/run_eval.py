@@ -92,6 +92,17 @@ def passes(s: Scores) -> bool:
     )
 
 
+def stance_skipped(predictions_path: Path) -> bool:
+    """True when the run that wrote these predictions skipped stance (eval/run_pipeline.py
+    --no-stance, a dev check of the filler and the testability step), as its run.json says."""
+    try:
+        run = json.loads((predictions_path.parent / "run.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return False
+    t = run.get("testability") if isinstance(run, dict) else None
+    return isinstance(t, dict) and t.get("stance") == "skipped"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", type=Path, default=Path("eval/gold/case01"))
@@ -117,6 +128,12 @@ def main(argv: list[str] | None = None) -> int:
     if not predictions:
         print(f"eval: {len(gold)} gold claims, no predictions at {predictions_path}.")
         return 0
+    if stance_skipped(predictions_path):
+        print(
+            f"eval: {predictions_path} is from a --no-stance dev check: stance was skipped, so"
+            " its verdicts are not eval numbers; not scored"
+        )
+        return 1
 
     s = score(gold, predictions)
     print(json.dumps(s.__dict__, indent=2))
