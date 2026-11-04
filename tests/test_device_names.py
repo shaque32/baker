@@ -43,7 +43,11 @@ def test_a_claim_naming_the_target_phone_reaches_the_device_the_expert_named(con
         "TARGET PHONE"
     ]
     assert _phone(conn, "TARGET PHONE") == "dev:item1"
-    assert _phone(conn, "target phone") == "dev:item1"
+    assert _phone(conn, "TARGET  PHONE") == "dev:item1"  # spacing does not count
+    # a name in capitals only in capitals: "the target phone" may be any phone a target used
+    # (Baker Eval on #209)
+    with pytest.raises(Reject, match="matches 0 devices"):
+        _phone(conn, "target phone")
     assert _phone(conn, "Item 1") == "dev:item1"  # the source id still works
 
 
