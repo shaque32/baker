@@ -9,6 +9,7 @@ accepts evidence on the screen and re-runs the verdicts.
 from __future__ import annotations
 
 import ast
+import html
 import http.client
 import json
 import re
@@ -485,9 +486,16 @@ def test_report_on_screen_has_a_way_back_and_the_saved_copy_does_not(db):
     app = App(db, expert="Test Expert", port=PORT)
     on_screen = get(app, "/report").body.decode()
     assert on_screen.count(REPORT_BACK) == 1 and "href='/claims'" in on_screen
-    assert "@media print{.screen-back{display:none}}" in on_screen
+    assert "@media print{.screen-back,.screen-said{display:none}}" in on_screen
     saved = get(app, "/report", download="1").body.decode()
     assert "screen-back" not in saved
+    # in the window, saving comes back here: the report says where it went, or why it did not
+    for flash in (("Saved r.html in /x <D>.", False), ("Not saved in /x: disk full", True)):
+        app.flash = flash
+        body = get(app, "/report").body.decode()
+        assert html.escape(flash[0]) in body and "<D>" not in body
+        assert ("role='alert'" in body) is flash[1]
+        assert app.flash is None
 
 
 def test_report_after_expert_review_says_expert_confirmed(conn):

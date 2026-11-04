@@ -100,8 +100,24 @@ REPORT_BACK = (
 )
 REPORT_BACK_CSS = (
     ".screen-back{display:flex;gap:1.5em;margin:0 0 1.5em;font-size:.9em}"
-    "@media print{.screen-back{display:none}}"
+    ".screen-said{margin:0 0 1.5em;font-size:.9em}.screen-said.err{color:#b3261e}"
+    "@media print{.screen-back,.screen-said{display:none}}"
 )
+
+
+def report_back(flash: tuple[str, bool] | None) -> str:
+    """The on-screen report's top: the way back, then what the last action said (in the window,
+    where the report was saved, or why it was not)."""
+    if flash is None:
+        return REPORT_BACK
+    message, error = flash
+    role = "alert" if error else "status"
+    said = (
+        f"<p class='screen-said{' err' if error else ''}' role='{role}'>{html.escape(message)}</p>"
+    )
+    return REPORT_BACK + said
+
+
 MAX_BODY = 1_000_000
 TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
@@ -590,7 +606,7 @@ class App:
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}{REPORT_BACK_CSS}", 1)
                 # and a way back to the case: Mabillon's own window has no Back button
-                body = body.replace("<body>", f"<body>{REPORT_BACK}", 1)
+                body = body.replace("<body>", f"<body>{report_back(page.flash)}", 1)
             resp = self._html(body)
             if download:
                 resp.headers.append(
