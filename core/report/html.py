@@ -211,7 +211,9 @@ from core.review.withheld import summary as withheld_summary
 # 0.32.0: Limitations list each name the expert gave a number or an account for the document
 # ("the BURNER"), with who gave it and when, and that it names the number only, never a person
 # (core/review/account_names.py).
-REPORT_VERSION = "0.32.0"
+# 0.33.0: words an assumption, check line or verdict reason quotes from a claim print as cited,
+# so a claim that quotes "It's been deleted." no longer stops the report (validation run 3).
+REPORT_VERSION = "0.33.0"
 
 
 @dataclass(frozen=True)
