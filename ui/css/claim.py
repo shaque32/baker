@@ -47,6 +47,13 @@ CSS = """
 .pg-claim #verdict details.fmt p.format-notice { margin-left: 18px; }
 .pg-claim #verdict .in > details { margin-top: 10px; }
 .pg-claim #verdict .in > details > summary { font-size: 13px; }
+/* why: the plain lines first, the rules' exact text folded under Technical details */
+.pg-claim #verdict ul.why-lines { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.pg-claim #verdict details.why-tech { margin: 10px 0 0; }
+.pg-claim #verdict details.why-tech > summary { font-size: 12.5px; color: var(--muted); }
+.pg-claim #verdict details.why-tech ul { margin: 6px 0; padding-left: 18px; display: grid;
+  gap: 6px; font-size: 12px; color: var(--ink-2); overflow-wrap: break-word; }
+.pg-claim #verdict details.why-tech p.muted { margin: 6px 0 0; font-size: 12px; }
 .pg-claim #verdict > .in.vacts { display: flex; flex-wrap: wrap; align-items: baseline;
   gap: 6px 28px; padding: 12px 22px; background: var(--card); }
 .pg-claim .vacts > details { margin: 0; }
