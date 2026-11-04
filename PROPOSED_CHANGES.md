@@ -1230,3 +1230,8 @@ header's second line to "v1.2, signed by Arsh on <date> from the
 docs/prompts/agent_testability.md draft v1.2 (v1.1: 2026-11-03; v1.0: 2026-10-28)." The draft's
 header then says signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md)
 <(sed -n '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
+SIGNED by Arsh on 2026-11-04 at 19:44Z ("approve", project thread "Build agents into the
+audit"), draft v1.2 as it stands in PR #211 (aedc100). APPLIED on
+claude/project-thread-6i2msb-case06 (#211): the signed copy's body is the draft's from
+`<!-- prompt starts -->` down (the diff above prints nothing), its header says v1.2, and the
+draft's header says signed.

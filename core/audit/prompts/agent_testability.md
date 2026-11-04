@@ -1,6 +1,6 @@
 # Testability agent prompt (HUMAN-OWNED, Arsh)
 
-v1.1, signed by Arsh on 2026-11-03 from the docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28).
+v1.2, signed by Arsh on 2026-11-04 from the docs/prompts/agent_testability.md draft v1.2 (v1.1: 2026-11-03; v1.0: 2026-10-28).
 Arsh edits this wording; agents only wire it to the local model.
 Only the text after the next line is sent to the model.
 
@@ -58,8 +58,9 @@ For each assumption the claim needs, give one object with these fields. Leave a 
   lookups list as an account, each with its app, e.g. {"as_written": "+1 (555) 010-0199",
   "app": "Phone"}. Use "Phone" for a number that was called or saved as a contact, and "SMS"
   for a number that was texted. Never a person's name, an app's name or a phone.
-- "handles": handles exactly as written, e.g. "@bluefox". A name a contact was saved as goes
-  in "quoted_text", not here.
+- "handles": handles or display names exactly as written, e.g. "@bluefox", for an assumption
+  that names accounts by them. For a contact entry, the name the contact was saved as goes in
+  "quoted_text", not here.
 - "phones": phones exactly as the document names them.
 - "channels": apps the claim names, from the list above. "texted" or "texting" means SMS; a
   phone call, or speaking by phone, means "call". If the claim names no app, leave it empty;

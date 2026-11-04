@@ -1,12 +1,13 @@
-# Testability agent prompt (draft v1.2)
+# Testability agent prompt (draft v1.2, signed by Arsh on 2026-11-04)
 
 Draft by the agent thread "Build agents into the audit", 2026-10-28 (plans/agentic.md step 3).
 Arsh signed draft v0.1 word for word as v1.0 on 2026-10-28, and draft v1.1 (2026-11-03,
-plans/testability-pass.md step 3) word for word as v1.1 on 2026-11-03. This draft v1.2
-(2026-11-04) changes one rule of v1.1, below; it is not signed. `core/audit/testability.py`
-loads only the signed copy at `core/audit/prompts/agent_testability.md`. The eval can still name
-this file (`eval/run_pipeline.py --testability-prompt`), and its output then says the prompt is a
-draft and gives no go/no-go; the go/no-go runs on the signed copy.
+plans/testability-pass.md step 3) word for word as v1.1 on 2026-11-03, and this draft v1.2
+(2026-11-04), which changes one rule of v1.1 (below), word for word as v1.2 on 2026-11-04.
+`core/audit/testability.py` loads only the signed copy at
+`core/audit/prompts/agent_testability.md`. The eval can still name this file
+(`eval/run_pipeline.py --testability-prompt`), and its output then says the prompt is a draft and
+gives no go/no-go; the go/no-go runs on the signed copy.
 
 Change from v1.1 (Codex on #211), a rule the templates already have:
 - "handles" takes display names again, as v1.0 said. The same-account check resolves a

@@ -1,4 +1,4 @@
-## 2026-11-03: Synthetic case06, signed, the held-out set for the next testability go/no-go; testability prompt v1.1 signed
+## 2026-11-03: Synthetic case06, signed, the held-out set for the next testability go/no-go; testability prompt v1.1, then v1.2, signed
 - Changed: a new synthetic case06 is the held-out set for the testability step's next go/no-go,
   because the case05 go/no-go (2026-11-03, NO-GO on conversion, 5 of 33) spent case05. A fresh
   builder wrote it from a brief (project files, `plans/case06-brief.md`) without reading the
@@ -58,7 +58,7 @@
 
   Codex's review of the synced head (4168585) found two things that would have biased the
   case06 run, both fixed here before any run:
-  - Prompt draft v1.2, waiting for Arsh's signature (`PROPOSED_CHANGES.md`). v1.1 had narrowed
+  - Prompt v1.2, signed by Arsh on 2026-11-04 at 19:44Z and applied here. v1.1 had narrowed
     "handles" to "handles exactly as written" and sent saved names to "quoted_text", but the
     same-account check resolves a handle from account names, thread titles, printed sender text
     and saved contacts, and `same_account` takes only handles. A claim that names accounts by
@@ -93,8 +93,8 @@
   run is the result of record. Nothing is tuned on case06 before it (plans/testability-pass.md,
   "Frozen before the case06 run"). The model-free result shows only that the right sheet gives
   the signed verdicts, not that the hazards trap a model. Prompt v1.1 is unmeasured on any
-  model run, and so is v1.2. The case06 run waits for Arsh to sign v1.2.
-- Affects: the testability agent's prompt (v1.1, draft v1.2; eval only, the agent stays off by
+  model run, and so is v1.2, which the case06 run uses.
+- Affects: the testability agent's prompt (v1.2; eval only, the agent stays off by
   default) and how the eval compares a try's accounts with the sheet (go/no-go measurement); no
   privacy, network or verdict rule change; no customer-facing claim.
 - Status doc: no change
