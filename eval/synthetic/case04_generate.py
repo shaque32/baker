@@ -45,6 +45,9 @@ from eval.synthetic.generate import (
 )
 from eval.synthetic.xlsx import write_xlsx
 
+# The reports print this version, so it stays 0.1.0 when only case.json's case setup changes
+# (2026-11-03: the document's names for a phone and a number, "names" and "numbers"): the
+# reports, the affidavit, the key and the sheet stay byte for byte the same.
 GENERATOR_VERSION = "case04-gen 0.1.0"
 TOOL_NAME = "baker-synth (Cellebrite-style layout)"
 CASE_NUMBER = "SYN-2026-0004"
@@ -757,6 +760,16 @@ def render_signing_sheet(gold: list[GoldClaim]) -> str:
     return "\n".join(out)
 
 
+# The names the affidavit gives a phone or a number (paragraph 2: Item 2 is the "TARGET PHONE";
+# paragraph 3: HALLORAN's prepaid number +1 (312) 555-0199 is the "PREPAID"), as the expert
+# enters them at case setup (core/review/device_names.py, core/review/account_names.py).
+# "CW-1" and the "BUYER" name people, not a number, so they stay out.
+PHONE_NAMES: dict[str, list[str]] = {"item2": ["the TARGET PHONE"]}
+NUMBER_NAMES: list[dict[str, object]] = [
+    {"identifier": "+1 (312) 555-0199", "names": ["the PREPAID"]}
+]
+
+
 # The other names the affidavit defines for each phone's owner (paragraph 1: "HALLORAN" or
 # "SUBJECT-1", known as "HAL"; OKAFOR, "SUBJECT-3", known as "DEZ", the "DRIVER"), as the expert
 # enters them at case setup (core/identity/aliases.py). The eval's case setup records them.
@@ -787,12 +800,14 @@ def case_json(rendered: list[Rendered], out: Path) -> dict:
                 "extraction_type": r.device.extraction_type,
                 "owner": story.PEOPLE[r.device.owner],
                 "aliases": ALIASES.get(r.device.owner, []),
+                "names": PHONE_NAMES.get(r.device.key, []),
                 "messages": len(r.messages),
                 "calls": len(r.calls),
                 "contacts": len(r.contacts),
             }
             for r in rendered
         ],
+        "numbers": NUMBER_NAMES,
         "sources": [
             {
                 "source_id": r.device.key,
