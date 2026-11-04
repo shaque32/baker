@@ -73,3 +73,72 @@ def test_only_the_fillers_count_wording_becomes_words(conn):
     shown = Names(conn).html("Messages containing 'lt 3 left' verbatim; dev:item1 holds ge 2 calls")
     out = html.unescape(re.sub(r"<[^>]+>", "", shown))
     assert "'lt 3 left'" in out and "holds at least 2 calls" in out
+
+
+def _quoting(conn):
+    conn.executescript(
+        "CREATE TABLE claims (id TEXT, text TEXT);"
+        "INSERT INTO claims VALUES ('D22', 'On May 2, 2023, SUBJECT-1 wrote on Twitter: "
+        "\"Done. It''s been deleted.\"');"
+    )
+    return Names(conn)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # an assumption's text, a rule's reason and a check's search line (lowercased, curly)
+        'The message "Done. It\'s been deleted." was sent by person:dev:item1:owner on Twitter',
+        "Rule 2: 'The words \"Done. It's been deleted.\" mean what the claim says they mean' is "
+        "not covered by a passing check or an accepted supporting item.",
+        "Messages containing “done. it’s been deleted.” (verbatim)",
+    ],
+)
+def test_words_quoted_from_a_claim_print_as_cited(conn, text):
+    # Validation run 3: a claim quoting "It's been deleted." stopped the whole report, because
+    # its words came back inside Mabillon's own sentences unmarked.
+    from core.audit.invariants import check_report_text
+
+    out = _quoting(conn).html(text)
+    check_report_text(f"<p>{out}</p>")
+    assert "Daniel Petrov" in out or "person:" not in text
+
+
+def test_quoted_words_no_claim_holds_stay_the_tools_own(conn):
+    from core.audit.invariants import InvariantViolation, check_report_text
+
+    out = _quoting(conn).html('The phone "was deleted" by person:dev:item1:owner')
+    with pytest.raises(InvariantViolation, match="deleted"):
+        check_report_text(f"<p>{out}</p>")
+
+
+def test_quoted_words_are_cited_only_as_whole_words(conn):
+    from core.audit.invariants import InvariantViolation, check_report_text
+
+    conn.executescript(
+        "CREATE TABLE claims (id TEXT, text TEXT);"
+        "INSERT INTO claims VALUES ('C1', 'He wrote \"the file stays undeleted here\".');"
+        "INSERT INTO claims VALUES ('C2', 'She wrote one word: \"leader\".');"
+    )
+    names = Names(conn)
+    marked = names.html('The record was marked "deleted".')
+    # "deleted" stands only inside "undeleted": the tool's own word, checked
+    with pytest.raises(InvariantViolation, match="deleted"):
+        check_report_text("<p>" + marked + "</p>")
+    # a one-word quote the claim makes is the document's word
+    check_report_text("<p>" + names.html('The words "leader" mean what the claim says') + "</p>")
+
+
+def test_a_claims_own_lines_cite_only_its_own_quotes(conn):
+    from core.audit.invariants import InvariantViolation, check_report_text
+
+    own, other = 'He wrote "it was deleted".', 'She wrote "see you at nine".'
+    conn.execute("CREATE TABLE claims (id TEXT, text TEXT)")
+    conn.executemany("INSERT INTO claims VALUES (?, ?)", [("C1", own), ("C2", other)])
+    line = 'The message "it was deleted" was sent by person:dev:item1:owner'
+    names = Names(conn)
+    check_report_text("<p>" + names.for_claim(own).html(line) + "</p>")
+    with pytest.raises(InvariantViolation, match="deleted"):  # another claim's words
+        check_report_text("<p>" + names.for_claim(other).html(line) + "</p>")
+    # the key of names shown stays shared with the report
+    assert "person:dev:item1:owner" in names.used
