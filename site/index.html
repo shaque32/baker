@@ -14,7 +14,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=31ef0e25">
+<link rel="stylesheet" href="styles.css?v=6b4c02d9">
 <script src="main.js?v=04378050" defer></script>
 </head>
 <body>
@@ -41,18 +41,22 @@
           <a class="button" href="demo.html">Book a demo</a>
           <a class="link" href="#how">See how it works</a>
         </div>
-        <p class="audience-note">For defense forensic examiners. Attorneys, <a href="#status">bring Mabillon with your expert</a>.</p>
       </div>
-      <figure class="ledger reveal" aria-label="An example case: four claims from an affidavit, each with its status. Example data.">
-        <div class="ledger-head"><span>State v. Example</span><span class="muted">4 claims · affidavit of March 9</span></div>
-        <ol>
-          <li><b>¶ 14</b><span>REYES texted PETROV “bring it tonight” on March 3.</span><em class="status sup">Supported</em><small>You accepted the message as evidence.</small></li>
-          <li><b>¶ 15</b><span>REYES called PETROV on the morning of March 4.</span><em class="status unp">Unproven</em><small>No call found. This curated report cannot show an absence.</small></li>
-          <li><b>¶ 16</b><span>PETROV replied “ok same place” on March 5.</span><em class="status con">Contradicted</em><small>The only copy was sent on March 6.</small></li>
-          <li><b>¶ 18</b><span>The number ending 0192 belongs to PETROV.</span><em class="status wait">Waiting for you</em><small>Link proposed. Nothing is merged until you confirm it.</small></li>
-        </ol>
-        <figcaption>An example case. Names and data are synthetic.</figcaption>
+      <figure class="sheet reveal" aria-label="An example affidavit page with each claim marked and its status in the margin. Example data.">
+        <div class="sheet-head"><span>Affidavit in support of a search warrant, page 6</span><span>State v. Example</span></div>
+        <div class="sheet-body">
+          <p class="para"><b>14.</b> <span class="said">On March 3, at approximately 9:00 p.m., REYES sent PETROV a text message reading “bring it tonight.”</span></p>
+          <p class="note"><em class="status sup">Supported</em><small>You accepted the message as evidence.</small></p>
+          <p class="para"><b>15.</b> <span class="said">On the morning of March 4, REYES called PETROV</span> to confirm the plan.</p>
+          <p class="note"><em class="status unp">Unproven</em><small>No call found. This curated report cannot show an absence.</small></p>
+          <p class="para"><b>16.</b> <span class="said">On March 5, PETROV replied “ok same place,”</span> which your affiant believes confirmed the meeting.</p>
+          <p class="note"><em class="status con">Contradicted</em><small>The only copy was sent on March 6.</small></p>
+          <p class="para"><b>18.</b> <span class="said">The number ending 0192 belongs to PETROV.</span></p>
+          <p class="note"><em class="status wait">Waiting for you</em><small>Link proposed. Nothing is merged until you confirm it.</small></p>
+        </div>
+        <figcaption>An example. Names and data are synthetic.</figcaption>
       </figure>
+      <p class="audience-note">For defense forensic examiners. Attorneys, <a href="#status">bring Mabillon with your expert</a>.</p>
     </div>
   </section>
 
