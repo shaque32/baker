@@ -17,6 +17,9 @@
         "SUBJECT-1",
         "TOBY"
       ],
+      "names": [
+        "the SAMSUNG"
+      ],
       "messages": 426,
       "calls": 14,
       "contacts": 6
@@ -31,6 +34,9 @@
       "owner": "Ines Varga",
       "aliases": [
         "SUBJECT-2"
+      ],
+      "names": [
+        "the iPHONE"
       ],
       "messages": 498,
       "calls": 9,
@@ -49,9 +55,20 @@
         "CAL",
         "the COURIER"
       ],
+      "names": [
+        "the ONEPLUS"
+      ],
       "messages": 436,
       "calls": 20,
       "contacts": 7
+    }
+  ],
+  "numbers": [
+    {
+      "identifier": "+1 (720) 555-0186",
+      "names": [
+        "the BURNER"
+      ]
     }
   ],
   "sources": [

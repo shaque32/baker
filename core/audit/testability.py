@@ -95,6 +95,7 @@ from core.audit.assumption_filler import (
     coverage_gap,
     fill_schema,
     phone_digits,
+    unquoted_time_quote,
 )
 from core.audit.assumptions import Proposal, from_proposal, templates_for
 from core.audit.invariants import InvariantViolation
@@ -106,7 +107,8 @@ from core.contracts import (
     ModelRun,
     canonical_json,
 )
-from core.identity.aliases import person_names, written
+from core.identity.aliases import defined_written, in_lower_case, person_names, without_the
+from core.review import account_names
 from core.review.device_names import logged_names, name_key
 
 # 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
@@ -165,23 +167,31 @@ def _written(words: str, texts: Sequence[str]) -> str | None:
 
 
 def _alias_written(alias: str, texts: Sequence[str]) -> str | None:
-    """An alias as a text writes it, or None (core/identity/aliases.written: whole, in any
-    case, "SUBJECT 1" for "SUBJECT-1", never "SUBJECT-12")."""
-    return next((w for t in texts if (w := written(alias, t)) is not None), None)
+    """An alias as a text writes it, or None (core/identity/aliases.defined_written: whole,
+    "SUBJECT 1" for "SUBJECT-1", never "SUBJECT-12", and a name in capitals only in
+    capitals, as the filler reads it)."""
+    return next((w for t in texts if (w := defined_written(alias, t)) is not None), None)
 
 
-def _phone_written(name: str, texts: Sequence[str]) -> str | None:
+def _phone_written(name: str, texts: Sequence[str], defined: bool = False) -> str | None:
     """A phone's name as a text writes it, compared as the filler compares phone names: case
-    and spacing do not count ("Item 1" is the phone whose source is "item1")."""
+    and spacing do not count ("Item 1" is the phone whose source is "item1"), except that a
+    name the expert gave it (`defined`) in capitals counts only in capitals."""
     chars = [re.escape(ch) for ch in name_key(name)]
     if not chars:
         return None
     pattern = re.compile(r"(?<![\w@+])" + r"\s*".join(chars) + r"(?![\w])", re.IGNORECASE)
     for t in texts:
-        m = pattern.search(_nfc(t))
-        if m:
-            return m.group(0)
+        for m in pattern.finditer(_nfc(t)):
+            if not (defined and in_lower_case(name, m.group(0))):
+                return m.group(0)
     return None
+
+
+def _either(name: str) -> list[str]:
+    """A name, then the same without a leading "the" when it has one: the claim may write
+    "COURIER" for "the COURIER" (core/identity/aliases.answers)."""
+    return list(dict.fromkeys([name, without_the(name)]))
 
 
 def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lookup, str]]:
@@ -194,7 +204,8 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
     for pid, (name, aliases) in person_names(conn).items():
         parts = name.split()
         tries = [(_written, w) for w in dict.fromkeys([name, parts[-1]] if parts else [])]
-        tries += [(_alias_written, a) for a in aliases]
+        # with or without a leading "the": "COURIER" for the alias "the COURIER"
+        tries += [(_alias_written, f) for a in aliases for f in _either(a)]
         for match, words in tries:
             w = match(words, texts)
             if w is not None:
@@ -202,8 +213,10 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
                 break
     names = logged_names(conn)
     for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
-        for words in dict.fromkeys(x for x in (label, *names.get(did, []), sid, did) if x):
-            w = _phone_written(words, texts)
+        own = names.get(did, [])
+        tries = [(f, x in own) for x in (label, *own, sid, did) if x for f in _either(x)]
+        for words, defined in dict.fromkeys(tries):
+            w = _phone_written(words, texts, defined)
             if w is not None:
                 out.append((Lookup("phone", w, f"a phone ({label or did}), not an account"), did))
                 break
@@ -213,6 +226,17 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
         for m in _PHONE_RE.finditer(_nfc(t))
         if (d := phone_digits(m.group(0))) is not None
     ]
+    # A name the expert gave a number or an account ("the BURNER"): the number, never a person.
+    for ident, named_as in account_names.logged_names(conn).items():
+        holders = account_names.holders(conn, ident)
+        for words in (f for n in named_as for f in _either(n)):
+            w = _alias_written(words, texts)
+            if w is not None and holders:
+                for aid in holders:
+                    app = filler.data.accounts[aid].app if aid in filler.data.accounts else "?"
+                    what = f"an account on {app}: {ident}, as the expert named it, not a person"
+                    out.append((Lookup("account", w, what), aid))
+                break
     for a in sorted(filler.data.accounts.values(), key=lambda a: a.id):
         w = _written(a.identifier, texts) if len(a.identifier.strip()) >= MIN_NAME else None
         if w is None:
@@ -489,6 +513,9 @@ def check_answer(
             p = _ProposalOut.model_validate(item)
             if p.template_id not in allowed:
                 raise Reject(f"template {p.template_id!r} is not allowed for this claim")
+            p, note = unquoted_time_quote(claim.text, p)
+            if note:
+                reasons.append(f"item {i}: {note}")
             kept.append(filler._resolve(claim, para, p))
         except ValidationError as e:
             reasons.append(f"item {i}: wrong shape: {e.error_count()} errors")
@@ -501,7 +528,7 @@ def check_answer(
     kept = filler.code_fills(claim, para, kept, allowed, None)
     reasons += [d.reason for d in filler.drops[before:]]
     del filler.drops[before:]  # this try's refusals are the step's, not the first pass's
-    gap = coverage_gap(claim, kept, frozenset(filler._names()))
+    gap = coverage_gap(claim, kept, frozenset(filler._names()), tuple(filler._events()))
     if gap:
         return "refused", [*reasons, gap], Named(), []
     out: dict[str, Assumption] = {}
@@ -579,7 +606,7 @@ class Proposed:
 def proposals(conn: sqlite3.Connection, run: Mapping[str, Any] | None) -> dict[str, Proposed]:
     """Claim id -> the try the step proposed for it in the audit whose evidence `run` shows (a
     verdict re-run shows its source audit's), with the expert's latest decision on it."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = run.get("evidence_from_run", run["run_id"])
     out: dict[str, Proposed] = {}
@@ -680,7 +707,7 @@ def accepted_in(
     """Claim id -> (assumption ids, claim hash) of the proposal the audit `run` (or the audit a
     verdict re-run took its evidence from) used under an expert's acceptance in force then
     (`in_force`): the assumptions rules.decide_verdict gets as agent_proposed."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = str(run.get("evidence_from_run", run["run_id"]))
     return {

@@ -269,12 +269,12 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     you = page.split("<section class='group' id='you'>", 1)[1].split("</section>", 1)[0]
     assert "id=C16" in you and "id=C05" in you
     unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C06" in unp and GAP_TEXT[K.MEANING] in unp
+    assert "id=C06" in unp and GAP_TOPICS[K.MEANING] in unp  # the topic; the claim page says it
     # Next up: D03, the agent's proposal waiting for the person giving the demo.
     nextup = page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
     assert "id=D03" in nextup and html.escape(AGENT_STEP, quote=True) in nextup
     assert "Verdict not yet confirmed" not in page
-    assert "20 of 23" in page
+    assert "<a class='button' href='/claim/new'>Add a claim</a>" in page
     own = " ".join([*GAP_TEXT.values(), *GAP_TOPICS.values()]).lower()  # Baker's words, not claims'
     assert not any(w in own for w in ("guilty", "innocent", "leader", "deleted"))
     report = render_report(conn)
@@ -462,7 +462,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
-    assert "5 claims need you." in page and "18 of 23" in page  # C05, C16, D03 and these two
+    assert "5 claims need you." in page  # C05, C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):
@@ -498,7 +498,7 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
     c01 = next(s for s in claim_states(conn) if s.claim.id == "C01")  # supported by the rules
     c01_stale = dataclasses.replace(c01, case_changed_after_run=True)
     assert pages.needs_you(c01_stale) and c01_stale.explain_lines() == [STALE]
-    assert STALE[1] in pages._claim_row(c01_stale, "you")
+    assert STALE[0] in pages._claim_row(c01_stale, "you")
     assert pages._group(c01_stale) == "you"
     # every core assumption covered, yet unproven by another rule: one line points to the rule
     from core.review.status import OTHER_RULE
@@ -507,11 +507,11 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
     full = dataclasses.replace(st, decision=st.decision.model_copy(update={"coverage": covered}))
     assert full.gaps() == [] and full.explain_lines() == [OTHER_RULE]
     # a claim that also waits on the expert still says what else leaves it unproven
-    from core.review.status import GAP_TEXT
+    from core.review.status import GAP_TEXT, GAP_TOPICS
     from ui import pages
 
     row = pages._claim_row(dataclasses.replace(st, ai_dismissed=1), "you")
-    assert html.escape(GAP_TEXT[K.MEANING], quote=True) in row
+    assert html.escape(GAP_TOPICS[K.MEANING], quote=True) in row
 
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
@@ -581,7 +581,10 @@ def test_the_claim_page_leads_with_what_has_to_be_true_and_shows_records_in_conv
     assert "Covered (computed by the rules)" in working and "What was searched" in working
     c05 = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
     assert "<div class='thread mini'>" in c05 and "This record</span>" in c05
-    assert "Records found (derived)" in c05 and "Quoted:" in c05
+    assert "Records found (derived)" in c05
+    # the verified quote is the whole highlighted message, so no separate "Quoted:" line repeats it
+    target = c05.split("<div class='msg out target'>", 1)[1].split("</div></div>", 1)[0]
+    assert "need 2 more by friday</span></div>" in target and "Quoted:" not in c05
     for page in (c05, c06):  # Baker's own words in the checklist
         truths = page.split("<section class='truths'>", 1)[1].split("</section>", 1)[0]
         text = re.sub(r"<[^>]+>", " ", truths).lower()
@@ -616,8 +619,9 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     home = app.handle(Request("GET", "/", {}, dict(HOST))).body.decode()
     nav = home.split("<nav class='tabs'>", 1)[1].split("</nav>", 1)[0]
     hrefs = re.findall(r"<a href='([^']*)'", nav)
-    tabs = [h for g in pages.TAB_GROUPS for h, _ in g] + ["/help"]
+    tabs = [h for g in pages.TAB_GROUPS for h, _ in g]
     assert hrefs[-len(tabs) :] == tabs
+    assert "<a href='/help' class='help'>Help</a>" in home  # Help sits in the sidebar's foot
     assert nav.count("class='sep'") >= 2 and "class=on>Case</a>" in nav
     assert home.index("<div class='casestatus'>") < home.index("<details class='custody'>")
     custody = home.split("<details class='custody'>", 1)[1].split("</details>", 1)[0]
@@ -628,7 +632,73 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]
     groups = Counter(pages._group(st) for st in claim_states(connect(case.db)))
     assert f"{groups['you']} claims need you</a>" in status  # the Claims screen's own grouping
-    for g, name, _sub in pages.GROUPS:
+    for g, name in pages.GROUPS:
         if g != "you" and groups[g]:
             link = f"<a href='/claims#{g}'><span class='name t-{g}'>{name}</span> "
             assert f"{link}<b>{groups[g]}</b>" in status, g
+
+
+def test_the_why_fold_leads_with_plain_lines_and_keeps_the_rules_text(root):
+    """Each verdict reason gets a plain first line (core/report/why.py): names for ids, records as
+    links, times in the claim's zone. The rules' text stays whole under Technical details with the
+    rule version and run, and the report keeps printing it. Display only: no verdict changes."""
+    case = _case(root)
+    conn = connect(case.db)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    run = pipeline.last_run(conn)["run_id"]
+    report = render_report(conn)
+    for claim_id in _claim_ids():
+        page = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST))).body.decode()
+        reasons = json.loads(
+            conn.execute(
+                "SELECT reasons_json FROM verdicts WHERE claim_id = ? AND pipeline_run_id = ?",
+                (claim_id, run),
+            ).fetchone()[0]
+        )
+        fold = page.split("<details class='why'>", 1)[1]
+        plain = fold.split("<details class='why-tech'>", 1)[0]
+        tech = fold.split("<details class='why-tech'>", 1)[1].split("</details>", 1)[0]
+        # every reason, exactly as the rules stored it; words quoted from the claim are marked
+        # as cited (core/report/names.Names.cite), which changes no character of the text
+        shown = re.sub(r'<span class="q">([^<]*)</span>', r"\1", tech)
+        for reason in reasons:
+            assert f"<li>{html.escape(reason)}</li>" in shown, (claim_id, reason)
+        assert "Rule version 0." in tech and run in tech
+        assert tech.count("<li>") == len(reasons)
+        text = re.sub(r"<span class=\"q\">.*?</span>", " ", plain)  # cited text is not ours
+        text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+        assert "Rule " not in text and "person:dev:" not in text and "stip:" not in text, claim_id
+        for word in ("guilty", "innocent", "leader", "deleted"):
+            assert word not in text.lower(), (claim_id, word)
+
+    c10 = app.handle(Request("GET", "/claim", {"id": "C10"}, dict(HOST))).body.decode()
+    plain = c10.split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    flat = html.unescape(re.sub(r"<[^>]+>", "", plain))
+    assert (
+        "Both phones record the message at 9:31 PM on March 4, 2026 (New York time), not "
+        "“At 2:31 a.m. on March 5, 2026” as the claim states." in flat
+    )
+    assert "prints it in UTC as “3/5/2026 2:31:00 AM(UTC+0)”" in flat
+    assert "href='/selection/context?id=msg%3Aitem1%3AChats%211011'" in plain
+    assert "Rule 1a: check time failed on" in report  # the report keeps the full trail
+
+    c19 = app.handle(Request("GET", "/claim", {"id": "C19"}, dict(HOST))).body.decode()
+    plain = c19.split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    assert plain.count("<li>") == 1 and "5 records contradict this" in plain
+    assert "An expert accepted each." in plain
+
+
+def test_a_phone_named_with_a_blocked_word_keeps_the_claim_page_open(root):
+    """An expert may name a phone anything the document calls it. The Why lines print that name
+    as the case's text, so the forbidden-word check reads it as cited and the page still opens."""
+    case = _case(root)
+    conn = connect(case.db)
+    actions.name_device(conn, "dev:item1", ["Leader's phone"], EXPERT)
+    conn.commit()
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    resp = app.handle(Request("GET", "/claim", {"id": "C10"}, dict(HOST)))
+    assert resp.status == 200
+    plain = resp.body.decode().split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    assert '<span class="q">Leader&#x27;s phone</span> prints it in UTC' in plain

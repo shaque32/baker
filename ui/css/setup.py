@@ -95,4 +95,7 @@ ul.ready li.todo::before { box-shadow: inset 0 0 0 1.5px var(--accent); }
 details.options { margin: 0 0 14px; }
 details.options > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
 details.options[open] > summary { margin-bottom: 10px; }
+
+/* Files: why Records differs from the rows imported, under the number */
+table.files .rec-note { display: block; white-space: normal; font-size: 12.5px; max-width: 14rem; }
 """

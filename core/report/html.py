@@ -85,7 +85,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import challenge, invariants, rules, testability
+from core.audit import case_events, challenge, invariants, rules, testability
 from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
@@ -107,7 +107,8 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.review import activity, audit_log, device_names
+from core.report.fmt import e, q, said
+from core.review import account_names, activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
     CONTRADICTION_FOUND,
@@ -117,6 +118,7 @@ from core.review.status import (
     ClaimState,
     case_holdings,
     claim_states,
+    signoff,
 )
 from core.review.status import verdict_label as _verdict_label
 from core.review.withheld import Withheld
@@ -204,7 +206,20 @@ from core.review.withheld import summary as withheld_summary
 # summary table is narrower. No wording, fact or section changed.
 # 0.30.0: Limitations list each other name the expert gave a person for the document
 # ("SUBJECT-1", "HAL"), with who gave it and when (core/identity/aliases.py, schema 0.6.0).
-REPORT_VERSION = "0.30.0"
+# 0.31.0: Limitations list each event the expert entered for the document ("the SEARCH"), with
+# its days, the paragraph and words that define it, and who entered it and when
+# (core/audit/case_events.py, schema 0.7.0).
+# 0.32.0: Limitations list each name the expert gave a number or an account for the document
+# ("the BURNER"), with who gave it and when, and that it names the number only, never a person
+# (core/review/account_names.py).
+# 0.33.0: words an assumption, check line or verdict reason quotes from a claim print as cited,
+# so a claim that quotes "It's been deleted." no longer stops the report (validation run 3).
+# 0.34.0: those words are cited only as whole words, and a claim's own lines cite only that
+# claim's quotes (a word another claim quotes is still checked as the tool's own).
+# 0.35.0: a claim's verdict sign-off reads "Verdict confirmed by <name>, <time> UTC" (or
+# overridden, or kept from the earlier run), apart from "expert-confirmed" evidence; a report
+# made on the screen opens with the case, the examiner and when it was made (`header`).
+REPORT_VERSION = "0.35.0"
 
 
 @dataclass(frozen=True)
@@ -331,21 +346,6 @@ details summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var
   .noprint { display: none; }
 }
 """
-
-
-def q(text: object) -> str:
-    """A cited span: text from the government document or the evidence, not the tool's words."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def said(text: object) -> str:
-    """A reason or note an expert typed, as they wrote it. Never for Mabillon's or a model's
-    text."""
-    return f'<span class="said">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 def withheld_word(word: str) -> str:
@@ -500,7 +500,7 @@ def verdict_trace(
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
     marks = marks or {}
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(st.claim.text)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -724,6 +724,15 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"{q(label)} ({e(did)}). Mabillon did not verify it. Every claim that names the "
             "phone this way was audited on that device.</li>"
         )
+    for ident, by, at, names in account_names.named_by(conn):
+        said = ", ".join(q(n) for n in names)
+        items.append(
+            "<li><strong>Which number or account the document means is an expert statement, not "
+            f"a finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
+            f"{q(ident)}. Mabillon did not verify it. A claim that names it this way was audited "
+            "on the accounts that hold that number or id. The name says nothing about who used "
+            "it.</li>"
+        )
     people = dict(conn.execute("SELECT id, name FROM persons"))
     given: dict[tuple[str, str, str], list[str]] = {}
     for a in aliases.stored(conn):
@@ -735,6 +744,40 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
             f"{q(people.get(pid, pid))}. Mabillon did not verify it. Every claim that names the "
             "person this way was audited as that person.</li>"
+        )
+    paras = {
+        pid: (label, page)
+        for pid, label, page in conn.execute("SELECT id, label, page FROM govdoc_paragraphs")
+    }
+    readable = {ev.name for ev in case_events.readable(conn)}
+    for ev in case_events.stored(conn):
+        days = ev.first_day.isoformat() + ("" if ev.one_day else f" to {ev.last_day.isoformat()}")
+        if ev.name not in readable:
+            # a name a person, an alias or another event also matches dates nothing
+            # (case_events.readable), so the report never says a claim was dated by it
+            dated = (
+                "This name also matches a person, an alias or another event, so Mabillon "
+                "dated no claim by it."
+            )
+        elif not ev.one_day:
+            dated = "Mabillon dates no claim by an event of more than one day."
+        else:
+            dated = (
+                "For a claim the audit dated by this event, code set the day from the "
+                "expert's day and the tie the claim writes (the day of, the day before or "
+                "after, or a number of days before or after), as a whole day in the phone's "
+                "zone."
+            )
+        label, page = paras.get(ev.paragraph_id, (None, None))
+        where = (f"paragraph {e(label)}" if label else f"paragraph {e(ev.paragraph_id)}") + (
+            f", page {e(page)}" if page is not None else ""
+        )
+        items.append(
+            "<li><strong>When a defined event happened is an expert statement, not a finding."
+            f"</strong> {e(ev.created_by)} said on {e(ev.created_at_utc)} that the document's "
+            f"{q(ev.name)} is {e(days)}, from {where}: {q(ev.defined_as)}. Mabillon checked "
+            f"that these words are the paragraph's own, not that the event happened then. {dated}"
+            "</li>"
         )
     for app, ident, person, by, at in conn.execute(
         "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"
@@ -921,7 +964,7 @@ def _claim_block(
     assumptions that audit took from the testability step (repair_marks)."""
     marks = marks or {}
     claim, decision = st.claim, st.decision
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(claim.text)
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
         f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
@@ -958,9 +1001,10 @@ def _claim_block(
             f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
             f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
         )
-        if decision.confirmed_by:
+        signed = signoff(conn, decision)
+        if signed:
             note = f" Note: {said(decision.override_note)}" if decision.override_note else ""
-            out.append(f"<p>Verdict reviewed by {e(decision.confirmed_by)}.{note}</p>")
+            out.append(f"<p class='signoff'><strong>{e(signed)}</strong>{note}</p>")
     coverage = {cv.assumption_id: cv for cv in (decision.coverage if decision else ())}
 
     if st.assumptions:
@@ -1224,13 +1268,26 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     return "".join(out)
 
 
+@dataclass(frozen=True)
+class Header:
+    """Who made a report, for which case and when: printed under the title of a report made on
+    the screen, so two cases' reports can be told apart. A bundle's report leaves it out (its
+    report must re-render from the tables alone)."""
+
+    case_name: str
+    examiner: str | None
+    made_at_utc: datetime
+
+
 def render_report(
     conn: sqlite3.Connection,
     timeline: timeline_html.Settings | None = None,
     scope: BundleScope | None = None,
+    header: Header | None = None,
 ) -> str:
     """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None.
-    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py)."""
+    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py).
+    header: the case, examiner and time, for a report made on the screen."""
     srcs = sources(conn)
     run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
@@ -1246,6 +1303,13 @@ def render_report(
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Mabillon claims report</h1>",
+        (
+            ""
+            if header is None
+            else f"<p class='made'>Case {q(header.case_name)} · "
+            + (f"prepared by {said(header.examiner)}" if header.examiner else "examiner not named")
+            + f" · made {e(header.made_at_utc.strftime('%Y-%m-%d %H:%M'))} UTC</p>"
+        ),
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"

@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Any
 
 from core import db, encryption, pipeline
-from core.audit import challenge, quotes, rules, stance, testability
+from core.audit import case_events, challenge, quotes, rules, stance, testability
 from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
@@ -233,6 +233,7 @@ def _checks(
     _stipulations(conn, out)
     _identity(conn, out)
     _aliases(conn, out)
+    _events(conn, out)
     _challenge(conn, run, manifest, out)
     _testability(conn, run, manifest, out)
     _verdicts(conn, run, out)
@@ -611,9 +612,18 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
     logged: dict[str, str] = {}
     payloads: dict[str, dict[str, Any]] = {}
     for _seq, _at, _actor, action, p in _log(conn):
-        if action == "import" and isinstance(p.get("source_id"), str):
-            logged[p["source_id"]] = str(p.get("sha256"))
-            payloads[p["source_id"]] = p
+        sid = p.get("source_id")
+        if not isinstance(sid, str):
+            continue
+        if action == "import":  # the importer's own entry, with the coverage record
+            logged[sid] = str(p.get("sha256"))
+            payloads[sid] = p
+        elif action == "case.import" and isinstance(p.get("sha256"), str):
+            # The screen's import (any kind, the government document included) logs its hash.
+            logged.setdefault(sid, p["sha256"])
+        elif action == "case.remove_file":  # taken back out before the first audit
+            logged.pop(sid, None)
+            payloads.pop(sid, None)
     bad = False
     for sid, sha in sorted(stored.items()):
         if sid in logged and logged[sid] != sha:
@@ -650,39 +660,43 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
         bad = True
     unlogged = sorted(set(stored) - set(logged))
     if not bad:
-        out.add(PASS, "inputs", f"{len(stored)} input hashes match the import log")
-    if unlogged:
+        n = len(set(stored) & set(logged))
+        out.add(PASS, "inputs", f"{n} input hash{'' if n == 1 else 'es'} match the import log")
+    matched: set[str] = set()
+    if inputs_dir is None:
+        out.add(NOTE, "inputs", "original files not checked (pass --inputs <folder>)")
+    elif not Path(inputs_dir).is_dir():
+        out.add(FAIL, "inputs", f"{inputs_dir} is not a folder, so no original file was checked")
+    else:
+        found: dict[str, str] = {}
+        for f in sorted(Path(inputs_dir).rglob("*")):
+            if f.is_file():
+                found[export._file_sha256(f)] = f.name
+        for sid, sha in sorted(stored.items()):
+            name = conn.execute("SELECT file_name FROM sources WHERE id = ?", (sid,)).fetchone()[0]
+            if sha in found:
+                matched.add(sid)
+                out.add(PASS, "inputs", f"{name}: the original file matches its recorded SHA-256")
+            elif any(n == name for n in found.values()):
+                out.add(
+                    FAIL,
+                    "inputs",
+                    f"{name}: a file of that name is there, but its SHA-256 "
+                    "differs from the one recorded on import",
+                )
+            else:
+                out.add(NOTE, "inputs", f"{name}: not among the files given")
+    # A source with no import entry (a case made before imports were logged) is only a note,
+    # and none is needed once its original file matched.
+    unchecked = [sid for sid in unlogged if sid not in matched]
+    if unchecked:
         out.add(
             NOTE,
             "inputs",
             "no import entry in the log for "
-            + ", ".join(unlogged)
-            + " (the government document's import is not logged); compare its hash with "
-            "the original file",
+            + ", ".join(unchecked)
+            + "; compare its hash with the original file (pass --inputs <folder>)",
         )
-    if inputs_dir is None:
-        out.add(NOTE, "inputs", "original files not checked (pass --inputs <folder>)")
-        return
-    if not Path(inputs_dir).is_dir():
-        out.add(FAIL, "inputs", f"{inputs_dir} is not a folder, so no original file was checked")
-        return
-    found: dict[str, str] = {}
-    for p in sorted(Path(inputs_dir).rglob("*")):
-        if p.is_file():
-            found[export._file_sha256(p)] = p.name
-    for sid, sha in sorted(stored.items()):
-        name = conn.execute("SELECT file_name FROM sources WHERE id = ?", (sid,)).fetchone()[0]
-        if sha in found:
-            out.add(PASS, "inputs", f"{name}: the original file matches its recorded SHA-256")
-        elif any(n == name for n in found.values()):
-            out.add(
-                FAIL,
-                "inputs",
-                f"{name}: a file of that name is there, but its SHA-256 "
-                "differs from the one recorded on import",
-            )
-        else:
-            out.add(NOTE, "inputs", f"{name}: not among the files given")
 
 
 # ---------------------------------------------------------------- the run
@@ -1035,6 +1049,12 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     is missing."""
     log = _log(conn)
     origins, logged = _claim_origins(log)
+    for seq, _a, _c, act, p in log:  # a removed file's proposed claims went with it
+        if act == "case.remove_file":
+            for cid in p.get("claims_removed") or []:
+                if origins.get(cid, (-1,))[0] < seq:
+                    origins.pop(cid, None)
+                    logged.discard(cid)
     bad = unbound = edited = 0
     stored = pipeline._stored(conn, "claims", "1 = 1 ORDER BY id", ())
     for row in (dict(r) for r in stored):
@@ -1176,6 +1196,10 @@ def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
         elif act == "stipulation.withdraw":
             old = state.get(p.get("stipulation_id"), ("", "", "", None))
             state[p.get("stipulation_id")] = ("rejected", actor, at, old[3])
+        elif act == "case.remove_file":  # a withdrawn stipulation goes with its phone's file
+            for sid in p.get("stipulations_removed") or []:
+                state.pop(sid, None)
+                person.pop(sid, None)
     bad = 0
     stored = pipeline.load_stipulations(conn)
     names = dict(conn.execute("SELECT id, name FROM persons"))
@@ -1216,7 +1240,8 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
     """Each identity link is what the logged actions left: proposed by the proposer
     (identity.propose) and undecided, or decided by the expert (identity.decide, identity.link)
     with that status, tier, expert and time; and a link the log still holds is not missing.
-    Removals are logged too (identity.propose's removed, person.remove)."""
+    Removals are logged too (identity.propose's removed, person.remove, and case.remove_file
+    for the links not confirmed on a removed file's accounts)."""
     state: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     basis: dict[str, str] = {}
     person_names: dict[str, Any] = {}  # person id -> the name its logged action gave
@@ -1239,9 +1264,10 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
             basis.setdefault(lid, f"Linked by {actor}: {str(p.get('note', '')).strip()}")
         elif act == "identity.decide":
             state[p.get("link_id")] = (str(p.get("status")), actor, at, None)
-        elif act == "person.remove":
+        elif act in ("person.remove", "case.remove_file"):
             for lid in p.get("links_removed") or []:
                 state.pop(lid, None)
+                basis.pop(lid, None)  # a link made again later has its own basis
     bad = 0
     stored = conn.execute(
         "SELECT id, account_id, person_id, status, tier, basis, decided_by, decided_at_utc"
@@ -1320,6 +1346,70 @@ def _aliases(conn: sqlite3.Connection, out: _Out) -> None:
         bad += 1
     if stored and not bad:
         out.add(PASS, "aliases", f"{len(stored)} aliases match the expert's logged actions")
+
+
+def _events(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each stored defined event is one the expert's logged actions left: added
+    (case.event.add) and not since removed (case.event.remove), with the same days, paragraph
+    and defining words, by that expert, at that time; and its defining words are still the
+    paragraph's own. An event the log still holds is not missing."""
+    state: dict[str, dict[str, Any]] = {}  # event key -> the logged entry, with by and at
+    for _s, at, actor, act, p in _log(conn):
+        k = case_events.key(str(p.get("name", "")))
+        if act == case_events.ADD_ACTION:
+            state[k] = {**p, "by": actor, "at": at}
+        elif act == case_events.REMOVE_ACTION:
+            state.pop(k, None)
+    stored = case_events.stored(conn)
+    paras = dict(conn.execute("SELECT id, text FROM govdoc_paragraphs"))
+    bad = 0
+    for ev in stored:
+        logged = state.get(case_events.key(ev.name))
+        held = (
+            ev.name,
+            ev.first_day.isoformat(),
+            ev.last_day.isoformat(),
+            ev.paragraph_id,
+            ev.defined_as,
+            ev.created_by,
+        )
+        if (
+            logged is None
+            or held
+            != tuple(
+                str(logged.get(f))
+                for f in ("name", "first_day", "last_day", "paragraph_id", "defined_as", "by")
+            )
+            or _dt(ev.created_at_utc) != _dt(str(logged["at"]))
+        ):
+            out.add(
+                FAIL,
+                "case events",
+                f"the event {ev.name!r} is not what the expert's logged actions left (days, "
+                "paragraph, words, expert or time)",
+            )
+            bad += 1
+        elif case_events.plain(ev.defined_as) not in case_events.plain(
+            paras.get(ev.paragraph_id, "")
+        ):
+            out.add(
+                FAIL,
+                "case events",
+                f"the event {ev.name!r}: its defining words are not in paragraph {ev.paragraph_id}",
+            )
+            bad += 1
+    held_keys = {case_events.key(ev.name) for ev in stored}
+    for k in sorted(set(state) - held_keys):
+        out.add(
+            FAIL,
+            "case events",
+            f"the log records the event {state[k].get('name')!r}, but it is missing",
+        )
+        bad += 1
+    if stored and not bad:
+        out.add(
+            PASS, "case events", f"{len(stored)} defined events match the expert's logged actions"
+        )
 
 
 # ---------------------------------------------------------------- challenge step
@@ -1506,9 +1596,12 @@ _REPAIR_INPUTS = frozenset(
         "person.remove",
         aliases.ADD_ACTION,
         aliases.REMOVE_ACTION,
+        case_events.ADD_ACTION,  # the filler checks each try's window by the events
+        case_events.REMOVE_ACTION,
         "stipulation.confirm",
         "stipulation.withdraw",
         "device.names",
+        "account.names",  # the filler reads a claim's number by the expert's names for it
         "case.import",
         "import",
         "import.format",
@@ -1850,7 +1943,7 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     stipulations = _stipulations_at(conn, log, run, stip_position)
     actions = defaultdict(list)
     for _s, _a, actor, act, p in log:
-        if act in ("verdict.override", "verdict.confirm"):
+        if act in ("verdict.override", "verdict.confirm", "verdict.carry"):
             actions[p.get("verdict_id")].append((actor, act, p))
     decided_at = _decided_at(log, run)
     accepted = testability.accepted_in(conn, run)  # rules 0.4.0: the step's proposals it used
@@ -1891,7 +1984,10 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             out.add(FAIL, "verdicts", f"{claim_id}: {problem}")
             continue
         n += 1
-        overridden += any(a == "verdict.override" for _x, a, _p in actions.get(stored.id, []))
+        overridden += any(
+            a == "verdict.override" or (a == "verdict.carry" and p.get("note") is not None)
+            for _x, a, p in actions.get(stored.id, [])
+        )
     if untimed:
         out.add(
             NOTE,
@@ -1935,7 +2031,13 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
     by: str | None = None
     note: str | None = None
     for actor, act, p in actions:
-        if act == "verdict.override":
+        if act == "verdict.carry":  # an earlier run's decision, kept by a verdict re-run
+            carried = Verdict(p["verdict"])
+            if carried != verdict:  # the expert had overridden the rules' verdict
+                verdict = carried
+                basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
+            by, note = p.get("confirmed_by"), p.get("note")
+        elif act == "verdict.override":
             verdict = Verdict(p["verdict"])
             basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
             by, note = actor, p.get("note")

@@ -96,6 +96,44 @@ def report(rng: random.Random, s: str, o: str, p: str, *, group: bool = False,
     return f"{when}, {plain(s, o, p)}"
 
 
+# Reports whose words exclude every such message (con_never_told, guide rules 12 and 23), as
+# (s, o, p) -> text with no time, and (s, o, p, w) -> text for a time phrase w that holds the
+# record, or None: one message that says p rules each of them out. The verbs are the report
+# frames' own, so "never" and the time, not the verb, carry the answer.
+NEVER_ONE_TO_ONE: tuple[Report, ...] = (
+    (lambda s, o, p: f"{s} never told {o} that {p}",
+     lambda s, o, p, w: f"{s} did not tell {o} {w} that {p}", 3),
+    (lambda s, o, p: f"{s} never wrote that {p}",
+     lambda s, o, p, w: f"{s} did not write {w} that {p}", 2),
+    (lambda s, o, p: f"{s} never texted {o} that {p}",
+     lambda s, o, p, w: f"{s} did not text {o} {w} that {p}", 1),
+    (lambda s, o, p: f"{s} never said that {p}",
+     lambda s, o, p, w: f"{s} did not say {w} that {p}", 1),
+    (lambda s, o, p: f"{s} never wrote to {o} that {p}",
+     lambda s, o, p, w: f"{s} did not write to {o} {w} that {p}", 0.5),
+    (lambda s, o, p: f"at no point did {s} tell {o} that {p}", None, 0.5),
+    (lambda s, o, p: f"{s} never let {o} know that {p}", None, 0.3),
+)  # fmt: skip
+NEVER_GROUP: tuple[Report, ...] = (
+    (lambda s, o, p: f"{s} never wrote in the group chat that {p}",
+     lambda s, o, p, w: f"{s} did not write in the group chat {w} that {p}", 2),
+    (lambda s, o, p: f"{s} never told the group that {p}",
+     lambda s, o, p, w: f"{s} did not tell the group {w} that {p}", 2),
+    (lambda s, o, p: f"at no point did {s} tell the group that {p}", None, 0.5),
+)  # fmt: skip
+
+
+def never(rng: random.Random, s: str, o: str, p: str, *, group: bool = False,
+          when: str | None = None) -> str:  # fmt: skip
+    """'{s} never told {o} that {p}', or with a time phrase that holds the record, '{s} did not
+    tell {o} {w} that {p}'; a group chat frame names the group (rule 11)."""
+    bank = NEVER_GROUP if group else NEVER_ONE_TO_ONE
+    if when is not None:
+        bank = tuple(r for r in bank if r[1] is not None)
+    plain, mid, _ = rng.choices(bank, [w for *_, w in bank])[0]
+    return plain(s, o, p) if when is None or mid is None else mid(s, o, p, when)
+
+
 def says(rng: random.Random, s: str, o: str, p: str, *, group: bool = False,
          when: str | None = None) -> str:  # fmt: skip
     """The message as the subject: 'the message X sent on May 2, 2025 says that ...'."""

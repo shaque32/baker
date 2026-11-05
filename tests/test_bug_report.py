@@ -163,7 +163,7 @@ def test_help_page_shows_contact_and_the_same_report_without_a_case(tmp_path: Pa
     page = r.text
     assert SUPPORT_EMAIL in page and "the Mabillon team sets the real address" not in page
     assert "/help/bug-report.json" in page and "Never send case content" in page
-    assert "takes the scrolling, not the judgment" in page
+    assert "verification layer on top of Cellebrite and AXIOM" in page
     low = page.lower()
     assert "<script" not in low and " src=" not in low
     assert r.header("Referrer-Policy") == "same-origin"
@@ -218,10 +218,11 @@ def test_an_unexpected_screen_error_is_kept_without_its_message(tmp_path: Path, 
     monkeypatch.setattr(server.app, "handle", boom)  # type: ignore[attr-defined]
     try:
         port = server.server_address[1]
+        key = server.key  # type: ignore[attr-defined]
         t = threading.Thread(target=server.handle_request)
         t.start()
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request("GET", "/claims")
+        c.request("GET", "/claims", headers={"Cookie": f"{key.cookie_name}={key.value}"})
         r = c.getresponse()
         body = r.read().decode()
         t.join(10)

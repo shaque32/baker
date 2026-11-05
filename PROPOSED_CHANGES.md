@@ -1083,3 +1083,83 @@ setup page, the report's limitations, "Not current" after an event change, the f
 the allow list above, the eval's case setup reading events from
 a case.json that has them (case04 and case05 left as built), the contracts version test, and
 tests that fail first.
+SIGNED by Arsh on 2026-11-01 at 18:47Z ("approve", validation thread), in reply to the request
+to sign this entry. APPLIED on claude/project-thread-ds0ify: the three edits above, with <date>
+as 2026-11-01, and nothing else in either file.
+
+## 2026-11-01 claude/project-thread-lt1vdp: sign stance labeling guide v0.4 (told frames, undated denials, "never told")
+File: eval/gold/stancedata/LABELING_GUIDE.md and eval/gold/stancedata/README.md (the signed copy
+and its pin table), with the matching pin in tests/test_gold_stancedata.py
+Why: draft v0.4 of `eval/stancedata/LABELING_GUIDE.md` adds three families with a fixed answer,
+`ovr_told_frame` and `ovr_undated_denial` (complicates traps) and `con_never_told`
+(contradicts), which the training generator eval.train 1.6.0 writes. Its last section, "Changes
+from v0.3, for Arsh to sign", lists every change and the calls to sign: an act dated after a
+denial that names no time stays open, a "never told" report is ruled out by one message that
+says it, and three cases stay out of the data until Arsh decides them. Until the signed copy
+and its pins match the draft, two tests in tests/test_gold_stancedata.py fail by design, so the
+PR cannot merge without Arsh's signature. `eval/gold/` is human-owned. Nothing else there changes:
+GO_BAR.md already counts both traps as moved (since 2026-10-15), and the glossaries are
+unchanged and stay signed.
+Diff: once Arsh signs, on the PR branch from the repo root, with DATE, TIME (UTC) and COMMIT
+(the commit Arsh signed) filled in:
+   python3 - <<'PY'
+   from pathlib import Path
+   draft = Path("eval/stancedata/LABELING_GUIDE.md").read_text(encoding="utf-8")
+   head = """# Labeling guide for generated stance data
+
+   SIGNED by Arsh on DATE ("approved" in the "Plan a faster, sharper audit engine" thread, TIME
+   UTC). This is draft v0.4 of `eval/stancedata/LABELING_GUIDE.md`, unchanged below this
+   paragraph since commit COMMIT. It replaces v0.3, signed on 2026-10-14. The calls on its list of
+   changes are decided as written: an act dated after a denial that names no time stays open, a
+   "never told" report is ruled out by one message that says it, and three cases stay out of the
+   data until Arsh decides them. The Russian-English pairs in `eval/train/glossary.py` and
+   `eval/heldout/glossary.py` (rule 6) are unchanged since v0.2 and stay signed. `README.md` next
+   to this file pins all three files by SHA-256.
+   """
+   head = "\n".join(line.removeprefix("   ") for line in head.splitlines()) + "\n"
+   body = draft.partition("\nSYNTHETIC.")[2]
+   Path("eval/gold/stancedata/LABELING_GUIDE.md").write_text(head + "\nSYNTHETIC." + body,
+                                                            encoding="utf-8")
+   PY
+   sha256sum eval/stancedata/LABELING_GUIDE.md
+In eval/gold/stancedata/README.md:
+-`LABELING_GUIDE.md` is the stance-data labeling guide, draft v0.3, signed by Arsh on 2026-10-14
+-("approved" in the "Custom model for Baker" thread, 21:16 UTC), with the three calls on its
+-sign-off page decided as written. It replaces v0.2, signed on 2026-10-12. Below its header it is
++`LABELING_GUIDE.md` is the stance-data labeling guide, draft v0.4, signed by Arsh on DATE
++("approved" in the "Plan a faster, sharper audit engine" thread, TIME UTC), with the calls on
++its list of changes decided as written. It replaces v0.3, signed on 2026-10-14, which replaced
++v0.2 (2026-10-12). Below its header it is
+-| `eval/stancedata/LABELING_GUIDE.md` | `40b8618456d264dd5f97377f9f94ceef50a4a05cd6c1d8ecb8f63e8a497c09a2` |
++| `eval/stancedata/LABELING_GUIDE.md` | `<the sha256sum printed above>` |
+In tests/test_gold_stancedata.py, the same SHA-256 for "eval/stancedata/LABELING_GUIDE.md", and
+the comment above it: "Pinned when Arsh signed guide v0.4 on DATE (v0.3: 2026-10-14)". Then
+`python -m pytest -q tests/test_gold_stancedata.py` passes (2 tests). The pin is the draft's
+SHA-256 at the commit Arsh signs, so a review change made after the signature needs a new one.
+SIGNED by Arsh on 2026-11-01 at 18:47Z ("Sign v0.4 as written" on a decision card, project
+thread "Plan a faster, sharper audit engine"), the draft as it stood at commit 78682cf. APPLIED
+on claude/project-thread-lt1vdp (#199) with DATE=2026-11-01, TIME=18:47 and COMMIT=78682cf: a
+copy of the draft with its header edited, which gives the same file as the script above, with
+the card's words in place of "approved" (in the gold README too) and the lines rewrapped. The
+draft's own header now says signed, above its SYNTHETIC line and so outside the signed text,
+and the pin is that file's SHA-256, `4dafbb8560fa862685a31320f346f1e38bab7eb00ecfe2de2f60876114f7ede1`.
+Below the headers both copies are the text at 78682cf byte for byte, and the two tests pass.
+
+## 2026-11-03 claude/project-thread-6i2msb-case-setup: sign the testability prompt v1.1
+File: core/audit/prompts/agent_testability.md (signed v1.0; human-owned)
+Why: step 3 of plans/testability-pass.md (Arsh chose "Phone designations, then replay" on
+2026-11-03 and wrote "i need this to work"). In the case05 go/no-go (NO-GO, conversion 5 of 33)
+the second try repeated the first exactly on 23 of the 29 claims that had two, a name the affidavit
+gives a number went in "people", a phone and an app went in "accounts", and on calls the
+claim's own sentence went in "quoted_text". Draft v1.1 (`docs/prompts/agent_testability.md`)
+writes out rules the templates already have; its header lists each change. It is written
+generally: its one example name ("TARGET TELEPHONE 2") is no case's. The eval can run the draft
+now (`--testability-prompt docs/prompts/agent_testability.md`), reported as a draft with no
+go/no-go; the case06 go/no-go needs the signed copy.
+Diff: once Arsh signs, replace everything from `<!-- prompt starts -->` down in
+`core/audit/prompts/agent_testability.md` with the draft's text from that line down (the same
+bytes as in `docs/prompts/agent_testability.md` at the commit Arsh signs), keeping the six
+placeholders, and change the header's second line to "v1.1, signed by Arsh on <date> from the
+docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28)." The draft's header then says
+signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md) <(sed -n
+'/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.

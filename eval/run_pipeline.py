@@ -13,7 +13,8 @@ Steps, all through the product's own code:
 3. Render the mock affidavit to PDF and import it with the govdoc ingester.
 4. Enter the gold claims as expert-entered claims (the "gold claims" eval mode: claim
    extraction is scored separately and does not gate the alpha).
-5. Record the device-ownership stipulation from case.json.
+5. Record the device-ownership stipulation from case.json, and the other names the document
+   gives each owner, phone and number, and the events it defines, as the expert enters them.
 6. Run the audit, then write predictions.jsonl and report.html.
    With the simulated expert (eval/simulated_expert.py), the first pass is the unreviewed run
    (written to <out>/unreviewed/); the expert then accepts or dismisses every labeled item
@@ -59,6 +60,11 @@ Modes:
                     is printed after the run and written to <out>/go_no_go.json; a decision
                     needs Arsh's X, Y, cap and least denominator, a held-out case, --expert
                     rubber-stamp and --repeat.
+  --no-stance       with --testability only: a dev check of the assumption filler and the step.
+                    No stance model runs: a stand-in labels every candidate irrelevant, with no
+                    model call, so verdicts mean nothing and the run gives no go/no-go. It takes
+                    the model's filler and step calls only (about 1 to 2 hours on the M4 Air
+                    for a 48-claim case, unmeasured). Output in <out>/no_stance/.
   --expert none     skip the simulated expert: one pass, no expert decisions (model-free and
                     real only; under rules 0.2.0 nothing can then be SUPPORTED).
   --reviewer none   every supporting item is dismissed, so nothing can be SUPPORTED. Shows what
@@ -267,7 +273,36 @@ def build_case(case: str, db_path: Path) -> object:
         if d.get("aliases"):
             owner = f"person:dev:{d['source_id']}:owner"
             actions.set_aliases(conn, owner, d["aliases"], STIPULATION_ACTOR, _clock)
+    for d in meta["devices"]:  # the document's names for each phone ("the SAMSUNG")
+        if d.get("names"):
+            dev = f"dev:{d['source_id']}"
+            actions.name_device(conn, dev, d["names"], STIPULATION_ACTOR, _clock)
+    for n in meta.get("numbers", []):  # and for a number ("the BURNER"), never a person
+        actions.name_account(conn, n["identifier"], n["names"], STIPULATION_ACTOR, _clock)
+    for ev in meta.get("events", []):  # events the document defines, as the expert enters them
+        _add_event(conn, paragraphs, ev)
     return conn
+
+
+def _add_event(conn: sqlite3.Connection, paragraphs: list, ev: dict) -> None:
+    """Enters one event from case.json ("name", "first_day", "last_day" if more than one day,
+    "defined_as"), in the one paragraph whose text holds its defining words."""
+    from core.audit.case_events import plain
+
+    words = plain(ev["defined_as"])
+    found = [p for p in paragraphs if words in plain(p.text)]
+    if len(found) != 1:
+        raise SystemExit(f"event {ev['name']}: its defining words are in {len(found)} paragraphs")
+    actions.add_event(
+        conn,
+        ev["name"],
+        ev["first_day"],
+        ev.get("last_day", ev["first_day"]),
+        found[0].id,
+        words,
+        STIPULATION_ACTOR,
+        _clock,
+    )
 
 
 def sheet_people(conn) -> dict[str, str]:  # noqa: ANN001
@@ -309,6 +344,38 @@ def spec_filler(path: Path, conn=None):  # noqa: ANN001, ANN201 - core.audit.ass
         return by_claim.get(claim.id, [])
 
     return filler
+
+
+class NoStanceLabeler:
+    """A --no-stance dev check's labeler: every candidate irrelevant, with no model call, so
+    the run measures only the assumption filler and the testability step."""
+
+    def label(self, assumption, candidate):  # noqa: ANN001, ANN201
+        from core.contracts import Stance, StanceLabel
+
+        return StanceLabel(
+            assumption_id=assumption.id,
+            record_id=candidate.record_id,
+            stance=Stance.IRRELEVANT,
+            quote=candidate.text[:30],
+            rationale="Stance skipped for a dev check (--no-stance): no model labeled this.",
+            model_run_id=NO_STANCE_RUN_ID,
+        )
+
+
+def no_stance_run():  # noqa: ANN201 - core.contracts.ModelRun
+    from core.contracts import ModelRun
+
+    return ModelRun(
+        id=NO_STANCE_RUN_ID,
+        purpose="stance",
+        model_name="none (stance skipped, dev check)",
+        model_sha256="0" * 64,
+        prompt_version="none",
+        params={"no_stance": True},
+        seed=0,
+        started_at_utc=EVAL_TIME,
+    )
 
 
 def hostile_components(conn, filler=None) -> pipeline.Components:  # noqa: ANN001
@@ -519,7 +586,12 @@ TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # signed sheet, so case05 gives no go/no-go until Arsh signs its sheet. case05 is the last clean
 # held-out case: its first local-model go/no-go run is the result of record, never re-run after
 # its per-claim output is seen (a run that stops before its decision prints is not a result).
-TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case05"})
+# case05's go/no-go ran on Arsh's Mac on 2026-11-02 and 03 (NO-GO, the result of record), so
+# case05 is spent too and gives no go/no-go again: runs on case04 and case05 are development
+# data. The next held-out case joins this set once Arsh signs it.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset()
+# The stand-in stance run of a --no-stance dev check (no model).
+NO_STANCE_RUN_ID = "run:no-stance"
 
 
 def sim_examiner(actor: str):  # noqa: ANN201 - core.audit.testability.Examiner
@@ -576,6 +648,7 @@ def testability_summary(
     step,  # noqa: ANN001
     case: str,
     prompt: Path | None,
+    stance_skipped: bool = False,
 ) -> dict[str, object]:
     """What the step did on the first pass, with the go/no-go measures (plans/agentic.md).
     Counts only, so a hidden case prints nothing claim by claim."""
@@ -657,8 +730,25 @@ def testability_summary(
         "cap_set": TESTABILITY_CAP,
         "min_testable": TESTABILITY_MIN_TESTABLE,
         "go_no_go_case": case in TESTABILITY_GO_NO_GO_CASES,
+        "stance": "skipped" if stance_skipped else "run",
+        # For information (Grok on #210): whether a retry trades a repeated answer for words the
+        # claim does not write. Refused tries whose reasons say a value, quote, duration or
+        # range is not written in the claim, first tries and retries apart.
+        "refused_for_words_not_in_the_claim": {
+            "first_tries": sum(_unwritten(a) for a in tries if a.n == 1),
+            "of_first_tries": sum(a.n == 1 for a in tries),
+            "retries": sum(_unwritten(a) for a in tries if a.n > 1),
+            "of_retries": sum(a.n > 1 for a in tries),
+        },
     }
     return out
+
+
+def _unwritten(attempt) -> bool:  # noqa: ANN001 - core.audit.testability.Attempt
+    """True when code refused the try for words the claim (or its paragraph) does not write."""
+    return attempt.outcome == "refused" and any(
+        "not written in the claim" in r for r in attempt.reasons
+    )
 
 
 def run_once(
@@ -677,6 +767,7 @@ def run_once(
     testability_cap: int | None = None,
     testability_prompt: Path | None = None,
     testability_model: object | None = None,
+    stance: bool = True,
 ) -> list[Prediction]:
     """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
     place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
@@ -708,6 +799,8 @@ def run_once(
             comps = model_free_components(conn, spec, gold)
         else:
             replace: dict[str, object] = {}
+            if not stance:
+                replace["labeler"] = NoStanceLabeler()
             if labeler_model is not None:
                 from core.audit import stance as stance_mod
 
@@ -718,6 +811,8 @@ def run_once(
 
                 filler = _ReplayableFiller(assumption_filler.create(conn, model=filler_model))  # type: ignore[arg-type]
             comps = pipeline.real_components(conn, replace=replace, filler=filler)
+            if not stance:
+                comps.model_runs = (*comps.model_runs, no_stance_run())
             if testability_cap is not None:
                 if spec is not None:
                     raise SystemExit("testability: the model fills; the sheet is only checked")
@@ -757,7 +852,7 @@ def run_once(
         }
         if comps.testability is not None:
             summary["testability"] = testability_summary(
-                result, comps.testability, case, testability_prompt
+                result, comps.testability, case, testability_prompt, stance_skipped=not stance
             )
         if expert not in ("simulated", "rubber-stamp", "fallible"):
             preds = write_outputs(conn, out, summary)
@@ -884,9 +979,19 @@ def print_hidden_summary(s: dict) -> None:
         print_testability(s["testability"])
 
 
+# What a --no-stance run prints first, so its verdicts are never read as eval numbers.
+NO_STANCE_NOTE = (
+    "stance skipped (--no-stance, a dev check): no model labeled any evidence, so these"
+    " verdicts and figures are not eval numbers; only the filler's and the testability step's"
+    " measures mean anything"
+)
+
+
 def print_summary(s: dict) -> None:
     r = s["readiness"]
     e = s["simulated_expert"]
+    if s.get("testability", {}).get("stance") == "skipped":
+        print(f"pipeline: {NO_STANCE_NOTE}")
     print(
         f"pipeline: {s['case']} {s['mode']}: {s['claims']} claims, {s['stored_items']} items "
         f"stored, {s['dropped_labels']} labels dropped"
@@ -962,6 +1067,12 @@ def print_testability(t: dict) -> None:
         f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
         f" {t['seconds']} s"
     )
+    if u := t.get("refused_for_words_not_in_the_claim"):
+        print(
+            "pipeline: testability: refused for words the claim does not write (for "
+            f"information): {u['first_tries']} of {u['of_first_tries']} first tries, "
+            f"{u['retries']} of {u['of_retries']} retries"
+        )
 
 
 # The go/no-go's settings: what Arsh sets, in the order the reasons name them.
@@ -1002,6 +1113,7 @@ def testability_go_no_go(
     unset = [k for k in GO_NO_GO_SETTINGS if t.get(k) is None]
     why += [f"{', '.join(unset)} not set by Arsh"] if unset else []
     why += ["the prompt is a draft"] if t["prompt"] != "signed" else []
+    why += ["stance was skipped (--no-stance, a dev check)"] if t.get("stance") == "skipped" else []
     why += ["this is not a held-out go/no-go case"] if not t["go_no_go_case"] else []
     if t.get("cap_set") is not None and t["cap"] != t["cap_set"]:
         why.append(f"the run's cap is {t['cap']}, not Arsh's {t['cap_set']}")
@@ -1183,6 +1295,11 @@ def report_go_no_go(
     changed = agent_changed(out / f"{case}.db")
     mine = [g for g in gold if g.claim_id in changed]
     false_supported = score(mine, first).n_false_supported if gold else None
+    # For information, not a bar (Grok on #210): of the claims the agent changed, how many
+    # ended on the key's verdict. The rubber-stamp expert accepts every stance label, so a
+    # converted claim can end on a wrong verdict the step did not cause.
+    verdicts = {p.claim_id: p.verdict for p in first}
+    on_key = sum(verdicts.get(g.claim_id) == g.gold_verdict for g in mine) if gold else None
     whole_run = score(gold, first).n_false_supported if gold else None
     status = key_status(gold_path(case)) if gold else None
     repeat = None
@@ -1206,6 +1323,7 @@ def report_go_no_go(
             "claims_the_agent_changed": len(changed),
             "whole_run": whole_run,
         },
+        "changed_claims_on_the_keys_verdict": on_key,
         "gold": {"path": str(gold_path(case)), "status": status},
         "testability": t,
         "repeat": repeat,
@@ -1220,6 +1338,11 @@ def report_go_no_go(
     for c in result["checks"]:  # type: ignore[attr-defined]
         mark = "pass" if c["ok"] else "FAIL"
         print(f"pipeline: testability go/no-go: {mark}: {c['bar']}: {c['value']}")
+    if on_key is not None:
+        print(
+            f"pipeline: testability go/no-go: for information, not a bar: {on_key} of the"
+            f" {len(changed)} claims the agent changed ended on the key's verdict"
+        )
     print(f"pipeline: testability go/no-go: made with {provenance(summary.get('versions'))}")
     return result
 
@@ -1241,6 +1364,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--challenge", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--testability", type=int, default=None, metavar="CAP")
     parser.add_argument("--testability-prompt", type=Path, default=None)
+    parser.add_argument("--no-stance", action="store_true")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -1262,6 +1386,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.testability_prompt is not None and args.testability is None:
         parser.error("--testability-prompt goes with --testability CAP")
+    if args.no_stance and args.testability is None:
+        parser.error("--no-stance is a dev check of --testability CAP; it goes with it")
     if args.testability is not None and (
         args.case == "case02"
         or ((synthetic_dir(args.case) / "case.json").exists() and is_hidden(args.case))
@@ -1292,6 +1418,8 @@ def main(argv: list[str] | None = None) -> int:
             out = out / "no_challenge"
         if args.testability is not None:
             out = out / "testability"
+        if args.no_stance:
+            out = out / "no_stance"
     try:
         first = run_once(
             args.case,
@@ -1305,6 +1433,7 @@ def main(argv: list[str] | None = None) -> int:
             expert_seed=args.expert_seed,
             testability_cap=args.testability,
             testability_prompt=args.testability_prompt,
+            stance=not args.no_stance,
         )
         second = None
         if args.repeat:
@@ -1320,6 +1449,7 @@ def main(argv: list[str] | None = None) -> int:
                 expert_seed=args.expert_seed,
                 testability_cap=args.testability,
                 testability_prompt=args.testability_prompt,
+                stance=not args.no_stance,
             )
         if args.testability is not None:
             report_go_no_go(args.case, out, expert, first, second)

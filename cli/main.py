@@ -14,6 +14,8 @@
                             --by expert:<name>
     python -m cli name-device --db case.db --device dev:item1 --name "TARGET PHONE"
                             [--name ...] --by expert:<name>
+    python -m cli name-account --db case.db --identifier "+1 (720) 555-0186" --name "the BURNER"
+                            [--name ...] --by expert:<name>
     python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all] [--no-challenge]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
@@ -35,6 +37,7 @@
     python -m cli model-check
     python -m cli encrypt   --db case.db --by expert:<name>
     python -m cli passphrase --db case.db --by expert:<name>
+    python -m cli recovery-key --db case.db --by expert:<name>
     python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
                             [--from-case <case folder> | --scripted | --paired]
 
@@ -96,7 +99,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from core import pipeline
+from core import paths, pipeline
 from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
@@ -176,7 +179,26 @@ def cmd_import(a: argparse.Namespace) -> int:
 
     Importer = report_importer(a.report)  # noqa: N806 - a class
 
-    src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
+    sid = a.source_id
+    if sid is None:  # the stem, made unique: item1.xlsx then item1.ufdr are item1 and item1-2
+        import hashlib
+
+        from core.casework.cases import _free_source_id
+
+        with a.report.open("rb") as fh:
+            sha = hashlib.file_digest(fh, "sha256").hexdigest()
+        dup = conn.execute("SELECT id, file_name FROM sources WHERE sha256 = ?", (sha,)).fetchone()
+        if dup is not None:  # the same file again, not another file with the same stem
+            print(
+                f"import: this file is already in the case, as {dup[1]} ({dup[0]})", file=sys.stderr
+            )
+            return 2
+        sid = _free_source_id(conn, a.report, sha)
+    try:
+        src = Importer(source_id=sid, date_order=a.date_order).import_source(a.report, conn)
+    except ValueError as e:
+        print(f"import: {e}", file=sys.stderr)
+        return 2
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
     check = tested.for_source(conn, src.id)
     if check is not None:
@@ -274,6 +296,14 @@ def cmd_name_device(a: argparse.Namespace) -> int:
     names = actions.name_device(conn, a.device, a.name or [], a.by)
     said = ", ".join(names) if names else "no names"
     print(f"{a.device} now has {said}; run the audit again to apply it")
+    return 0
+
+
+def cmd_name_account(a: argparse.Namespace) -> int:
+    conn = _open(a.db)
+    names = actions.name_account(conn, a.identifier, a.name or [], a.by)
+    said = ", ".join(names) if names else "no names"
+    print(f"{a.identifier} now has {said}; run the audit again to apply it")
     return 0
 
 
@@ -375,11 +405,26 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
     from core import encryption
     from core.bundle.export import NOTICE, export_bundle, parts, preview
     from core.casework.cases import Case
+    from core.review.status import claim_states
     from core.timeline.settings import from_case
 
+    by = a.by.strip()
+    if not by.startswith("expert:"):
+        by = f"expert:{by}"  # a plain name is the examiner's: the log records "expert:<name>"
+    if by == "expert:":
+        raise SystemExit('error: --by needs your name, for example --by "expert:Dana Reyes"')
     # Fails closed like `report`: a broken or cut-short audit log stops the export.
     conn = _open(a.db)
     case = Case(Path(a.db))
+    stale = [st for st in claim_states(conn) if st.decision is not None and st.stale]
+    if stale:
+        print(
+            f"Warning: {len(stale)} claim(s) have decisions made after the last audit that are "
+            "not in their verdicts yet. Re-run the verdicts first (Re-run verdicts on the "
+            "screen, or `mabillon redecide --by expert:<name>`); the bundle carries the "
+            "verdicts as they stand.",
+            file=sys.stderr,
+        )
     print(NOTICE)
     try:
         include = parts(a.include)
@@ -408,7 +453,7 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
         r = export_bundle(
             conn,
             a.out,
-            a.by,
+            by,
             counsel_confirmed=True,
             encrypted_case=encrypted,
             passphrase=passphrase,
@@ -535,9 +580,84 @@ def cmd_redecide(a: argparse.Namespace) -> int:
     return 0
 
 
+PORT_TRIES = 10  # ports after the asked one tried when another program holds it
+
+
+def _in_use(e: OSError) -> bool:
+    import errno
+
+    return e.errno in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE))
+
+
+def _mabillon_on(port: int) -> bool:
+    """Whether a Mabillon screen answers on 127.0.0.1:port. A HEAD request, which the screen
+    does not handle, so it is answered before any page runs and nothing is logged in a case."""
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    try:
+        conn.request("HEAD", "/")
+        return (conn.getresponse().getheader("Server") or "").startswith("Mabillon")
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        conn.close()
+
+
+def _bind(port: int, make):  # noqa: ANN001, ANN202
+    """Open the screen on `port`, or, when the port is taken, on the next free one of the
+    PORT_TRIES after it, with a line saying why. A Mabillon already on the port is never reused:
+    it may hold another case, folder or examiner, or a demo case a reset has just replaced."""
+    try:
+        return make(port), ""
+    except OSError as e:
+        if not _in_use(e):
+            raise SystemExit(f"cannot open port {port} on 127.0.0.1 ({e})") from e
+    holder = (
+        "another Mabillon (stop it with Ctrl+C in its window)"
+        if _mabillon_on(port)
+        else "another program"
+    )
+    for other in range(port + 1, port + 1 + PORT_TRIES):
+        try:
+            return make(other), f"Port {port} is used by {holder}; using {other}."
+        except OSError as e:
+            if not _in_use(e):
+                raise SystemExit(f"cannot open port {other} on 127.0.0.1 ({e})") from e
+    raise SystemExit(
+        f"ports {port} to {port + PORT_TRIES} are all in use on 127.0.0.1; choose a free one "
+        "with --port"
+    )
+
+
+def _open_in_browser(link: str) -> None:
+    import webbrowser
+
+    webbrowser.open(link)
+
+
+def _stop(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _stop_on_signals() -> dict[int, object]:
+    """Closing the Terminal window (SIGHUP) or a stop request (SIGTERM) ends `serve` like Ctrl+C,
+    so it closes cleanly and removes its screen key file. Returns the handlers it replaced.
+    A running audit's thread is a daemon: it stops with the process, as before."""
+    import signal
+
+    old: dict[int, object] = {}
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            old[sig] = signal.signal(sig, _stop)
+    return old
+
+
 def cmd_serve(a: argparse.Namespace) -> int:
     from core.casework.cases import cases_home
-    from ui.server import make_server, url
+    from ui import screen_key
+    from ui.server import launch_url, make_server
 
     home = None
     if a.db is not None:
@@ -546,23 +666,36 @@ def cmd_serve(a: argparse.Namespace) -> int:
     else:
         home = a.cases or cases_home()
         home.mkdir(parents=True, exist_ok=True)
+    remembered = paths.settings_file("reviewer.json")  # the examiner's name, between launches
+    server, note = _bind(
+        a.port, lambda port: make_server(a.db, port, a.expert, home=home, name_file=remembered)
+    )
+    if note:
+        print(note)
+    key = server.key  # type: ignore[attr-defined]
     try:
-        server = make_server(a.db, a.port, a.expert, home=home)
-    except OSError as e:
-        raise SystemExit(f"cannot open port {a.port} on 127.0.0.1 ({e}); try --port 8766") from e
+        screen_key.write_key(key)
+    except OSError as e:  # the screen still works from the printed link
+        print(f"(could not save the screen key in {screen_key.key_dir()}: {e})", file=sys.stderr)
     where = f"case {a.db}" if a.db is not None else f"cases in {home}"
-    print(f"Mabillon: {url(server)}  ({where}; this computer only; Ctrl+C stops it)")
+    print(f"Mabillon: {launch_url(server)}")
+    print(f"  ({where}; this computer only; Ctrl+C stops it)")
+    print("This link opens the screen; it changes each time Mabillon starts. Keep it private.")
     print("A running audit stops when this does; its finished claims are kept and resume later.")
     if a.open:
-        import webbrowser
-
-        webbrowser.open(url(server))
+        _open_in_browser(launch_url(server))
+    replaced = _stop_on_signals()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        screen_key.remove_key(key)
+        import signal
+
+        for sig, handler in replaced.items():
+            signal.signal(sig, handler)  # type: ignore[arg-type]
     return 0
 
 
@@ -592,6 +725,22 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     print(f"Recovery key: {done.recovery_key}")
     print("Write it down now and keep it away from this computer. It opens the case if the")
     print("passphrase is lost. Mabillon shows it only this once and keeps no copy.")
+    protect.recovery_pending(case, False)  # printed: the expert has it (or can make another)
+    return 0
+
+
+def cmd_recovery_key(a: argparse.Namespace) -> int:
+    from core.casework import protect
+    from core.casework.cases import Case
+
+    if not a.db.exists():
+        raise SystemExit(f"no case database at {a.db}")
+    secret = _ask("Passphrase: ")
+    key = protect.new_recovery_key(Case(a.db), secret, a.by)
+    print(f"New recovery key: {key}")
+    print("Write it down now and keep it away from this computer. The old recovery key no")
+    print("longer opens the case. Mabillon shows this one only now and keeps no copy.")
+    protect.recovery_pending(Case(a.db), False)
     return 0
 
 
@@ -746,6 +895,15 @@ def parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--by", required=True)
 
+    sp = add(
+        "name-account", cmd_name_account, "record the document's names for a number or account"
+    )
+    sp.add_argument("--identifier", required=True, help="the number or id, as the data holds it")
+    sp.add_argument(
+        "--name", action="append", help="as the document writes it (repeatable; none clears)"
+    )
+    sp.add_argument("--by", required=True)
+
     sp = add("audit", cmd_audit, "run the audit pipeline")
     sp.add_argument("--fake", action="store_true", help="test run with eval stand-ins")
     sp.add_argument(
@@ -806,7 +964,11 @@ def parser() -> argparse.ArgumentParser:
         "write the case's reproducibility bundle (the examiner's choice, on counsel's advice)",
     )
     sp.add_argument("--out", type=Path, required=True, help="a new file (a .zip)")
-    sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--by",
+        required=True,
+        help='who exports it: "expert:<your name>" (a plain name is taken as yours)',
+    )
     sp.add_argument(
         "--include",
         default="",
@@ -833,7 +995,7 @@ def parser() -> argparse.ArgumentParser:
         "flag-log", help="combine redacted flag summaries into the per-pilot error log"
     )
     sp.set_defaults(fn=cmd_flag_log)
-    sp.add_argument("summaries", type=Path, nargs="+", help="baker-flag-summary .json files")
+    sp.add_argument("summaries", type=Path, nargs="+", help="flag summary .json files")
     sp.add_argument("--out", type=Path, help="write Markdown here instead of printing it")
 
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
@@ -842,6 +1004,8 @@ def parser() -> argparse.ArgumentParser:
     sp = add("encrypt", cmd_encrypt, "encrypt a case's database and copied files (one way)")
     sp.add_argument("--by", required=True)
     sp = add("passphrase", cmd_passphrase, "change an encrypted case's passphrase")
+    sp.add_argument("--by", required=True)
+    sp = add("recovery-key", cmd_recovery_key, "make a new recovery key for an encrypted case")
     sp.add_argument("--by", required=True)
 
     sp = sub.add_parser("serve", help="open the expert's screen on this computer")
