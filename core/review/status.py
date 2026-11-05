@@ -675,4 +675,4 @@ def _state(
 
 def queue(conn: sqlite3.Connection) -> list[ClaimState]:
     """Claims sorted by what needs the expert most, then by claim id."""
-    return sorted(claim_states(conn), key=lambda s: (s.priority, s.claim.id))
+    return sorted(claim_states(conn), key=lambda s: (s.priority, claim_sort_key(s.claim.id)))

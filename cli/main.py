@@ -99,7 +99,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from core import pipeline
+from core import paths, pipeline
 from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
@@ -399,11 +399,26 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
     from core import encryption
     from core.bundle.export import NOTICE, export_bundle, parts, preview
     from core.casework.cases import Case
+    from core.review.status import claim_states
     from core.timeline.settings import from_case
 
+    by = a.by.strip()
+    if not by.startswith("expert:"):
+        by = f"expert:{by}"  # a plain name is the examiner's: the log records "expert:<name>"
+    if by == "expert:":
+        raise SystemExit('error: --by needs your name, for example --by "expert:Dana Reyes"')
     # Fails closed like `report`: a broken or cut-short audit log stops the export.
     conn = _open(a.db)
     case = Case(Path(a.db))
+    stale = [st for st in claim_states(conn) if st.decision is not None and st.stale]
+    if stale:
+        print(
+            f"Warning: {len(stale)} claim(s) have decisions made after the last audit that are "
+            "not in their verdicts yet. Re-run the verdicts first (Re-run verdicts on the "
+            "screen, or `mabillon redecide --by expert:<name>`); the bundle carries the "
+            "verdicts as they stand.",
+            file=sys.stderr,
+        )
     print(NOTICE)
     try:
         include = parts(a.include)
@@ -432,7 +447,7 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
         r = export_bundle(
             conn,
             a.out,
-            a.by,
+            by,
             counsel_confirmed=True,
             encrypted_case=encrypted,
             passphrase=passphrase,
@@ -645,7 +660,10 @@ def cmd_serve(a: argparse.Namespace) -> int:
     else:
         home = a.cases or cases_home()
         home.mkdir(parents=True, exist_ok=True)
-    server, note = _bind(a.port, lambda port: make_server(a.db, port, a.expert, home=home))
+    remembered = paths.settings_file("reviewer.json")  # the examiner's name, between launches
+    server, note = _bind(
+        a.port, lambda port: make_server(a.db, port, a.expert, home=home, name_file=remembered)
+    )
     if note:
         print(note)
     key = server.key  # type: ignore[attr-defined]
@@ -940,7 +958,11 @@ def parser() -> argparse.ArgumentParser:
         "write the case's reproducibility bundle (the examiner's choice, on counsel's advice)",
     )
     sp.add_argument("--out", type=Path, required=True, help="a new file (a .zip)")
-    sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--by",
+        required=True,
+        help='who exports it: "expert:<your name>" (a plain name is taken as yours)',
+    )
     sp.add_argument(
         "--include",
         default="",

@@ -38,6 +38,7 @@ from __future__ import annotations
 import functools
 import hmac
 import html
+import json
 import re
 import secrets
 import shutil
@@ -220,6 +221,7 @@ class App:
         extractor_for: jobs.ExtractorFor | None = None,
         model_check: jobs.ModelCheckFn | None = check_model,
         cloud_config: Path | None = None,
+        name_file: Path | None = None,
     ) -> None:
         if db_path is None and home is None:
             raise ValueError("give a case database or a cases folder")
@@ -237,6 +239,7 @@ class App:
         self._added: str | None = None
         self.jobs = jobs.Jobs()
         self._reported: jobs.Job | None = None  # the finished job whose result Set up showed
+        self._claim_draft: dict[str, str] | None = None  # a refused Add a claim, to refill
         self.components_for = components_for or _real_components
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
@@ -248,8 +251,19 @@ class App:
         self.cloud_config = (
             cloud_config  # None: $MABILLON_CLOUD_CONFIG, else ~/.mabillon/cloud.json
         )
+        # The examiner's name is remembered on this computer (the server passes the settings
+        # file; tests and one-off screens do not), so a restart does not ask for it again.
+        self.name_file = name_file
+        if not expert and name_file is not None:
+            try:
+                expert = json.loads(name_file.read_text(encoding="utf-8")).get("name")
+            except (OSError, ValueError, AttributeError):
+                expert = None
         if expert:
-            self.set_expert(expert)
+            try:
+                self.set_expert(expert)
+            except ReviewError:
+                self.expert = None
         if self.single is not None and not protect.is_locked(self.single):
             try:
                 self.open_case(self.single)
@@ -511,8 +525,8 @@ class App:
         if job is not None and job.running:
             busy = job.kind == "audit"
             what = {
-                "audit": f"The audit is running: {job.done} of {job.total} claims finished. "
-                "<a href='/run'>See its progress</a>.",
+                "audit": f"The audit is running: {job.done} of {job.total} claims finished."
+                + ("" if self.path == "/run" else " <a href='/run'>See its progress</a>."),
                 "propose": f"The local model is proposing claims: {job.done} of {job.total} "
                 "paragraphs. <a href='/setup'>See the claims</a>.",
                 "model_check": "Checking the model. <a href='/setup'>See the result</a>.",
@@ -548,7 +562,8 @@ class App:
             body = pages.claim_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such claim")
         if p == "/claim/new":
-            return self._html(pages.new_claim_page(conn, page))
+            draft, self._claim_draft = self._claim_draft, None
+            return self._html(pages.new_claim_page(conn, page, draft))
         if p == "/evidence":
             body = pages.evidence_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such evidence item")
@@ -635,7 +650,7 @@ class App:
         if not back.startswith("/") or back.startswith("//"):
             back = "/"
         handlers: dict[str, Callable[[], str]] = {
-            "/expert": lambda: self._set_expert(f),
+            "/expert": lambda: self._set_expert(conn, f),
             "/case/new": lambda: self._new_case(f),
             "/case/open": lambda: self._open_case(f),
             "/case/encrypt": lambda: self._encrypt(f),
@@ -767,8 +782,29 @@ class App:
             return "The report now includes examiner activity, with time on page, for this case."
         return "The report now leaves out examiner activity for this case."
 
-    def _set_expert(self, f: dict[str, str]) -> str:
+    def _set_expert(self, conn: sqlite3.Connection | None, f: dict[str, str]) -> str:
+        before = self.expert
         self.set_expert(f.get("name", ""))
+        if self.name_file is not None:
+            try:
+                self.name_file.parent.mkdir(parents=True, exist_ok=True)
+                self.name_file.write_text(json.dumps({"name": self.expert}), encoding="utf-8")
+            except OSError:
+                pass  # remembered for this launch only
+        if before is not None and before != self.expert and conn is not None:
+            # A change of name mid-case is on the record: decisions before and after it carry
+            # different names, and the log says they came from one screen.
+            cases._logged(
+                conn,
+                self.clock(),
+                self.actor,
+                "reviewer.rename",
+                {"from": f"expert:{before}", "to": self.actor, "session": self.session},
+            )
+            return (
+                f"Reviewing as {self.expert} (was {before}). The change is in the audit log; "
+                "decisions from now on carry the new name."
+            )
         return f"Reviewing as {self.expert}. Your name is recorded with every decision."
 
     def _decide(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -867,10 +903,10 @@ class App:
         claim = f.get("claim", "")
         if f.get("action") == "confirm":
             actions.confirm_verdict(conn, claim, self.actor, f.get("note", ""))
-            return f"Verdict on {claim} confirmed."
+            return f"Verdict on {_named(conn, claim)} confirmed."
         verdict = Verdict(f.get("verdict", ""))
         actions.override_verdict(conn, claim, verdict, self.actor, f.get("note", ""))
-        return f"Verdict on {claim} overridden: {verdict.value}."
+        return f"Verdict on {_named(conn, claim)} overridden: {verdict.value}."
 
     def _acknowledge(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         """The expert has seen that an item's rationale is withheld (core/review/withheld.py)."""
@@ -887,9 +923,11 @@ class App:
             if not text:
                 raise ReviewError("the claim text is empty")
         actions.set_claim_status(conn, f.get("claim", ""), status, self.actor, text)
-        return f"Claim {f.get('claim', '')} is {status.value}."
+        return f"Claim {_named(conn, f.get('claim', ''))} is {status.value}."
 
     def _add_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        # What the expert typed is kept for the form if anything below refuses it.
+        self._claim_draft = {k: f.get(k, "") for k in ("paragraph", "text", "id", "type")}
         cid = f.get("id", "").strip()
         text = f.get("text", "").strip()
         if not cid or not text:
@@ -897,8 +935,14 @@ class App:
         para = f.get("paragraph", "")
         if conn.execute("SELECT 1 FROM govdoc_paragraphs WHERE id = ?", (para,)).fetchone() is None:
             raise ReviewError("pick the paragraph the claim comes from")
+        if conn.execute("SELECT 1 FROM claims WHERE id = ?", (cid,)).fetchone() is not None:
+            raise ReviewError(
+                f"the case already has a claim called {cid} (removed claims keep their id). "
+                "Give this one another id; your text is still in the form"
+            )
         actions.add_claim(conn, cid, para, text, ClaimType(f.get("type", "")), self.actor)
-        return f"Added {cid}. It needs a full audit before it has a verdict."
+        self._claim_draft = None
+        return f"Added {_named(conn, cid)}. It needs a full audit before it has a verdict."
 
     def _name_device(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         names = [n for n in f.get("names", "").split(",") if n.strip()]
@@ -1245,7 +1289,7 @@ class App:
         delta = -1 if f.get("delta") == "-1" else 1
         order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta)
         cid = f.get("claim", "")
-        return f"{cid} now runs at position {order.index(cid) + 1}."
+        return f"{_named(conn, cid)} now runs at position {order.index(cid) + 1}."
 
     def _propose(self) -> str:
         _ = self.actor  # a named expert starts model work on the case
@@ -1750,6 +1794,11 @@ def _chain_problem(case: cases.Case) -> str | None:
 
 
 UPDATES = "This page updates itself."
+
+
+def _named(conn: sqlite3.Connection, claim_id: str) -> str:
+    """A claim as messages name it ("¶6.2", as on screen), not by its internal id."""
+    return (claim_names(conn, [claim_id]) or [claim_id])[0]
 
 
 def _when(iso_utc: str) -> str:

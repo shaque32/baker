@@ -995,7 +995,9 @@ def _msg(ln: ContextLine) -> str:
     tag = "<span class='cited'>This record</span>" if ln.is_target else ""
     return (
         f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
-        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
+        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}"
+        + (f" · to {q(ln.to)}" if ln.to else "")
+        + "</div>"
         f"<div class='body'>{q(ln.body)}</div>"
         f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
     )
@@ -1823,7 +1825,12 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
 # ---------------------------------------------------------------- add a claim
 
 
-def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
+def new_claim_page(
+    conn: sqlite3.Connection, page: Page, draft: dict[str, str] | None = None
+) -> str:
+    """Add a claim: each paragraph shown in full to pick from (a short preview hid which
+    paragraph was which). `draft` refills the form after a refused add."""
+    draft = draft or {}
     paras = list(
         conn.execute(
             "SELECT p.id, p.page, p.para_no, p.label, p.text, g.title FROM govdoc_paragraphs p"
@@ -1834,18 +1841,25 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     n = 1
     while f"C{n:02d}" in ids:
         n += 1
+    chosen = draft.get("paragraph") or (paras[0][0] if paras else "")
     groups: dict[str, list[str]] = {}
     for pid, pg, no, label, text, title in paras:
         groups.setdefault(title or "", []).append(
-            f"<option value='{e(pid)}'>Page {pg}, paragraph "
-            f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
+            f"<label class='para-pick'><input type='radio' name='paragraph' value='{e(pid)}'"
+            + (" checked" if pid == chosen else "")
+            + f" required><span class='where'>Page {pg}, paragraph "
+            f"{e(label or '#' + str(no))}</span><span class='text'>{q(text)}</span></label>"
         )
     opts = "".join(
-        f"<optgroup label='{e(title)}'>{''.join(items)}</optgroup>"
+        f"<fieldset class='paras'><legend>{e(title or 'The document')}</legend>"
+        f"{''.join(items)}</fieldset>"
         for title, items in groups.items()
     )
     types = "".join(
-        f"<option value='{t.value}'>{e(t.value.replace('_', ' '))}</option>" for t in ClaimType
+        f"<option value='{t.value}'"
+        + (" selected" if draft.get("type") == t.value else "")
+        + f">{e(t.value.replace('_', ' '))}</option>"
+        for t in ClaimType
     )
     body = "<h1>Add a claim</h1>"
     if not paras:
@@ -1853,12 +1867,15 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     else:
         body += page.form(
             "/claim/add",
-            f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
-            "<p><label>Claim text <textarea name='text' rows='4' required></textarea></label></p>"
+            "<p>Pick the paragraph the claim comes from.</p>"
+            f"<div class='para-list'>{opts}</div>"
+            "<p><label>Claim text <textarea name='text' rows='4' required>"
+            f"{e(draft.get('text', ''))}</textarea></label></p>"
             "<p><label>Claim id <input type='text' name='id' required maxlength='20' "
-            f"value='C{n:02d}'></label>"
+            f"value='{e(draft.get('id') or f'C{n:02d}')}'></label>"
             f" <label>Type <select name='type'>{types}</select></label></p>"
-            "<p class='act'><button type='submit' class='primary'>Add claim</button></p>",
+            "<p class='act'><button type='submit' class='primary'>Add claim</button>"
+            "<span class='muted'>Set up lists it as added by the expert, not the model.</span></p>",
         )
     return page.wrap("Add a claim", f"<div class='pg-newclaim'>{body}</div>")
 
@@ -2469,7 +2486,8 @@ def setup_page(
                 f"<span class='where'>{e(where)}</span>"
                 f"<span class='kind'>{e(c.claim_type.value.replace('_', ' '))}</span></td>"
                 f"<td class='brief'>{e(c.status.value)}"
-                f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
+                f"{' (added by the expert)' if c.model_run_id is None else ' (model)'}</td>"
+                f"<td>{q(c.text)}</td>"
                 f"<td class='decide'>"
                 f"{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )
@@ -2969,6 +2987,7 @@ def run_page(
     left: str,
 ) -> str:
     running = job is not None and getattr(job, "running", False)
+    check_failed = False  # the job's model check failed: its lines already say what to do
     out = ["<h1>Audit progress</h1>"]
     if job is not None:
         if running:
@@ -2993,12 +3012,26 @@ def run_page(
             )
         else:
             cls = "flash" if getattr(job, "state", "") == "done" else "flash err"
-            out.append(f"<div class='{cls}'>{e(getattr(job, 'message', ''))}</div>")
             check = getattr(job, "check", None)
             if check is not None and not check.ok:
-                out.append("<ul>" + "".join(f"<li>{e(m)}</li>" for _, m in check.lines) + "</ul>")
+                # One message: the check's own lines say what failed and what to do.
+                check_failed = True
+                out.append(
+                    f"<div class='{cls}'>The audit did not start: the model failed its check. "
+                    "Nothing was labeled.</div><ul>"
+                    + "".join(
+                        f"<li>{'<strong>' if lvl == 'fail' else ''}{e(m)}"
+                        f"{'</strong>' if lvl == 'fail' else ''}</li>"
+                        for lvl, m in check.lines
+                    )
+                    + "</ul><p><a href='/setup#model'>Check the model again on Set up</a> once "
+                    "it is fixed, then start the audit.</p>"
+                )
+            else:
+                out.append(f"<div class='{cls}'>{e(getattr(job, 'message', ''))}</div>")
     if run is None:
-        out.append("<p>No audit has run on this case. <a href='/setup'>Set up and run</a>.</p>")
+        if not running and not check_failed:
+            out.append("<p>No audit has run on this case. <a href='/setup'>Set up and run</a>.</p>")
         return page.wrap("Audit progress", "".join(out), refresh=5 if running else None)
     out.append(
         f"<p>Run <span class='mono'>{e(run['id'])}</span>, started {e(run['started_at_utc'])}, "

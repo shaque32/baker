@@ -612,9 +612,18 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
     logged: dict[str, str] = {}
     payloads: dict[str, dict[str, Any]] = {}
     for _seq, _at, _actor, action, p in _log(conn):
-        if action == "import" and isinstance(p.get("source_id"), str):
-            logged[p["source_id"]] = str(p.get("sha256"))
-            payloads[p["source_id"]] = p
+        sid = p.get("source_id")
+        if not isinstance(sid, str):
+            continue
+        if action == "import":  # the importer's own entry, with the coverage record
+            logged[sid] = str(p.get("sha256"))
+            payloads[sid] = p
+        elif action == "case.import" and isinstance(p.get("sha256"), str):
+            # The screen's import (any kind, the government document included) logs its hash.
+            logged.setdefault(sid, p["sha256"])
+        elif action == "case.remove_file":  # taken back out before the first audit
+            logged.pop(sid, None)
+            payloads.pop(sid, None)
     bad = False
     for sid, sha in sorted(stored.items()):
         if sid in logged and logged[sid] != sha:
@@ -651,39 +660,43 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
         bad = True
     unlogged = sorted(set(stored) - set(logged))
     if not bad:
-        out.add(PASS, "inputs", f"{len(stored)} input hashes match the import log")
-    if unlogged:
+        n = len(set(stored) & set(logged))
+        out.add(PASS, "inputs", f"{n} input hash{'' if n == 1 else 'es'} match the import log")
+    matched: set[str] = set()
+    if inputs_dir is None:
+        out.add(NOTE, "inputs", "original files not checked (pass --inputs <folder>)")
+    elif not Path(inputs_dir).is_dir():
+        out.add(FAIL, "inputs", f"{inputs_dir} is not a folder, so no original file was checked")
+    else:
+        found: dict[str, str] = {}
+        for f in sorted(Path(inputs_dir).rglob("*")):
+            if f.is_file():
+                found[export._file_sha256(f)] = f.name
+        for sid, sha in sorted(stored.items()):
+            name = conn.execute("SELECT file_name FROM sources WHERE id = ?", (sid,)).fetchone()[0]
+            if sha in found:
+                matched.add(sid)
+                out.add(PASS, "inputs", f"{name}: the original file matches its recorded SHA-256")
+            elif any(n == name for n in found.values()):
+                out.add(
+                    FAIL,
+                    "inputs",
+                    f"{name}: a file of that name is there, but its SHA-256 "
+                    "differs from the one recorded on import",
+                )
+            else:
+                out.add(NOTE, "inputs", f"{name}: not among the files given")
+    # A source with no import entry (a case made before imports were logged) is only a note,
+    # and none is needed once its original file matched.
+    unchecked = [sid for sid in unlogged if sid not in matched]
+    if unchecked:
         out.add(
             NOTE,
             "inputs",
             "no import entry in the log for "
-            + ", ".join(unlogged)
-            + " (the government document's import is not logged); compare its hash with "
-            "the original file",
+            + ", ".join(unchecked)
+            + "; compare its hash with the original file (pass --inputs <folder>)",
         )
-    if inputs_dir is None:
-        out.add(NOTE, "inputs", "original files not checked (pass --inputs <folder>)")
-        return
-    if not Path(inputs_dir).is_dir():
-        out.add(FAIL, "inputs", f"{inputs_dir} is not a folder, so no original file was checked")
-        return
-    found: dict[str, str] = {}
-    for p in sorted(Path(inputs_dir).rglob("*")):
-        if p.is_file():
-            found[export._file_sha256(p)] = p.name
-    for sid, sha in sorted(stored.items()):
-        name = conn.execute("SELECT file_name FROM sources WHERE id = ?", (sid,)).fetchone()[0]
-        if sha in found:
-            out.add(PASS, "inputs", f"{name}: the original file matches its recorded SHA-256")
-        elif any(n == name for n in found.values()):
-            out.add(
-                FAIL,
-                "inputs",
-                f"{name}: a file of that name is there, but its SHA-256 "
-                "differs from the one recorded on import",
-            )
-        else:
-            out.add(NOTE, "inputs", f"{name}: not among the files given")
 
 
 # ---------------------------------------------------------------- the run
