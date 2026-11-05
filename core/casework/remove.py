@@ -10,8 +10,10 @@ contacts, locations, attachments and coverage, or for a government document its 
 and Mabillon's copy in the case folder. The original file is never touched. The audit log
 keeps a `case.remove_file` entry with the file's name, SHA-256 and the expert's reason, so the
 removal itself is on the record. It is refused while anything the expert entered still points
-at the file: a stipulation or name for its device, an account link, a claim or event on the
-document's paragraphs, or an exhibit.
+at the file: a confirmed stipulation or a name for its device, a confirmed account link, an
+accepted claim or an event on the document's paragraphs, or an exhibit. What is left that
+the expert withdrew or rejected, and the model's proposals, go with the file; the entry lists
+their ids, and verify-bundle replays them.
 """
 
 from __future__ import annotations
@@ -34,6 +36,10 @@ def _ids(conn: sqlite3.Connection, sql: str, *args: object) -> list[str]:
 
 def _in(ids: list[str]) -> str:
     return ",".join("?" * len(ids))
+
+
+def _select(table: str, where: str) -> str:
+    return f"SELECT id FROM {table} WHERE {where} ORDER BY id"  # noqa: S608
 
 
 def _has(conn: sqlite3.Connection, table: str) -> bool:
@@ -80,11 +86,12 @@ def _blockers(conn: sqlite3.Connection, source_id: str) -> list[str]:
     if (
         accounts
         and conn.execute(
-            f"SELECT 1 FROM identity_links WHERE account_id IN ({_in(accounts)})",  # noqa: S608
+            f"SELECT 1 FROM identity_links WHERE account_id IN ({_in(accounts)})"  # noqa: S608
+            " AND status = 'confirmed'",
             accounts,
         ).fetchone()
     ):
-        out.append("an account link to a person (remove it on Identities)")
+        out.append("a confirmed account link to a person (reject it on Identities)")
     paragraphs = _ids(
         conn,
         "SELECT p.id FROM govdoc_paragraphs p JOIN govdocs g ON g.id = p.govdoc_id"
@@ -117,20 +124,35 @@ def _blockers(conn: sqlite3.Connection, source_id: str) -> list[str]:
     return out
 
 
-def delete_rows(conn: sqlite3.Connection, source_id: str) -> None:
-    """Delete every row the importer stored for this source (inside the caller's transaction)."""
+def delete_rows(conn: sqlite3.Connection, source_id: str) -> dict[str, list[str]]:
+    """Delete every row the importer stored for this source (inside the caller's transaction).
+
+    Returns the ids of the dependent rows that went with it (stipulations, identity links,
+    persons, claims), for the `case.remove_file` entry: the bundle verifier replays them, so a
+    row the log recorded and the removal took is not reported missing."""
     messages = _ids(conn, "SELECT id FROM messages WHERE source_id = ?", source_id)
     accounts = _ids(conn, "SELECT id FROM accounts WHERE source_id = ?", source_id)
     devices = _ids(conn, "SELECT id FROM devices WHERE source_id = ?", source_id)
+    gone: dict[str, list[str]] = {
+        "stipulations_removed": [],
+        "links_removed": [],
+        "persons_removed": [],
+        "claims_removed": [],
+    }
+    for chunk in range(0, len(accounts), 500):
+        # Only links not confirmed can be left (a confirmed one blocks the removal): proposed,
+        # rejected or unresolved. They go with the accounts; the log keeps each decision.
+        part = accounts[chunk : chunk + 500]
+        where = f"account_id IN ({_in(part)}) AND status != 'confirmed'"
+        gone["links_removed"] += _ids(conn, _select("identity_links", where), *part)
+        conn.execute(f"DELETE FROM identity_links WHERE {where}", part)  # noqa: S608
     if devices:
         # Only withdrawn stipulations can be left (a confirmed one blocks the removal); they go
         # with the phone, and so does its owner's person row when nothing else uses it. The
         # audit log keeps both decisions.
-        conn.execute(
-            f"DELETE FROM stipulations WHERE subject_id IN ({_in(devices)})"  # noqa: S608
-            " AND status != 'confirmed'",
-            devices,
-        )
+        where = f"subject_id IN ({_in(devices)}) AND status != 'confirmed'"
+        gone["stipulations_removed"] = _ids(conn, _select("stipulations", where), *devices)
+        conn.execute(f"DELETE FROM stipulations WHERE {where}", devices)  # noqa: S608
         for d in devices:
             owner = f"person:{d}:owner"
             used = any(
@@ -141,8 +163,8 @@ def delete_rows(conn: sqlite3.Connection, source_id: str) -> None:
                 for t in ("stipulations", "identity_links", "person_aliases")
                 if _has(conn, t)
             )
-            if not used:
-                conn.execute("DELETE FROM persons WHERE id = ?", (owner,))
+            if not used and conn.execute("DELETE FROM persons WHERE id = ?", (owner,)).rowcount:
+                gone["persons_removed"].append(owner)
     for chunk in range(0, len(messages), 500):
         part = messages[chunk : chunk + 500]
         for table in ("message_recipients", "translations"):
@@ -158,12 +180,13 @@ def delete_rows(conn: sqlite3.Connection, source_id: str) -> None:
         )
     # Claims still only proposed (or removed) on the document's paragraphs go with it: they are
     # the model's proposals, not the expert's work (an accepted claim blocks the removal).
-    conn.execute(
-        "DELETE FROM claims WHERE status IN ('proposed', 'removed') AND paragraph_id IN"
+    where = (
+        "status IN ('proposed', 'removed') AND paragraph_id IN"
         " (SELECT p.id FROM govdoc_paragraphs p JOIN govdocs g ON g.id = p.govdoc_id"
-        " WHERE g.source_id = ?)",
-        (source_id,),
+        " WHERE g.source_id = ?)"
     )
+    gone["claims_removed"] = _ids(conn, _select("claims", where), source_id)
+    conn.execute(f"DELETE FROM claims WHERE {where}", (source_id,))  # noqa: S608
     conn.execute(
         "DELETE FROM govdoc_paragraphs WHERE govdoc_id IN"
         " (SELECT id FROM govdocs WHERE source_id = ?)",
@@ -193,6 +216,7 @@ def delete_rows(conn: sqlite3.Connection, source_id: str) -> None:
     for table in [*ordered, *others]:
         conn.execute(f"DELETE FROM {table} WHERE source_id = ?", (source_id,))  # noqa: S608
     conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+    return gone
 
 
 def remove_file(
@@ -223,7 +247,7 @@ def remove_file(
         raise ReviewError(f"{file_name} is still used by " + "; ".join(blockers))
     copy = _copy_path(case, conn, source_id, file_name)
     with conn:
-        delete_rows(conn, source_id)
+        gone = delete_rows(conn, source_id)
     _logged(
         conn,
         _now(clock),
@@ -236,6 +260,7 @@ def remove_file(
             "sha256": sha256,
             "copied_to": None if copy is None else str(copy.relative_to(case.folder)),
             "reason": reason.strip()[:500],
+            **gone,
         },
     )
     if copy is not None:

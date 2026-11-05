@@ -23,7 +23,9 @@
     - Each file gets its own source id (item1.xlsx and item1.ufdr no longer collide).
     - A wrong file can be removed only before the first audit. The removal is logged as
       `case.remove_file` with the file's name, SHA-256 and the expert's reason. It is refused
-      while a stipulation, link, accepted claim, event or exhibit still points at the file.
+      while a confirmed stipulation or link, document names, an accepted claim, an event or an
+      exhibit still points at the file. Withdrawn stipulations, links not confirmed and
+      proposed claims go with it; the entry lists their ids and `verify-bundle` replays them.
   - E. No model:
     - Every model-check failure says what to do on this computer: run the Mac installer again,
       or Mabillon Setup with Download the AI model ticked.

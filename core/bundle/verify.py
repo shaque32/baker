@@ -1049,6 +1049,12 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     is missing."""
     log = _log(conn)
     origins, logged = _claim_origins(log)
+    for seq, _a, _c, act, p in log:  # a removed file's proposed claims went with it
+        if act == "case.remove_file":
+            for cid in p.get("claims_removed") or []:
+                if origins.get(cid, (-1,))[0] < seq:
+                    origins.pop(cid, None)
+                    logged.discard(cid)
     bad = unbound = edited = 0
     stored = pipeline._stored(conn, "claims", "1 = 1 ORDER BY id", ())
     for row in (dict(r) for r in stored):
@@ -1190,6 +1196,10 @@ def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
         elif act == "stipulation.withdraw":
             old = state.get(p.get("stipulation_id"), ("", "", "", None))
             state[p.get("stipulation_id")] = ("rejected", actor, at, old[3])
+        elif act == "case.remove_file":  # a withdrawn stipulation goes with its phone's file
+            for sid in p.get("stipulations_removed") or []:
+                state.pop(sid, None)
+                person.pop(sid, None)
     bad = 0
     stored = pipeline.load_stipulations(conn)
     names = dict(conn.execute("SELECT id, name FROM persons"))
@@ -1230,7 +1240,8 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
     """Each identity link is what the logged actions left: proposed by the proposer
     (identity.propose) and undecided, or decided by the expert (identity.decide, identity.link)
     with that status, tier, expert and time; and a link the log still holds is not missing.
-    Removals are logged too (identity.propose's removed, person.remove)."""
+    Removals are logged too (identity.propose's removed, person.remove, and case.remove_file
+    for the links not confirmed on a removed file's accounts)."""
     state: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     basis: dict[str, str] = {}
     person_names: dict[str, Any] = {}  # person id -> the name its logged action gave
@@ -1253,7 +1264,7 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
             basis.setdefault(lid, f"Linked by {actor}: {str(p.get('note', '')).strip()}")
         elif act == "identity.decide":
             state[p.get("link_id")] = (str(p.get("status")), actor, at, None)
-        elif act == "person.remove":
+        elif act in ("person.remove", "case.remove_file"):
             for lid in p.get("links_removed") or []:
                 state.pop(lid, None)
     bad = 0

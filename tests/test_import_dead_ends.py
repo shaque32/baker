@@ -178,3 +178,103 @@ def test_a_withdrawn_stipulation_no_longer_blocks_but_document_names_do(app, inp
         )
     finally:
         conn.close()
+
+
+def _verify_dependents(conn) -> list[str]:  # noqa: ANN001
+    from core.bundle import verify
+
+    out = verify._Out()
+    verify._stipulations(conn, out)
+    verify._identity(conn, out)
+    verify._claims(conn, {}, out)
+    verify._inputs(conn, out, None)
+    return [f.detail for f in out.items if f.level == verify.FAIL]
+
+
+def test_a_removed_phones_withdrawn_stipulation_still_verifies(app, inputs):
+    send(app, inputs["item1"], "report")
+    post(app, "/stipulate", device="dev:item1", person="Daniel Petrov")
+    conn = connect(app.case.db)
+    try:
+        (sid,) = conn.execute("SELECT id FROM stipulations").fetchone()
+    finally:
+        conn.close()
+    post(app, "/stipulation/withdraw", id=sid)
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "Removed item1.xlsx" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        assert not _verify_dependents(conn), _verify_dependents(conn)
+        (payload,) = conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq DESC", (ACTION,)
+        ).fetchone()
+        assert sid in payload
+    finally:
+        conn.close()
+
+
+def test_a_rejected_account_link_goes_with_the_file_but_a_confirmed_one_blocks(app, inputs):
+    from core.contracts import IdentityLinkStatus
+    from core.review import actions
+
+    send(app, inputs["item1"], "report")
+    send(app, inputs["item2"], "report")
+    post(app, "/stipulate", device="dev:item2", person="Daniel Petrov")
+    conn = connect(app.case.db)
+    try:
+        (account,) = conn.execute(
+            "SELECT id FROM accounts WHERE source_id = 'item1' ORDER BY id LIMIT 1"
+        ).fetchone()
+        link = actions.link_account(
+            conn, account, "person:dev:item2:owner", "expert:Test Expert", "Same number."
+        )
+    finally:
+        conn.close()
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "confirmed account link" in app.flash[0] and "item1" in _sources(app)
+    conn = connect(app.case.db)
+    try:
+        actions.decide_identity_link(
+            conn, link, IdentityLinkStatus.REJECTED, "expert:Test Expert", "Not the same."
+        )
+    finally:
+        conn.close()
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "Removed item1.xlsx" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        assert not conn.execute("SELECT 1 FROM identity_links WHERE id = ?", (link,)).fetchone()
+        assert conn.execute(
+            "SELECT 1 FROM persons WHERE id = 'person:dev:item2:owner'"
+        ).fetchone()  # the other phone's user stays
+        assert not _verify_dependents(conn), _verify_dependents(conn)
+    finally:
+        conn.close()
+
+
+def test_a_removed_documents_proposed_claims_still_verify(app, inputs):
+    from core.claims.propose import PROPOSE_ACTION
+    from core.review import audit_log
+
+    send(app, inputs["affidavit"], "govdoc")
+    conn = connect(app.case.db)
+    try:
+        (source,) = conn.execute("SELECT id FROM sources").fetchone()
+        (para,) = conn.execute("SELECT id FROM govdoc_paragraphs LIMIT 1").fetchone()
+        with conn:
+            conn.execute(
+                "INSERT INTO claims (id, paragraph_id, text, claim_type, status) VALUES"
+                " ('P01', ?, 'A proposed claim.', 'communication', 'proposed')",
+                (para,),
+            )
+            audit_log.append(conn, app.clock(), "system", PROPOSE_ACTION, {"claims": ["P01"]})
+    finally:
+        conn.close()
+    post(app, "/case/remove_file", source=source, reason="Wrong document.")
+    assert "Removed affidavit.pdf" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM claims").fetchone()[0] == 0
+        assert not _verify_dependents(conn), _verify_dependents(conn)
+    finally:
+        conn.close()
