@@ -574,7 +574,9 @@ def test_screen_encrypts_an_existing_case_on_request_only(app, inputs, tmp_path)
     post(app, "/case/passphrase", current=PASS, new="a brand new passphrase",
          new2="a brand new passphrase")  # fmt: skip
     assert "Passphrase changed" in get(app, "/setup").text
+    post(app, "/case/recovery/done", next="/setup")
     post(app, "/case/lock")
+    assert app.case is None
     post(app, "/case/open", case=case.folder.name, passphrase="a brand new passphrase")
     assert app.case == case
 

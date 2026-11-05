@@ -179,7 +179,20 @@ def cmd_import(a: argparse.Namespace) -> int:
 
     Importer = report_importer(a.report)  # noqa: N806 - a class
 
-    src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
+    sid = a.source_id
+    if sid is None:  # the stem, made unique: item1.xlsx then item1.ufdr are item1 and item1-2
+        import hashlib
+
+        from core.casework.cases import _free_source_id
+
+        with a.report.open("rb") as fh:
+            sha = hashlib.file_digest(fh, "sha256").hexdigest()
+        sid = _free_source_id(conn, a.report, sha)
+    try:
+        src = Importer(source_id=sid, date_order=a.date_order).import_source(a.report, conn)
+    except ValueError as e:
+        print(f"import: {e}", file=sys.stderr)
+        return 2
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
     check = tested.for_source(conn, src.id)
     if check is not None:

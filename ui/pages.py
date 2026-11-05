@@ -2387,9 +2387,31 @@ def setup_page(
         )
         + "</details>"
     )
+    audited = conn.execute("SELECT 1 FROM pipeline_runs LIMIT 1").fetchone() is not None
+    if srcs and not audited:
+        options = "".join(
+            f"<option value='{e(s[0])}'>{e(s[4])}</option>" for s in srcs
+        )  # s = (id, kind, fidelity, extraction, file name, ...)
+        out.append(
+            "<details class='fold' id='remove-file'><summary>Remove a wrongly imported file"
+            "</summary><p class='muted'>Only before the first audit. Mabillon's copy and its "
+            "records go; your original file is not touched, and the audit log keeps the "
+            "removal with the file's SHA-256.</p>"
+            + page.form(
+                "/case/remove_file",
+                f"<label>File <select name='source'>{options}</select></label> "
+                "<input type='text' name='reason' required maxlength='500' size='40' "
+                "placeholder='Why, in one sentence' aria-label='Why the file is removed'> "
+                f"<button type='submit'{' disabled' if busy else ''}>Remove the file</button>",
+                back="/setup",
+                anchor="files",
+            )
+            + "</details>"
+        )
+    has_report = any(s[0] not in govdocs for s in srcs)
     out.append(
-        f"<details class='add-files'{'' if srcs else ' open'}><summary>Add a file</summary>"
-        "<div class='uploads'>"
+        f"<details class='add-files'{'' if has_report else ' open'}><summary>Add a file"
+        "</summary><div class='uploads'>"
     )
     out.append(
         _upload_form(

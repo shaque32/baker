@@ -124,6 +124,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/cloud/key": ("audit",),
     "/cloud/key/remove": ("audit",),
     "/case/import": ("audit", "propose", "model_check"),
+    "/case/remove_file": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
     "/case/encrypt": ("audit", "propose", "model_check"),
@@ -641,6 +642,7 @@ class App:
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
             "/case/recovery/new": lambda: self._new_recovery(f),
+            "/case/remove_file": lambda: self._remove_file(conn, f),  # type: ignore[arg-type]
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
             "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
@@ -1133,6 +1135,12 @@ class App:
             protect.recovery_pending(self.case, False)
         self.recovery = None
         return "Recovery key hidden. Mabillon keeps no copy of it."
+
+    def _remove_file(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        from core.casework.remove import remove_file
+
+        name = remove_file(self._open(), conn, f.get("source", ""), self.actor, f.get("reason", ""))
+        return f"Removed {name} from the case. Your original file is not touched."
 
     def _new_recovery(self, f: dict[str, str]) -> str:
         case = self._open()
