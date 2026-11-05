@@ -40,7 +40,14 @@ from datetime import UTC, datetime
 
 from core import build, pipeline
 from core.audit import invariants, rules, testability
-from core.contracts import CONTRACTS_VERSION, PipelineRunStatus, VerdictDecision, canonical_json
+from core.contracts import (
+    CONTRACTS_VERSION,
+    PipelineRunStatus,
+    SupportedBasis,
+    Verdict,
+    VerdictDecision,
+    canonical_json,
+)
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 from core.review.status import edited_after
@@ -146,8 +153,9 @@ def _same_decision(prior: _Prior, d: VerdictDecision) -> bool:
 
 def _carry(
     conn: sqlite3.Connection, prior: _Prior, d: VerdictDecision, now: datetime, by: str
-) -> None:
-    """Keep the expert's confirmation or override on the new run's verdict, and log it."""
+) -> VerdictDecision:
+    """Keep the expert's confirmation or override on the new run's verdict, and log it.
+    Returns the decision as stored, so the result counts the verdicts the run holds."""
     conn.execute(
         "UPDATE verdicts SET verdict = ?, supported_basis = ?, confirmed_by = ?,"
         " override_note = ? WHERE id = ?",
@@ -163,6 +171,14 @@ def _carry(
     if prior.verdict != prior.rules_verdict:
         payload["was"] = prior.rules_verdict  # as an override entry names it
     audit_log.append(conn, now, by, CARRY_ACTION, payload)
+    return d.model_copy(
+        update={
+            "verdict": Verdict(prior.verdict),
+            "supported_basis": SupportedBasis(prior.basis) if prior.basis else None,
+            "confirmed_by": prior.confirmed_by,
+            "override_note": prior.note,
+        }
+    )
 
 
 def _new_run_id(conn: sqlite3.Connection, now: datetime) -> str:
@@ -270,7 +286,7 @@ def redecide(
                 prior = priors.get(claim.id)
                 if prior is not None and prior.confirmed_by is not None:
                     if _same_decision(prior, decision):
-                        _carry(conn, prior, decision, now, requested_by)
+                        decision = _carry(conn, prior, decision, now, requested_by)
                         result.carried.append(claim.id)
                     else:
                         result.lapsed.append(claim.id)

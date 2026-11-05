@@ -46,6 +46,12 @@ def test_unchanged_claims_keep_the_experts_confirmation_and_override(reviewed, t
             assert c in result.lapsed and after[c].confirmed_by is None
     assert set(result.carried) | set(result.lapsed) >= {"C05", "C07"}
     assert "C07" in result.carried  # nothing C07 rests on changed since its override
+    # The returned decisions are the stored ones, so a caller's tally matches the report.
+    returned = {d.claim_id: d for d in result.decisions}
+    for c in result.carried:
+        stored = _stored(conn, c)
+        assert returned[c].verdict == stored.verdict
+        assert returned[c].confirmed_by == stored.confirmed_by
     (n,) = conn.execute(
         "SELECT COUNT(*) FROM audit_log WHERE action = ?", (CARRY_ACTION,)
     ).fetchone()

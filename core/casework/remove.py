@@ -36,6 +36,16 @@ def _in(ids: list[str]) -> str:
     return ",".join("?" * len(ids))
 
 
+def _has(conn: sqlite3.Connection, table: str) -> bool:
+    """A case made before a table existed (person_aliases, schema 0.6.0) reads as empty."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).fetchone()
+        is not None
+    )
+
+
 def _blockers(conn: sqlite3.Connection, source_id: str) -> list[str]:
     """What the expert entered that still points at this file, in words."""
     out: list[str] = []
@@ -44,11 +54,29 @@ def _blockers(conn: sqlite3.Connection, source_id: str) -> list[str]:
     if (
         devices
         and conn.execute(
-            f"SELECT 1 FROM stipulations WHERE subject_id IN ({_in(devices)})",  # noqa: S608
+            f"SELECT 1 FROM stipulations WHERE subject_id IN ({_in(devices)})"  # noqa: S608
+            " AND status = 'confirmed'",
             devices,
         ).fetchone()
     ):
         out.append("a stipulated user for its phone (withdraw it under Who used each phone)")
+    # Names the expert gave the phone, or other names for its owner, are kept by device id: a
+    # later report with the same file name gets the same id and would inherit them.
+    from core.review.device_names import logged_names
+
+    named = logged_names(conn)
+    if any(named.get(d) for d in devices):
+        out.append("document names for its phone (clear them under Who used each phone)")
+    owners = [f"person:{d}:owner" for d in devices]
+    if (
+        owners
+        and _has(conn, "person_aliases")
+        and conn.execute(
+            f"SELECT 1 FROM person_aliases WHERE person_id IN ({_in(owners)})",  # noqa: S608
+            owners,
+        ).fetchone()
+    ):
+        out.append("other names for its phone's user (clear them on Identities)")
     if (
         accounts
         and conn.execute(
@@ -93,6 +121,28 @@ def delete_rows(conn: sqlite3.Connection, source_id: str) -> None:
     """Delete every row the importer stored for this source (inside the caller's transaction)."""
     messages = _ids(conn, "SELECT id FROM messages WHERE source_id = ?", source_id)
     accounts = _ids(conn, "SELECT id FROM accounts WHERE source_id = ?", source_id)
+    devices = _ids(conn, "SELECT id FROM devices WHERE source_id = ?", source_id)
+    if devices:
+        # Only withdrawn stipulations can be left (a confirmed one blocks the removal); they go
+        # with the phone, and so does its owner's person row when nothing else uses it. The
+        # audit log keeps both decisions.
+        conn.execute(
+            f"DELETE FROM stipulations WHERE subject_id IN ({_in(devices)})"  # noqa: S608
+            " AND status != 'confirmed'",
+            devices,
+        )
+        for d in devices:
+            owner = f"person:{d}:owner"
+            used = any(
+                conn.execute(
+                    f"SELECT 1 FROM {t} WHERE person_id = ?",  # noqa: S608
+                    (owner,),
+                ).fetchone()
+                for t in ("stipulations", "identity_links", "person_aliases")
+                if _has(conn, t)
+            )
+            if not used:
+                conn.execute("DELETE FROM persons WHERE id = ?", (owner,))
     for chunk in range(0, len(messages), 500):
         part = messages[chunk : chunk + 500]
         for table in ("message_recipients", "translations"):

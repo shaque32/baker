@@ -133,3 +133,48 @@ def test_a_file_stays_while_a_stipulation_points_at_it_or_once_an_audit_has_run(
         conn.close()
     post(app, "/case/remove_file", source="item2", reason="Wrong phone.")
     assert "an audit has run" in app.flash[0] and "item2" in _sources(app)
+
+
+def test_a_refused_import_is_logged_as_taken_back_so_bundles_still_verify(app, inputs):
+    from core.bundle import verify
+
+    send(app, inputs["affidavit"], "report")  # refused: no report tables
+    conn = connect(app.case.db)
+    try:
+        out = verify._Out()
+        verify._inputs(conn, out, None)
+        assert not out.failed(), [f.detail for f in out.items]
+        (payload,) = conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = ?", (ACTION,)
+        ).fetchone()
+        assert "refused on import" in payload
+    finally:
+        conn.close()
+
+
+def test_a_withdrawn_stipulation_no_longer_blocks_but_document_names_do(app, inputs):
+    send(app, inputs["item1"], "report")
+    post(app, "/stipulate", device="dev:item1", person="Daniel Petrov")
+    conn = connect(app.case.db)
+    try:
+        (sid,) = conn.execute("SELECT id FROM stipulations").fetchone()
+    finally:
+        conn.close()
+    post(app, "/stipulation/withdraw", id=sid)
+    post(app, "/device/names", device="dev:item1", names="TARGET PHONE")
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "document names for its phone" in app.flash[0] and "item1" in _sources(app)
+    post(app, "/device/names", device="dev:item1", names="")
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "Removed item1.xlsx" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM stipulations").fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM persons WHERE id = 'person:dev:item1:owner'"
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()

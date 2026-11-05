@@ -366,7 +366,7 @@ def import_upload(
                 source_id=_free_source_id(conn, path, upload_sha256),
             ).import_source(path, conn)
             stored_sha = src.sha256
-            _refuse_unusable_report(conn, src.id, name, suffix, date_order)
+            _refuse_unusable_report(conn, src.id, name, suffix, date_order, actor, clock)
             summary = (
                 "coverage not known"
                 if src.fidelity.value == "unknown"
@@ -433,7 +433,13 @@ def _counter(payload: object, name: str) -> int:
 
 
 def _refuse_unusable_report(
-    conn: sqlite3.Connection, source_id: str, name: str, suffix: str, date_order: str | None
+    conn: sqlite3.Connection,
+    source_id: str,
+    name: str,
+    suffix: str,
+    date_order: str | None,
+    actor: str = "system",
+    clock: Clock | None = None,
 ) -> None:
     """Take back an import the expert cannot have meant, with what to do instead: a PDF with no
     report tables in it (often the government document in the wrong slot), or a report whose
@@ -461,10 +467,28 @@ def _refuse_unusable_report(
                 f"nothing was imported. Import it again with {other}, or let Mabillon work it out"
             )
     if problem is not None:
-        from core.casework.remove import delete_rows
+        from core.casework.remove import ACTION, delete_rows
 
+        row = conn.execute("SELECT kind, sha256 FROM sources WHERE id = ?", (source_id,)).fetchone()
         with conn:
             delete_rows(conn, source_id)
+        # The importer's own `import` entry is already in the log: the take-back is logged as
+        # a removal, so the log never names a source the case no longer holds (verify-bundle
+        # reads it so).
+        _logged(
+            conn,
+            _now(clock),
+            actor,
+            ACTION,
+            {
+                "source_id": source_id,
+                "file_name": name,
+                "kind": row[0] if row else None,
+                "sha256": row[1] if row else None,
+                "copied_to": None,
+                "reason": f"refused on import: {problem}"[:500],
+            },
+        )
         raise _Unusable(problem)
 
 
