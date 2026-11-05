@@ -1,0 +1,383 @@
+"""Big open-weight models on the signed probe set, through a hosted API (stance only).
+
+EVAL ONLY: core/ never imports this. Arsh (thread "Run Mabillon reproducibly on cloud
+open-weight model", 2026-11-05) asked to try the large open-weight models that no Mac or
+examiner PC can hold. Plan: /mnt/project-files/baker/plans/cloud-open-weight-repro.md.
+
+This is a screen, not the product: a hosted API batches requests and picks kernels on its side,
+so its answers are not reproducible, and a third party sees every prompt. So only the synthetic
+signed probe set and the signed stance prompts may go out (the same allow lists as
+eval/bench/claude_bench.py); anything else is refused before a request is made. A model that
+passes is then self-hosted from the pinned weights below and repeat-checked
+(eval/probe/aws_repeat.sh) before anyone may call it reproducible.
+
+Fixed before any run (2026-11-05), the same screen as eval/probe/candidates.py:
+- The signed probe set (eval/gold/probe/probe.jsonl), stance only, layout product_members, with
+  both signed stance prompts, v1.1 (the 14B's) and v1.2 (the cloud prompt Opus ran).
+- Temperature 0, seed 1234, the stance JSON schema as structured output, reasoning effort
+  medium with the reasoning text left out of the answer, each item asked twice (the first
+  answer scores, the second measures whether the hosted model repeats itself).
+- Routing: providers that keep no prompts (data_collection deny), serve 8-bit or wider weights,
+  and honor every parameter sent (require_parameters). The provider that served each answer
+  is recorded.
+- Stage 1 pass, on either prompt: all four Expert-confirms bars and 0 moved traps shown as
+  supports (candidates.stage1). A pass earns stage 2 only: the self-hosted repeat check, then
+  case01 and fresh held-out items. Switching the product's model is Arsh's call, and running
+  one for real cases needs his signed cloud rule.
+
+Usage:
+  OPENROUTER_API_KEY=... python -m eval.bench.open_bench [--models NAME,...]
+      [--out eval/out/open_bench] [--repeat 2] [--reasoning medium]
+  python -m eval.bench.open_bench --dry-run     no network: a stand-in answers every call
+  python -m eval.bench.open_bench --list        the screened models and their pinned weights
+Writes <out>/<model>/<prompt>/summary.json per run and <out>/VERDICT.md (with cost and the
+providers that answered). Synthetic data only; case02 is never read.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from core.llm.runtime import ModelOutput, parse_json_output
+from eval.bench.claude_bench import (
+    ROOT,
+    SIGNED_PROBE,
+    api_schema,
+    check_prompt_path,
+    probe_items,
+)
+from eval.probe import candidates
+
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
+LAYOUT = "product_members"
+SEED = 1234
+MAX_TOKENS = 8000  # reasoning plus the answer; the answer itself is short
+
+
+@dataclass(frozen=True)
+class OpenModel:
+    name: str
+    api_model: str  # the OpenRouter model id
+    weights: str  # the Hugging Face repo a self-hosted run would load
+    revision: str  # that repo's commit on 2026-11-05, so stage 2 loads the same weights
+    license: str  # from the model card, 2026-11-05; read it before any commercial use
+    parameters_b: int  # total parameters, billions (Hugging Face safetensors metadata)
+    usd_per_mtok: tuple[float, float]  # OpenRouter list price (input, output), 2026-11-05
+
+
+# Names, revisions, licenses and sizes read from huggingface.co and openrouter.ai on
+# 2026-11-05. Cheapest first, so results arrive early.
+MODELS = (
+    OpenModel(
+        name="minimax-m3.1-flash",
+        api_model="minimax/minimax-m3.1-flash",
+        weights="MiniMaxAI/MiniMax-M3.1-Flash",
+        revision="ce7f4df87d2e05262f5775f373dac4772f134041",
+        license="other (minimax-community)",
+        parameters_b=220,
+        usd_per_mtok=(0.075, 0.30),
+    ),
+    OpenModel(
+        name="deepseek-v4.1-flash-1017",
+        api_model="deepseek/deepseek-v4.1-flash-1017",
+        weights="deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        revision="1bae0e1088993b9b82de08f59de5be5a34e42170",
+        license="MIT",
+        parameters_b=763,
+        usd_per_mtok=(0.15, 0.60),
+    ),
+    OpenModel(
+        name="beam-1.0-501b-a23b",
+        api_model="reflection/beam-1.0-501b-a23b",
+        weights="reflection/Beam-1.0-501B-A23B",
+        revision="12950ae640b48cbbe9b5bb7735bf197507d6383f",
+        license="Apache-2.0",
+        parameters_b=501,
+        usd_per_mtok=(0.30, 1.00),
+    ),
+    OpenModel(
+        name="kimi-k3.1-pro",
+        api_model="moonshotai/kimi-k3.1-pro",
+        weights="moonshotai/Kimi-K3.1-Pro",
+        revision="d9e99b0792a5e93b78ea9bea62a68167e36ddd9e",
+        license="other (kimi-k3.1-pro)",
+        parameters_b=2780,
+        usd_per_mtok=(2.00, 10.00),
+    ),
+)
+
+PROVIDER = {
+    "data_collection": "deny",
+    "require_parameters": True,
+    "quantizations": ["fp8", "bf16", "fp16", "fp32"],
+}
+
+
+def model(name: str) -> OpenModel:
+    for m in MODELS:
+        if m.name == name:
+            return m
+    raise SystemExit(f"unknown model {name!r}; one of {', '.join(m.name for m in MODELS)}")
+
+
+@dataclass(frozen=True)
+class OpenParams:
+    """What the call log and run record keep for a hosted call, in place of local settings."""
+
+    api_model: str
+    reasoning: str
+    seed: int = SEED
+    temperature: float = 0.0
+    max_tokens: int = MAX_TOKENS
+
+    def as_record(self) -> dict[str, str | int | float | bool]:
+        return {"api_model": self.api_model, "reasoning": self.reasoning, "seed": self.seed,
+                "temperature": self.temperature, "max_tokens": self.max_tokens,
+                "grammar": "json_schema", "where": "hosted", "n_ctx": "provider's",
+                "chat_template": "provider's"}  # fmt: skip
+
+
+@dataclass
+class Usage:
+    calls: int = 0
+    failed: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    seconds: float = 0.0
+    providers: dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"calls": self.calls, "failed": self.failed, "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens, "cost_usd": round(self.cost_usd, 4),
+                "seconds": round(self.seconds, 1), "providers": dict(self.providers)}  # fmt: skip
+
+
+def _post(body: dict[str, Any], key: str, timeout: float) -> dict[str, Any]:
+    req = urllib.request.Request(  # noqa: S310 - fixed https URL
+        API_URL,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "X-Title": "Mabillon eval",
+        },  # fmt: skip
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        return json.loads(resp.read().decode("utf-8"))
+
+
+@dataclass
+class HostedModel:
+    """Same `generate_json` surface as the local runtime, backed by a hosted open model.
+
+    Never raises: a failed request, a refusal or an answer outside the schema comes back as a
+    ModelOutput with an error, which the probe scores as invalid output (fail closed)."""
+
+    spec: OpenModel
+    reasoning: str = "medium"
+    post: Any = None  # (body, key, timeout) -> response dict; tests and --dry-run pass one
+    key: str | None = None
+    retries: int = 4
+    timeout: float = 180.0
+    usage: Usage = field(default_factory=Usage)
+
+    def __post_init__(self) -> None:
+        self.name = self.spec.name
+        self.sha256 = f"hosted:{self.spec.api_model}"
+        self.params = OpenParams(self.spec.api_model, self.reasoning)
+        if self.post is None:
+            self.post = _post
+            self.key = self.key or os.environ.get("OPENROUTER_API_KEY")
+            if not self.key:
+                raise SystemExit("set OPENROUTER_API_KEY (or use --dry-run)")
+
+    def body(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        p = self.params
+        return {
+            "model": p.api_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": p.temperature,
+            "seed": p.seed,
+            "max_tokens": p.max_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "answer", "strict": True, "schema": api_schema(schema)},
+            },
+            "reasoning": {"effort": p.reasoning, "exclude": True},
+            "provider": PROVIDER,
+            "usage": {"include": True},
+        }
+
+    def generate_json(self, prompt: str, schema: dict[str, Any], params: Any = None) -> ModelOutput:
+        start = time.perf_counter()
+        resp, error = None, None
+        for attempt in range(self.retries + 1):
+            try:
+                resp = self.post(self.body(prompt, schema), self.key, self.timeout)
+                break
+            except urllib.error.HTTPError as e:
+                error = f"http {e.code}"
+                if e.code not in (408, 429, 500, 502, 503, 504):
+                    break
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+                error = f"request failed: {type(e).__name__}"
+            time.sleep(min(2**attempt, 30))
+        elapsed = time.perf_counter() - start
+        self.usage.calls += 1
+        self.usage.seconds += elapsed
+        if resp is None or "choices" not in resp:
+            self.usage.failed += 1
+            reason = error or f"no answer: {str((resp or {}).get('error'))[:200]}"
+            return ModelOutput("", None, reason, seconds=elapsed)
+        u = resp.get("usage") or {}
+        prompt_tokens = int(u.get("prompt_tokens") or 0)
+        completion_tokens = int(u.get("completion_tokens") or 0)
+        self.usage.input_tokens += prompt_tokens
+        self.usage.output_tokens += completion_tokens
+        inp, out = self.spec.usd_per_mtok
+        cost = u.get("cost")
+        self.usage.cost_usd += (
+            float(cost)
+            if cost is not None
+            else (prompt_tokens * inp + completion_tokens * out) / 1_000_000
+        )
+        provider = str(resp.get("provider") or "unknown")
+        self.usage.providers[provider] = self.usage.providers.get(provider, 0) + 1
+        choice = resp["choices"][0]
+        text = (choice.get("message") or {}).get("content") or ""
+        stop = choice.get("finish_reason")
+        if stop == "length":
+            self.usage.failed += 1
+            return ModelOutput(text, None, "max_tokens", prompt_tokens, completion_tokens,
+                               elapsed, served_model=resp.get("model"))  # fmt: skip
+        parsed, perr = parse_json_output(text, schema)
+        return ModelOutput(
+            raw_text=text,
+            parsed=parsed,
+            error=perr,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            seconds=elapsed,
+            served_model=resp.get("model"),
+            request_id=resp.get("id"),
+            stop_reason=f"{stop} via {provider}",
+        )
+
+
+def dry_post(body: dict[str, Any], key: str | None, timeout: float) -> dict[str, Any]:
+    """No network: 'irrelevant' for every stance item, as claude_bench's DryRunClient does."""
+    answer = {"stance": "irrelevant", "quote": "", "rationale": "dry run"}
+    return {
+        "id": "dry-run",
+        "model": body["model"],
+        "provider": "dry-run",
+        "choices": [{"message": {"content": json.dumps(answer)}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": len(body["messages"][0]["content"]) // 4,
+            "completion_tokens": 20,
+            "cost": 0.0,
+        },  # fmt: skip
+    }
+
+
+def run_one(hosted: HostedModel, prompt_file: Path, repeat: int, out: Path) -> dict[str, Any]:
+    from eval.probe.run_probe import run_model
+
+    path = check_prompt_path(prompt_file)
+    _reviewer, stance = probe_items(SIGNED_PROBE, LAYOUT)
+    cost_before = hosted.usage.cost_usd
+    providers_before = dict(hosted.usage.providers)
+    out.mkdir(parents=True, exist_ok=True)
+    res = run_model(hosted, [], stance, hosted.params, repeat, out, path,  # type: ignore[arg-type]
+                    stance_only=True)  # fmt: skip
+    res["layout"] = LAYOUT
+    res["params"] = hosted.params.as_record()
+    res["license"] = hosted.spec.license
+    res["weights"] = f"{hosted.spec.weights}@{hosted.spec.revision}"
+    res["usage"] = hosted.usage.as_dict()
+    res["cost_usd_this_run"] = round(hosted.usage.cost_usd - cost_before, 4)
+    res["providers_this_run"] = {
+        k: n - providers_before.get(k, 0)
+        for k, n in hosted.usage.providers.items()
+        if n - providers_before.get(k, 0)
+    }
+    (out / "summary.json").write_text(
+        json.dumps([res], indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return res
+
+
+def _pct(v: object) -> str:
+    return f"{v:.0%}" if isinstance(v, float) else "n/a"
+
+
+SWAP_NOTE = (
+    "Stage 1: no hosted open model passes. Nothing is self-hosted; the 14B stays the local"
+    " model and Opus stays the only cloud option under review."
+)
+
+
+def verdict(out: Path, names: list[str]) -> str:
+    text = candidates.verdict(out, names, SWAP_NOTE)
+    lines = ["", "## Cost, providers and repeats (hosted; not reproducible by design)", ""]
+    for name in names:
+        for version in candidates.PROMPTS:
+            summary = out / name / version / "summary.json"
+            if not summary.is_file():
+                continue
+            row = json.loads(summary.read_text(encoding="utf-8"))[0]
+            rep = (row.get("expert_confirms") or {}).get("reported") or {}
+            lines.append(
+                f"- {name} {version}: ${row.get('cost_usd_this_run')}, providers"
+                f" {row.get('providers_this_run')}, second answer byte-identical on"
+                f" {_pct(row.get('stance_repeat_identical'))} of items, same label on"
+                f" {_pct(rep.get('labels_identical_across_repeats'))}, weights"
+                f" {row.get('weights')}, license {row.get('license')}"
+            )
+    return text + "\n".join(lines) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--models", default=",".join(m.name for m in MODELS))
+    ap.add_argument("--out", type=Path, default=Path("eval/out/open_bench"))
+    ap.add_argument("--repeat", type=int, default=2)
+    ap.add_argument("--reasoning", default="medium", choices=["low", "medium", "high"])
+    ap.add_argument("--dry-run", action="store_true", help="stand-in answers, no network")
+    ap.add_argument("--list", action="store_true", help="print the screened models and exit")
+    args = ap.parse_args(argv)
+
+    names = [n.strip() for n in args.models.split(",") if n.strip()]
+    specs = [model(n) for n in names]
+    if args.list:
+        for m in specs:
+            inp, out = m.usd_per_mtok
+            print(f"{m.name}: {m.api_model}, {m.weights}@{m.revision[:12]}, {m.parameters_b}B,"
+                  f" {m.license}, ${inp}/${out} per M tokens")  # fmt: skip
+        return 0
+    for spec in specs:
+        hosted = HostedModel(spec, args.reasoning, post=dry_post if args.dry_run else None)
+        for version, prompt_file in candidates.PROMPTS.items():
+            print(f"{spec.name} {version}", file=sys.stderr, flush=True)
+            run_one(hosted, ROOT / prompt_file, args.repeat,
+                    args.out / spec.name / version)  # fmt: skip
+        print(f"{spec.name}: ${hosted.usage.cost_usd:.2f} so far", file=sys.stderr, flush=True)
+    text = verdict(args.out, names)
+    (args.out / "VERDICT.md").write_text(text, encoding="utf-8")
+    print(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
