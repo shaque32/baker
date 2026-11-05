@@ -114,7 +114,8 @@ CSS = """
   padding: 1px 0 1px 14px; font-size: 15px; }
 .pg-claim .item p.quoted { margin: 8px 0 2px; font-size: 13.5px; }
 .pg-claim p.ev-same { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
-.pg-claim p.ev-rec, .pg-evidence p.ev-rec { margin: 2px 0 0; font-size: 12.5px;
+.pg-claim p.ev-rec, .pg-evidence p.ev-rec,
+.pg-claim p.ev-src, .pg-evidence p.ev-src { margin: 2px 0 0; font-size: 12.5px;
   color: var(--muted); overflow-wrap: anywhere; }
 .pg-claim p.ev-review, .pg-evidence p.ev-review { margin: 12px 0 0; padding-top: 12px;
   border-top: 1px solid var(--line); font-size: 13px; max-width: none; }

@@ -71,8 +71,14 @@ CSS = """
 /* add a claim: one form at a readable width */
 .pg-newclaim form.box { max-width: 46rem; padding: 20px 24px; }
 .pg-newclaim form.box p { margin: 0 0 16px; }
-.pg-newclaim label:has(> select[name=paragraph]) { display: grid; margin-right: 0; }
-.pg-newclaim select[name=paragraph] { width: 100%; min-width: 0; }
+.pg-newclaim .para-list { max-height: 22rem; overflow-y: auto; margin: 0 0 16px;
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; }
+.pg-newclaim fieldset.paras { border: 0; margin: 0; padding: 0; }
+.pg-newclaim fieldset.paras legend { font-weight: 600; padding: 8px 0 4px; }
+.pg-newclaim label.para-pick { display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px; margin: 0; padding: 8px 0; border-top: 1px solid var(--line); }
+.pg-newclaim label.para-pick input { grid-row: 1 / span 2; margin-top: 3px; }
+.pg-newclaim label.para-pick .where { font-size: 12.5px; color: var(--muted); }
 .pg-newclaim p.act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
   margin: 4px 0 0; }
 .pg-newclaim p.act .muted { font-size: 12.5px; }

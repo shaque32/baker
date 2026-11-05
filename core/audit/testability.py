@@ -606,7 +606,7 @@ class Proposed:
 def proposals(conn: sqlite3.Connection, run: Mapping[str, Any] | None) -> dict[str, Proposed]:
     """Claim id -> the try the step proposed for it in the audit whose evidence `run` shows (a
     verdict re-run shows its source audit's), with the expert's latest decision on it."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = run.get("evidence_from_run", run["run_id"])
     out: dict[str, Proposed] = {}
@@ -707,7 +707,7 @@ def accepted_in(
     """Claim id -> (assumption ids, claim hash) of the proposal the audit `run` (or the audit a
     verdict re-run took its evidence from) used under an expert's acceptance in force then
     (`in_force`): the assumptions rules.decide_verdict gets as agent_proposed."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = str(run.get("evidence_from_run", run["run_id"]))
     return {

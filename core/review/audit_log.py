@@ -24,6 +24,11 @@ def entry_hash(prev_hash: str, at_utc: str, actor: str, action: str, payload_jso
 def append(
     conn: sqlite3.Connection, at_utc: datetime, actor: str, action: str, payload: object
 ) -> AuditLogEntry:
+    # Take the write lock before reading the last entry, so a second connection (the audit
+    # job's thread, a view record, another tab) cannot read the same seq and collide. A caller
+    # already in a write transaction holds the lock; the caller still commits as before.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     row = conn.execute("SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchone()
     seq, prev_hash = (row[0] + 1, row[1]) if row else (1, "")
     at = at_utc.isoformat().replace("+00:00", "Z")

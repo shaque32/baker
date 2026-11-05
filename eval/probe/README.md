@@ -307,3 +307,22 @@ with these versions, the 14B's stance labels regenerate exactly; nothing has bee
 another machine (a Windows NVIDIA PC included), another llama-cpp-python version or another
 prompt. The report says this only for this model file with this prompt (`REPEAT_TESTED` in
 `core/report/html.py`); any other pair still gets no claim.
+
+### On a cloud graphics card (AWS), and across machines (2026-11-05)
+
+`eval/probe/aws_repeat.sh` runs the same four stages on a rented AWS g5.xlarge (NVIDIA A10G) or
+g6.xlarge (L4) with the "Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 24.04)": the same
+pinned model file, and llama-cpp-python 0.3.36 built for CUDA from its pinned source, through the
+setup the validation runs use (`eval/aws_setup.sh`, shared with `eval/validation/aws_run.sh`).
+Its summary also names the AWS image, instance type, graphics card, driver and CUDA compiler,
+because a result holds only for that stack. It detaches, shuts the machine down 180 minutes after
+it finishes, and leaves `~/repeat-results.zip`. About 2 hours per machine (unmeasured; validation
+run 3 measured about 5.5 s per stance call on the A10G).
+
+`python -m eval.probe.repeat_check --compare FIRST SECOND [--out DIR]` compares two finished
+runs' folders, for example two fresh AWS machines, or AWS and the 2026-10-24 Mac run: the probe
+answers (A, first asks) and the case01 audit (D1), matched by item and prompt digest, so only
+what both runs asked is compared. Runs of different model files are refused. The 105 probe
+prompts at `f07aa62` (the Mac run) and at this change are identical (checked 2026-11-05), so the
+Mac's folder is a valid reference for the probe; case01 prompts may differ and the comparison
+reports how many matched. Nothing has been run on AWS with this script yet.
