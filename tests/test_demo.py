@@ -224,7 +224,7 @@ def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels." in page and agent in page
+    assert "Demo case: synthetic data, scripted labels</strong>" in page and agent in page
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
     assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
     purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))
@@ -462,7 +462,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
-    assert "5 claims need you." in page  # C05, C16, D03 and these two
+    assert "5 claims need you</h1>" in page  # C05, C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):

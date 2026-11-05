@@ -8,14 +8,10 @@ and the record is smaller and muted, so the run ids, versions and hashes stay pr
 """
 
 CSS = """
-/* the notices: one quiet panel, a row each, in place of a box each with a side stripe */
-.ov-notices { box-sizing: border-box; max-width: 880px; margin: 0 0 24px; background: var(--card);
-  border: 1px solid var(--line); border-radius: var(--radius); }
-.ov-notices > .banner, main .ov-notices > .banner { max-width: none; margin: 0; border: 0;
-  border-radius: 0; box-shadow: none; background: none; padding: 11px 16px; }
-.ov-notices > .banner + .banner { margin-top: 0; border-top: 1px solid var(--line); }
-.ov-notices > #formats.banner { border: 0; background: none; padding: 11px 16px; }
-.ov-notices > .banner + #formats.banner { border-top: 1px solid var(--line); }
+/* the notices: quiet lines, each behind the shared notice rule (ui/theme.py), no panel */
+.ov-notices { box-sizing: border-box; max-width: 880px; margin: 0 0 28px; display: grid;
+  gap: 10px; }
+.ov-notices > .banner, main .ov-notices > .banner { max-width: none; margin: 0; }
 .ov-notices .banner details > summary { color: var(--fg); font-weight: 400; }
 .ov-notices .banner details > summary strong { font-weight: 500; }
 .ov-notices .banner details[open] > summary { margin-bottom: 8px; }
@@ -47,8 +43,8 @@ CSS = """
 .pg-overview .ov-dev .mono { display: block; margin-top: 1px; }
 .pg-overview .ov-dev:not(:has(b)) { font-weight: 600; }
 .pg-overview .ov-who { min-width: 0; color: var(--ink-2); }
-.pg-overview .ov-none { display: inline-block; font-size: 12px; line-height: 1.5;
-  padding: 1px 9px; border-radius: 999px; background: var(--panel); color: var(--muted); }
+.pg-overview .ov-none { display: inline-block; font-size: 12px; line-height: 18px;
+  padding: 1px 7px; border-radius: 4px; background: var(--panel); color: var(--muted); }
 .pg-overview .ov-head { display: flex; align-items: baseline; justify-content: space-between;
   max-width: 880px; margin: 44px 0 10px; }
 .pg-overview .ov-head h2 { margin: 0; }

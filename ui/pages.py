@@ -288,9 +288,9 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
 
 def _folded(banner: str) -> str:
     """A notice banner folded to its bold first sentence; the rest opens under it. Every word
-    stays on the page."""
+    stays on the page. The first sentence reads as the fold's title, so it drops its period."""
     head, rest = banner.split("</strong>", 1)
-    head = head.replace("<div class='banner'>", "", 1)
+    head = head.replace("<div class='banner'>", "", 1).removesuffix(".")
     rest = rest.removesuffix("</div>")
     return (
         f"<div class='banner'><details><summary>{head}</strong></summary>"
@@ -501,7 +501,7 @@ def _format_notices(conn: sqlite3.Connection) -> str:
         f"{untested} of {n} file{'' if n == 1 else 's'} come from an export version not tested "
         "with Mabillon. Check results against the source tool."
         if untested
-        else f"Format notices for {n} file{'' if n == 1 else 's'}."
+        else f"Format notices for {n} file{'' if n == 1 else 's'}"
     )
     notices = "".join(format_notice(c) for c in checks)
     return (
@@ -769,9 +769,9 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     if not total:
         head = "No claims yet"
     elif you:
-        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you."
+        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you"
     else:
-        head = "Nothing waits on you."
+        head = "Nothing waits on you"
     out = [
         "<div class='pg-claims'>"
         f"<div class='overview-head'><h1>{e(head)}</h1>"
@@ -1398,9 +1398,9 @@ def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
         return notices
     untested = notices.count("<p class='format-notice warn'")
     head = (
-        f"{untested} of {n} files come from an export version not tested with Mabillon."
+        f"{untested} of {n} files come from an export version not tested with Mabillon"
         if untested
-        else f"Format notices for {n} files."
+        else f"Format notices for {n} files"
     )
     return f"<details class='fmt'><summary><strong>{e(head)}</strong></summary>{notices}</details>"
 

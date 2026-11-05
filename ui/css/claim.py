@@ -32,8 +32,8 @@ CSS = """
 .pg-claim .vhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
   margin: 0 0 12px; }
 .pg-claim .claim-main .vhead h2 { margin: 0; font-size: 15px; }
-.pg-claim #verdict .vhead .verdict { margin: 0; padding: 3px 10px; font-size: 13.5px;
-  font-weight: 600; border-radius: 6px; }
+.pg-claim #verdict .vhead .verdict { margin: 0; padding: 2px 8px; font-size: 13.5px;
+  font-weight: 600; border-radius: 4px; }
 .pg-claim ul.needs { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
 .pg-claim ul.needs li { position: relative; padding-left: 16px; }
 .pg-claim ul.needs li::before { content: ""; position: absolute; left: 2px; top: 0.6em;
@@ -69,15 +69,14 @@ CSS = """
   max-width: none; }
 .pg-claim .checklist .mark { display: none; }
 .pg-claim .checklist .meta { font-size: 12.5px; margin-top: 3px; }
-.pg-claim .checklist .said { padding: 2px 10px; border-radius: 999px;
-  font: 500 12px/1.5 var(--sans); color: var(--unp); background: var(--unp-bg);
+.pg-claim .checklist .said { padding: 1px 7px; border-radius: 4px;
+  font: 500 12px/18px var(--sans); color: var(--unp); background: var(--unp-bg);
   white-space: nowrap; }
 .pg-claim .checklist li.ok .said { color: var(--sup); background: var(--sup-bg); }
 .pg-claim .checklist li.ok[data-tier=ai_reviewed] .said { color: var(--muted);
   background: var(--panel); }
 .pg-claim .checklist li.con .said { color: var(--con); background: var(--con-bg); }
-.pg-claim .checklist li.no .said { color: var(--unp); background: var(--unp-bg);
-  box-shadow: inset 0 0 0 1px var(--unp-line); }
+.pg-claim .checklist li.no .said { color: var(--muted); background: var(--panel); }
 
 /* other explanations: one line per lead, the records behind them folded */
 .pg-claim details.alts-fold { margin: 24px 0 8px; }
