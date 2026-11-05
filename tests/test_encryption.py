@@ -531,9 +531,11 @@ def test_screen_makes_an_encrypted_case_shows_its_recovery_key_once_and_locks(ap
     assert case is not None and protect.state(case) == "encrypted"
     page = get(app, "/setup").text
     key = app.recovery[1]  # type: ignore[index]
-    assert key in page and "Write down this case" in page and "Lock this case now" in page
+    assert key in page and "Write down this case" in page
+    assert "Lock this case now" not in page  # not until the key is written down
     post(app, "/case/recovery/done", next="/setup")
-    assert key not in get(app, "/setup").text
+    page = get(app, "/setup").text
+    assert key not in page and "Lock this case now" in page
 
     assert send_file(app, inputs["item1"], "report").status == 303
     assert "Imported item1.xlsx" in get(app, "/setup").text

@@ -168,10 +168,15 @@ def create_case(
     finally:
         conn.close()
     case.save_settings(name=name, created_at_utc=_iso(now), created_by=actor)
+    if passphrase is not None:
+        case.save_settings(**{RECOVERY_UNCONFIRMED: True})  # until the expert writes it down
     return case
 
 
 _new_recovery: dict[Path, str] = {}
+# In case.json while a recovery key was made but the expert has not said it is written down.
+# A restart, or a lock, before then loses the only copy; the screen then offers a new key.
+RECOVERY_UNCONFIRMED = "recovery_unconfirmed"
 
 
 def recovery_key_for(case: Case) -> str | None:

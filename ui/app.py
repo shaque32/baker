@@ -122,6 +122,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/audit/start": ("audit", "propose", "model_check"),
     "/cloud/case": ("audit",),
     "/cloud/key": ("audit",),
+    "/cloud/key/remove": ("audit",),
     "/case/import": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
@@ -639,6 +640,7 @@ class App:
             "/case/lock": lambda: self._lock(),
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
+            "/case/recovery/new": lambda: self._new_recovery(f),
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
             "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
@@ -667,6 +669,7 @@ class App:
             "/audit/stop": lambda: self._stop_audit(),
             "/cloud/case": lambda: self._cloud_case(conn, f),  # type: ignore[arg-type]
             "/cloud/key": lambda: self._cloud_key(f),
+            "/cloud/key/remove": lambda: self._cloud_key_remove(),
             "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
@@ -1013,7 +1016,7 @@ class App:
         for c in cases.list_cases(self.home):
             try:
                 lock = _lock_state(c)
-                if lock == "locked":
+                if lock in ("locked", "partial-locked"):
                     state = "locked"
                 else:
                     conn = connect(c.db)
@@ -1050,7 +1053,10 @@ class App:
         key = cases.recovery_key_for(case)
         if key is not None:
             self.recovery = (case.db, key)
-            return f"Made the encrypted case {case.name}. Write down its recovery key below."
+            return (
+                f"Made the encrypted case {case.name}. Write down its recovery key, shown at the "
+                "top of this page."
+            )
         return f"Made the case {case.name}. Import its files below."
 
     def _open_case(self, f: dict[str, str]) -> str:
@@ -1098,13 +1104,18 @@ class App:
         self.recovery = (case.db, done.recovery_key)
         return (
             f"Encrypted {case.name}: the database and {done.files} copied file(s). Write down "
-            "its recovery key below."
+            "its recovery key, shown at the top of this page."
         )
 
     def _lock(self) -> str:
         case = self._open()
         if protect.state(case) == "plain":
             raise ReviewError("this case is not encrypted, so there is nothing to lock")
+        if self._recovery_for_open() is not None:
+            raise ReviewError(
+                'write down the recovery key at the top of this page and press "I have written '
+                'it down" first. Locking now would lose the only copy of it'
+            )
         protect.lock(case)
         self.case = None
         self.recovery = None
@@ -1118,8 +1129,19 @@ class App:
         return "Passphrase changed. The recovery key is the same as before."
 
     def _recovery_done(self) -> str:
+        if self.case is not None and self.recovery is not None and self.recovery[0] == self.case.db:
+            protect.recovery_pending(self.case, False)
         self.recovery = None
         return "Recovery key hidden. Mabillon keeps no copy of it."
+
+    def _new_recovery(self, f: dict[str, str]) -> str:
+        case = self._open()
+        key = protect.new_recovery_key(case, f.get("passphrase", ""), self.actor)
+        self.recovery = (case.db, key)
+        return (
+            "Made a new recovery key. Write it down now: it is shown at the top of this page, "
+            "and the old one no longer opens the case."
+        )
 
     # -- set up and run
 
@@ -1183,9 +1205,11 @@ class App:
             resumable=resumable,
             protection=protect.state(case),
             recovery_key=self._recovery_for_open(),
+            recovery_unconfirmed=protect.recovery_unconfirmed(case),
             cloud=self._cloud_choice(conn),
             cloud_case=cloud_policy.case_cloud(conn),
             cloud_key=self._cloud_key_state(),
+            cloud_key_from=self._cloud_key_source(),
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -1271,11 +1295,30 @@ class App:
             )
         return "Saved: this case runs on the local model only."
 
+    def _cloud_key_remove(self) -> str:
+        _ = self.actor
+        case_db = self.case.db if self.case is not None else None
+        where = cloud_llm.remove_key(self.cloud_config, case_db=case_db)
+        if where == "case":
+            return "Removed the Anthropic key saved in this case."
+        if where == "file":
+            return "Removed the Anthropic key saved on this computer."
+        raise ReviewError("no saved Anthropic key to remove")
+
+    def _cloud_key_source(self) -> str | None:
+        case_db = self.case.db if self.case is not None else None
+        try:
+            return cloud_llm.key_source(self.cloud_config, case_db=case_db)
+        except OSError:
+            return None
+
     def _cloud_key(self, f: dict[str, str]) -> str:
         _ = self.actor  # a named expert sets the key
         key = f.get("api_key", "").strip()
-        if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
+        if not key.startswith("sk-ant-"):
             raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
+        if len(key) < 20 or any(c.isspace() for c in key):
+            raise ReviewError("that key is too short or has a space in it: paste the whole key")
         case_db = self.case.db if self.case is not None else None
         try:
             where = cloud_llm.save_key(key, self.cloud_config, case_db=case_db)
@@ -1678,9 +1721,15 @@ def _case_key(case: cases.Case) -> str:
 
 
 def _lock_state(case: cases.Case) -> str:
-    if protect.state(case) == "plain":
+    """plain, locked, open, or for an encryption that did not finish (part of the case still
+    readable on disk) partial-locked or partial."""
+    st = protect.state(case)
+    if st == "plain":
         return "plain"
-    return "locked" if protect.is_locked(case) else "open"
+    locked = protect.is_locked(case)
+    if st == "partial":
+        return "partial-locked" if locked else "partial"
+    return "locked" if locked else "open"
 
 
 def _drain(stream: BinaryIO, n: int) -> None:

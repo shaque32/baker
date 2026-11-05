@@ -37,6 +37,7 @@
     python -m cli model-check
     python -m cli encrypt   --db case.db --by expert:<name>
     python -m cli passphrase --db case.db --by expert:<name>
+    python -m cli recovery-key --db case.db --by expert:<name>
     python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
                             [--from-case <case folder> | --scripted | --paired]
 
@@ -687,6 +688,22 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     print(f"Recovery key: {done.recovery_key}")
     print("Write it down now and keep it away from this computer. It opens the case if the")
     print("passphrase is lost. Mabillon shows it only this once and keeps no copy.")
+    protect.recovery_pending(case, False)  # printed: the expert has it (or can make another)
+    return 0
+
+
+def cmd_recovery_key(a: argparse.Namespace) -> int:
+    from core.casework import protect
+    from core.casework.cases import Case
+
+    if not a.db.exists():
+        raise SystemExit(f"no case database at {a.db}")
+    secret = _ask("Passphrase: ")
+    key = protect.new_recovery_key(Case(a.db), secret, a.by)
+    print(f"New recovery key: {key}")
+    print("Write it down now and keep it away from this computer. The old recovery key no")
+    print("longer opens the case. Mabillon shows this one only now and keeps no copy.")
+    protect.recovery_pending(Case(a.db), False)
     return 0
 
 
@@ -946,6 +963,8 @@ def parser() -> argparse.ArgumentParser:
     sp = add("encrypt", cmd_encrypt, "encrypt a case's database and copied files (one way)")
     sp.add_argument("--by", required=True)
     sp = add("passphrase", cmd_passphrase, "change an encrypted case's passphrase")
+    sp.add_argument("--by", required=True)
+    sp = add("recovery-key", cmd_recovery_key, "make a new recovery key for an encrypted case")
     sp.add_argument("--by", required=True)
 
     sp = sub.add_parser("serve", help="open the expert's screen on this computer")

@@ -2124,7 +2124,13 @@ def error_page(page: Page, status: int, message: str) -> str:
 
 
 PASSPHRASE_HINT = "At least 12 characters. Mabillon cannot recover a lost passphrase."
-LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "Encrypted"}
+LOCK_LABEL = {
+    "plain": "Not encrypted",
+    "locked": "Encrypted, locked",
+    "open": "Encrypted",
+    "partial": "Encryption not finished: part of this case is still readable on disk",
+    "partial-locked": "Encryption not finished: part of this case is still readable on disk",
+}
 
 
 def _unlock_fields(slug: str) -> str:
@@ -2180,7 +2186,7 @@ def cases_page(
         for slug, name, state, lock in rows:
             fields = (
                 _unlock_fields(slug)
-                if lock == "locked"
+                if lock in ("locked", "partial-locked")
                 else f"<input type='hidden' name='case' value='{e(slug)}'>"
                 "<button type='submit'>Open</button>"
             )
@@ -2316,13 +2322,19 @@ def setup_page(
     resumable: str | None,
     protection: str = "plain",  # core.casework.protect.state
     recovery_key: str | None = None,
+    recovery_unconfirmed: bool = False,
     cloud: object | None = None,  # core.casework.cloud.CloudChoice
     cloud_case: dict | None = None,  # the case's saved cloud settings
     cloud_key: str | None = "",  # None: a key is set up; else why not
+    cloud_key_from: str | None = None,  # core.llm.cloud.key_source
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
-    out = ["<h1>Set up and run</h1>", recovery_box(page, recovery_key), name_form(page)]
+    out = [
+        "<h1>Set up and run</h1>",
+        recovery_box(page, recovery_key, recovery_unconfirmed),
+        name_form(page),
+    ]
     out.append(_step_strip(ready, audit_busy))
 
     # 1. files
@@ -2486,7 +2498,17 @@ def setup_page(
             + "</ul>"
         )
     if cloud is not None:
-        out.append(cloud_section(page, cloud, cloud_case or {}, cloud_key, job_kind == "audit"))
+        out.append(
+            cloud_section(
+                page,
+                cloud,
+                cloud_case or {},
+                cloud_key,
+                job_kind == "audit",
+                key_from=cloud_key_from,
+                encrypted=protection != "plain",
+            )
+        )
         out.append("<h3>The local model</h3>")
     out.append(f"<p class='muted'>{e(model_note)}</p>")
     out.append(
@@ -2542,14 +2564,20 @@ def setup_page(
                 back="/run",
             )
         )
-    out.append(encryption_section(page, protection, busy))
+    out.append(encryption_section(page, protection, busy, recovery_key is not None))
     # No refresh while the recovery key is on screen: it must not vanish mid-copy.
     refresh = 10 if busy and recovery_key is None else None
     return page.wrap("Set up and run", "".join(out), refresh=refresh)
 
 
 def cloud_section(
-    page: Page, choice: object, saved: dict, key_problem: str | None, busy: bool
+    page: Page,
+    choice: object,
+    saved: dict,
+    key_problem: str | None,
+    busy: bool,
+    key_from: str | None = None,
+    encrypted: bool = False,
 ) -> str:
     """Step 4's cloud part: which model labels this case, the per-case attestation, the key."""
     from core.casework.cloud import ATTESTATION, CSAM_NOTE
@@ -2598,10 +2626,23 @@ def cloud_section(
         return "".join(out)
     # The key form folds away until the case opts in: a local-only case does not need it.
     out.append(f"<details class='fold'{' open' if allowed else ''}><summary>")
-    if key_problem is None:
-        out.append("An Anthropic key is set up on this computer.</summary>")
+    if key_problem is None and key_from == "case":
+        out.append(
+            "An Anthropic key is saved in this case, encrypted with the case's key.</summary>"
+        )
+    elif key_problem is None:
+        out.append(
+            "An Anthropic key is saved on this computer, not encrypted.</summary><p "
+            "class='muted'>Every case without a key of its own uses it."
+            + (" Save a key below to seal one in this case instead." if encrypted else "")
+            + "</p>"
+        )
+    elif key_problem.startswith("no Anthropic key"):
+        out.append(
+            "No cloud key yet</summary><p class='muted'>Paste your firm's Anthropic key below.</p>"
+        )
     else:
-        out.append(f"No cloud key yet</summary><p class='muted'>{e(key_problem)}.</p>")
+        out.append(f"No usable cloud key</summary><p class='muted'>{e(key_problem)}.</p>")
     out.append(
         page.form(
             "/cloud/key",
@@ -2616,18 +2657,37 @@ def cloud_section(
             anchor="cloud",
         )
     )
+    if key_problem is None and key_from in ("case", "file"):
+        out.append(
+            page.form(
+                "/cloud/key/remove",
+                f"<button type='submit'{off}>Remove the saved key</button>",
+                "inline",
+                back="/setup",
+                anchor="cloud",
+            )
+        )
     out.append("</details></div>")
     return "".join(out)
 
 
-def recovery_box(page: Page, key: str | None) -> str:
+def recovery_box(page: Page, key: str | None, unconfirmed: bool = False) -> str:
     if key is None:
-        return ""
+        if not unconfirmed:
+            return ""
+        return (
+            "<div class='flash err recovery' id='recovery' role='alert'><p><strong>This case "
+            "may have no usable recovery key.</strong> One was made, but Mabillon stopped or the "
+            "case was locked before anyone said it was written down. If you did not write it "
+            "down, make a new one now: without it, a lost passphrase loses the case. "
+            "<a href='/setup#encryption'>Make a new recovery key</a></p></div>"
+        )
     return (
-        "<div class='flash' id='recovery'><p><strong>Write down this case's recovery key "
-        "now.</strong> It opens the case if the passphrase is lost. Mabillon shows it only this "
-        "once and keeps no copy anywhere; keep it away from this computer (on paper, or in your "
-        "password manager).</p>"
+        "<div class='flash recovery' id='recovery' role='alert'><h2>Recovery key</h2>"
+        "<p><strong>Write down this case's recovery key now.</strong> It opens the case if the "
+        "passphrase is lost. Mabillon keeps no copy anywhere: once you press the button below, "
+        "it cannot be shown again. Keep it away from this computer (on paper, or in your "
+        "password manager). Until then, this case cannot be locked.</p>"
         f"<p class='mono' style='font-size:1.25em'>{e(key)}</p>"
         + page.form(
             "/case/recovery/done",
@@ -2639,7 +2699,7 @@ def recovery_box(page: Page, key: str | None) -> str:
     )
 
 
-def encryption_section(page: Page, protection: str, busy: bool) -> str:
+def encryption_section(page: Page, protection: str, busy: bool, key_shown: bool = False) -> str:
     out = ["<h2 id='encryption'>Encryption</h2>"]
     off = " disabled" if busy else ""
     wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
@@ -2685,10 +2745,15 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         "<p>This case is <strong>encrypted</strong>. It stays unlocked until you lock it or stop "
         "Mabillon.</p>"
         + wait
-        + page.form(
-            "/case/lock",
-            f"<button type='submit'{off}>Lock this case now</button>",
-            back="/cases",
+        + (
+            "<p class='muted'>Write down the recovery key at the top of this page before you "
+            "lock the case.</p>"
+            if key_shown
+            else page.form(
+                "/case/lock",
+                f"<button type='submit'{off}>Lock this case now</button>",
+                back="/cases",
+            )
         )
         + "<h3>Change the passphrase</h3>"
         + page.form(
@@ -2706,6 +2771,17 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
             "recovery key stays the same.</span>",
             back="/setup",
             anchor="encryption",
+        )
+        + "<h3>Make a new recovery key</h3>"
+        + page.form(
+            "/case/recovery/new",
+            "<p class='muted'>For a lost or never written down recovery key. The new key is "
+            "shown once at the top of this page; the old one stops opening the case.</p>"
+            "<input type='password' name='passphrase' required size='34' "
+            "autocomplete='current-password' placeholder='Passphrase' aria-label='Passphrase'> "
+            f"<button type='submit'{off}>Make a new recovery key</button>",
+            back="/setup",
+            anchor="recovery",
         )
     )
     return "".join(out)
