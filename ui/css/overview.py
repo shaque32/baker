@@ -40,7 +40,8 @@ CSS = """
   border-bottom: 1px solid var(--line); }
 .pg-overview .ov-dev { min-width: 0; }
 .pg-overview .ov-dev b { font-weight: 600; }
-.pg-overview .ov-dev .mono { display: block; margin-top: 1px; }
+.pg-overview .ov-dev .src { display: block; margin-top: 1px; font-size: 12.5px;
+  color: var(--muted); font-weight: 400; }
 .pg-overview .ov-dev:not(:has(b)) { font-weight: 600; }
 .pg-overview .ov-who { min-width: 0; color: var(--ink-2); }
 .pg-overview .ov-none { display: inline-block; font-size: 12px; line-height: 18px;

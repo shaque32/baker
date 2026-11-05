@@ -41,6 +41,8 @@ from core.report import why
 from core.report.fmt import e, q
 from core.report.html import (
     COVERAGE,
+    EXTRACTION,
+    SOURCE_KIND,
     STANCE_LABEL,
     audit_log_summary,
     build_label,
@@ -397,8 +399,10 @@ def _case_setup(conn: sqlite3.Connection) -> str:
     rows = []
     for dev_id, label, _model, source_id in devices:
         st = stips.get(dev_id)
+        # the stipulation in words: the device's id is in its name's hover title, not the text
         who = (
-            f"Stipulated: {q(st.statement)}"
+            f"<span title='{e(dev_id)}'>Stipulated: "
+            f"{q(st.statement.replace(f' ({dev_id})', ''))}</span>"
             if st is not None and st.status == StipulationStatus.CONFIRMED
             else "<span class='ov-none'>no stipulated user</span>"
         )
@@ -407,7 +411,7 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         # the device on the left, with its source id under it; who used it on the right
         rows.append(
             f"<li id='dev-{e(dev_id)}'><span class='ov-dev'><b>{q(label)}</b> "
-            f"<span class='mono'>{e(source_id)}</span></span>"
+            f"<span class='src'>From {e(source_id)}</span></span>"
             f"<span class='ov-who'>{who}{called}</span></li>"
         )
     if not rows:
@@ -883,8 +887,11 @@ def evidence_card(
     threads: dict[str, list[str]] | None = None,
     challenged: frozenset[str] = frozenset(),
     around_link: bool = True,
+    same_as: str | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
+    same_as: the card above on the page for the same record (another assumption's item); this
+    card then shows the verified quote and points up, rather than drawing the messages again.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
     around: messages shown either side of the record, as a conversation (0: the quote only).
     threads: the page's cache of thread orders, so many cards read each thread once.
@@ -902,7 +909,12 @@ def evidence_card(
         if confirm
         else _decide_form(page, item, last_kind == "expert", back)
     )
-    shown, thread = _conversation(conn, item, around, threads, folded=settled)
+    shown, thread = _conversation(conn, item, 0 if same_as else around, threads, folded=settled)
+    if same_as:
+        shown += (
+            f"<p class='ev-same'>The same message as <a href='#{e(same_as)}'>the item above</a>, "
+            "judged here for this assumption.</p>"
+        )
     folds = ""  # a settled item's disclosures open on the card's last line
     if settled:
         folds = (
@@ -1311,6 +1323,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     found = forwarded.affected(conn)
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     challenged = challenge.found_items(conn, pipeline.view_run(conn))
+    drawn: dict[str, str] = {}  # record id -> the first card on the page that draws it
     for title, group in groups:
         out.append(f"<h3 class='ev-group'>{e(title)} <span>({len(group)})</span></h3>")
         shown_on = None
@@ -1335,8 +1348,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     around=AROUND,
                     threads=threads,
                     challenged=challenged,
+                    same_as=drawn.get(x.record_id),
                 )
             )
+            drawn.setdefault(x.record_id, x.id)
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     out.append("<div class='claim-more'>")
     if hidden:
@@ -2315,7 +2330,7 @@ def setup_page(
     out.append(_step_strip(ready, audit_busy))
 
     # 1. files
-    out.append("<h2 id='files'>1. Files</h2>")
+    out.append("<h2 id='files'>Files</h2>")
     srcs = sources(conn)
     hashes: list[str] = []
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
@@ -2335,7 +2350,14 @@ def setup_page(
                 ).fetchone()[0]
                 recs = f"{n} paragraphs"
             else:
-                what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
+                ext = {"unknown": ", extraction type not known", "not_applicable": ""}.get(
+                    extraction, f", {EXTRACTION.get(extraction, extraction).lower()} extraction"
+                )
+                what = (
+                    f"{e(SOURCE_KIND.get(kind, kind))}{e(ext)}"
+                    f"<div class='coverage made-by' title='{e(kind)}, {e(extraction)}'>Made by "
+                    f"{e(tool)} {e(tver or '')}</div>"
+                )
                 fc = tested.for_source(conn, sid)
                 what += format_notice(fc) if fc is not None else ""
                 cov = e(COVERAGE.get(fidelity, fidelity)) + _import_coverage(conn, sid)
@@ -2388,7 +2410,7 @@ def setup_page(
     )
 
     # 2. claims
-    out.append("<h2 id='claims'>2. Claims</h2>")
+    out.append("<h2 id='claims'>Claims</h2>")
     claims = {c.id: c for c in pipeline.load_claims(conn, include_removed=True)}
     has_paras = conn.execute("SELECT 1 FROM govdoc_paragraphs LIMIT 1").fetchone() is not None
     if not has_paras:
@@ -2458,12 +2480,12 @@ def setup_page(
         out.append(_events_box(conn, page, audit_busy))
 
     # 3. owners, then the other people the document names
-    out.append("<h2 id='owners'>3. Who used each phone</h2>")
+    out.append("<h2 id='owners'>Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
     out.append(_identities_step(conn))
 
     # 4. model and run
-    out.append("<h2 id='model'>4. The model</h2>")
+    out.append("<h2 id='model'>The model</h2>")
     if model_lines:
         out.append(
             "<ul>"
@@ -2490,7 +2512,7 @@ def setup_page(
         )
     )
 
-    out.append("<h2 id='run'>5. Run the audit</h2>")
+    out.append("<h2 id='run'>Run the audit</h2>")
     blocking = [r for r in ready if not r.ok and r.blocks and r.acknowledge is None]
     out.append(
         "<ul class='ready'>"
