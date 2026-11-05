@@ -236,6 +236,7 @@ class App:
         self.path = ""  # the request being answered, so a page can mark its tab
         self._added: str | None = None
         self.jobs = jobs.Jobs()
+        self._reported: jobs.Job | None = None  # the finished job whose result Set up showed
         self.components_for = components_for or _real_components
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
@@ -1164,11 +1165,20 @@ class App:
             check = job.check
         if check is not None:
             model_lines = check.lines
-            note = f"Checked {check.checked_at_utc}."
+            when = _when(check.checked_at_utc)
+            note = (
+                f"The model passed its check {when}."
+                if check.ok
+                else f"The model failed its check {when}. The audit cannot run until it passes."
+            )
         elif self.model_check is None:
             model_lines, note = None, "The model check is off for this screen."
         else:
-            model_lines, note = None, "Not checked yet. The audit checks the model first."
+            model_lines, note = (
+                None,
+                "Not checked yet. The audit checks the model before it starts, or check it now "
+                "(the first check reads the whole 9 GB file, a minute or two).",
+            )
         if job is not None and job.kind == "model_check" and job.running and job.hashed:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
@@ -1196,9 +1206,17 @@ class App:
                 f"{len(attempt['claim_order'] or ())} claims ({attempt['note'] or 'no reason'})."
                 " Resume it: finished claims reuse their stored model outputs."
             )
-        if job is not None and not job.running and job.kind in ("propose", "model_check"):
-            if page.flash is None:
+        # A finished propose or model check reports once, even over the "updates itself" note
+        # from starting it (a fast failure ends before the page that started it is shown).
+        if (
+            job is not None
+            and not job.running
+            and job.kind in ("propose", "model_check")
+            and self._reported is not job
+        ):
+            if page.flash is None or page.flash[0].endswith(UPDATES):
                 page.flash = (job.message, job.state != "done")
+            self._reported = job
         return pages.setup_page(
             conn,
             page,
@@ -1218,6 +1236,9 @@ class App:
             cloud_case=cloud_policy.case_cloud(conn),
             cloud_key=self._cloud_key_state(),
             cloud_key_from=self._cloud_key_source(),
+            model_ok=None
+            if check is None or (job is not None and job.running and job.kind == "model_check")
+            else check.ok,
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -1232,7 +1253,7 @@ class App:
             jobs.Job("propose", self._open().db),
             jobs.propose_job(extractor_for=self.extractor_for),
         )
-        return "The local model is proposing claims in the background. This page updates itself."
+        return "The local model is proposing claims in the background. " + UPDATES
 
     def _check_model(self) -> str:
         if self.model_check is None:
@@ -1244,7 +1265,7 @@ class App:
             self.last_check = job.check
 
         self.jobs.start(jobs.Job("model_check", self._open().db), run)
-        return "Checking the model in the background. This page updates itself."
+        return "Checking the model in the background. " + UPDATES
 
     # -- cloud
 
@@ -1386,9 +1407,14 @@ class App:
             if choice.use and choice.config is not None
             else ""
         )
+        first = (
+            f"Checking the model first; if it passes, the audit runs on {len(order)} claims"
+            if check is not None
+            else f"The audit started on {len(order)} claims"
+        )
         return (
-            f"The audit started on {len(order)} claims, {jobs.duration(job.estimate_seconds)} by "
-            f"a rough estimate.{where} Each claim appears for review as soon as it is labeled."
+            f"{first}, {jobs.duration(job.estimate_seconds)} by a rough estimate.{where} Each "
+            "claim appears for review as soon as it is labeled."
         )
 
     def _stop_audit(self) -> str:
@@ -1721,6 +1747,22 @@ def _chain_problem(case: cases.Case) -> str | None:
     finally:
         conn.close()
     return None
+
+
+UPDATES = "This page updates itself."
+
+
+def _when(iso_utc: str) -> str:
+    """A check's time in words on this computer's clock: "today at 14:05", "on 3 Nov at 09:12"."""
+    try:
+        at = datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return f"at {iso_utc}"
+    now = datetime.now(at.tzinfo)
+    clock = at.strftime("%H:%M")
+    if at.date() == now.date():
+        return f"today at {clock}"
+    return f"on {at.day} {at.strftime('%b')} at {clock}"
 
 
 def _case_key(case: cases.Case) -> str:

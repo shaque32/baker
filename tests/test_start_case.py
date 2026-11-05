@@ -520,6 +520,40 @@ def test_audit_does_not_start_when_the_model_check_fails(tmp_path, inputs):
     assert "No usable model" in get(app, "/run").text
 
 
+def test_a_missing_model_says_what_to_do_on_this_computer(tmp_path, inputs):
+    from core.casework.model_check import next_step
+
+    assert "Install Mabillon.command" in next_step("darwin")
+    assert "Download the AI model" in next_step("win32")
+
+    def no_model(progress=None):  # noqa: ANN001, ANN202
+        return check_model(config=tmp_path / "missing.json", cache=None)
+
+    app = App(home=tmp_path / "cases", port=PORT, components_for=components_for(Supports()),
+              model_check=no_model)  # fmt: skip
+    case = _make_case(app, inputs)
+    conn = connect(case.db)
+    _add_gold_claims(app, conn)
+    _stipulate(app)
+    setup = html.unescape(get(app, "/setup").text)
+    assert "Not checked yet" in setup and "failed its check" not in setup
+    post(app, "/model/check")
+    wait(app.jobs.current)  # type: ignore[arg-type]
+    first = html.unescape(get(app, "/setup").text)
+    # The failure replaces the "updates itself" note, names the fix, and shows as a To do.
+    assert "This page updates itself" not in first and "To fix it" in first
+    assert "the model failed its check" in first and "Checked 20" not in first
+    # Shown once as a message; later visits keep the step 4 lines but not the alert.
+    again = html.unescape(get(app, "/setup").text)
+    assert 'class="flash toast err"' in first and "flash toast" not in again
+    assert "the model failed its check" in again
+    post(app, "/audit/start", next="/run")
+    started = html.unescape(get(app, "/run").text)
+    assert "Checking the model first" in started or "No usable model" in started
+    wait(app.jobs.current)  # type: ignore[arg-type]
+    assert conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0] == 0
+
+
 # ---------------------------------------------------------------- model check
 
 

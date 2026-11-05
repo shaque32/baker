@@ -2278,7 +2278,7 @@ def _upload_form(
     )
 
 
-def _step_strip(ready: list, audit_busy: bool) -> str:
+def _step_strip(ready: list, audit_busy: bool, model_ok: bool | None = None) -> str:
     """The five steps as one row of links, each marked done or to do from the readiness checks
     (core.casework.cases.readiness: document, reports, claims, then phone owners if any)."""
     oks = [r.ok for r in ready]
@@ -2289,7 +2289,7 @@ def _step_strip(ready: list, audit_busy: bool) -> str:
         ("files", "Files", files),
         ("claims", "Claims", claims),
         ("owners", "Who used each phone", people),
-        ("model", "The model", None),
+        ("model", "The model", model_ok),
         ("run", "Run", True if audit_busy else None),
     ]
     items = []
@@ -2327,6 +2327,7 @@ def setup_page(
     cloud_case: dict | None = None,  # the case's saved cloud settings
     cloud_key: str | None = "",  # None: a key is set up; else why not
     cloud_key_from: str | None = None,  # core.llm.cloud.key_source
+    model_ok: bool | None = None,  # the last model check passed, failed, or none ran
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
@@ -2335,7 +2336,7 @@ def setup_page(
         recovery_box(page, recovery_key, recovery_unconfirmed),
         name_form(page),
     ]
-    out.append(_step_strip(ready, audit_busy))
+    out.append(_step_strip(ready, audit_busy, model_ok))
 
     # 1. files
     out.append("<h2 id='files'>1. Files</h2>")
@@ -2507,8 +2508,10 @@ def setup_page(
     out.append(_devices(conn, page, "/setup", heading=False))
     out.append(_identities_step(conn))
 
-    # 4. model and run
+    # 4. model and run: the local model first, since every case needs it
     out.append("<h2 id='model'>4. The model</h2>")
+    if cloud is not None:
+        out.append("<h3>The local model</h3>")
     if model_lines:
         out.append(
             "<ul>"
@@ -2519,19 +2522,6 @@ def setup_page(
             )
             + "</ul>"
         )
-    if cloud is not None:
-        out.append(
-            cloud_section(
-                page,
-                cloud,
-                cloud_case or {},
-                cloud_key,
-                job_kind == "audit",
-                key_from=cloud_key_from,
-                encrypted=protection != "plain",
-            )
-        )
-        out.append("<h3>The local model</h3>")
     out.append(f"<p class='muted'>{e(model_note)}</p>")
     out.append(
         page.form(
@@ -2544,6 +2534,23 @@ def setup_page(
             anchor="model",
         )
     )
+    if cloud is not None:
+        out.append(
+            cloud_section(
+                page,
+                cloud,
+                cloud_case or {},
+                cloud_key,
+                job_kind == "audit",
+                key_from=cloud_key_from,
+                encrypted=protection != "plain",
+            )
+        )
+        out.append(
+            "<p class='muted'>The local model is still needed with cloud AI: it proposes "
+            "claims and fills in assumptions on this computer. Only stance questions go to "
+            "the cloud.</p>"
+        )
 
     out.append("<h2 id='run'>5. Run the audit</h2>")
     blocking = [r for r in ready if not r.ok and r.blocks and r.acknowledge is None]
@@ -2553,6 +2560,14 @@ def setup_page(
             f"<li class='{'ok' if r.ok else 'todo'}'>"
             f"{'Done' if r.ok else '<strong>To do</strong>'}: {e(r.text)}</li>"
             for r in ready
+        )
+        + (
+            ""
+            if model_ok is None
+            else "<li class='ok'>Done: the model passed its check.</li>"
+            if model_ok
+            else "<li class='todo'><strong>To do</strong>: the model failed its check. "
+            "See step 4.</li>"
         )
         + "</ul>"
     )
