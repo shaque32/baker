@@ -6,6 +6,7 @@ examiner reads exactly what would leave the computer. Mabillon sends nothing its
 
 from __future__ import annotations
 
+from core.report.html import TIER_WORDS
 from core.support import bug_report
 from core.support.contact import SUPPORT_EMAIL, SUPPORT_IS_PLACEHOLDER
 from ui.pages import Page, e
@@ -106,13 +107,7 @@ _VERDICTS = (
     ),
     ("Unproven, not tested", "Mabillon could not set up what to check, so no record was searched."),
 )
-_TIERS = (
-    ("observed", "Read straight from the extraction."),
-    ("derived", "Worked out by code from observed records, such as a local time."),
-    ("inferred", "A model's reading, such as a label on a record."),
-    ("ai_reviewed", "Accepted by the local AI reviewer. It never counts as confirmed."),
-    ("confirmed", "Accepted by a human expert."),
-)
+_TIERS = TIER_WORDS  # the same words as the report's Limitations
 _TERMS = (
     (
         "supports, contradicts, complicates, irrelevant",

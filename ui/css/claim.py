@@ -44,7 +44,6 @@ CSS = """
   overflow-wrap: anywhere; }
 .pg-claim #verdict p.format-notice { margin: 8px 0; }
 .pg-claim #verdict p.format-notice strong { font-weight: 500; }
-.pg-claim .ev-also { margin: 4px 0 0; font-size: 12.5px; }
 .pg-claim ul.cited { margin: 4px 0 16px; padding-left: 18px; font-size: 13px; }
 .pg-claim ul.cited li { margin: 4px 0; }
 .pg-claim #verdict details.fmt > summary { color: var(--ink-2); }

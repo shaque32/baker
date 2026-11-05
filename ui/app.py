@@ -401,7 +401,9 @@ class App:
             return self._redirect("/cases")
         try:
             self._stand_in = pages.stand_in_note(conn)
-        except db.Error:
+        except (*db.Error, InvariantViolation):
+            # the banner never stops a request: a run the case cannot read shows none here, and
+            # the page the request opens says what is wrong with it
             self._stand_in = ""
         try:
             if req.method == "GET":

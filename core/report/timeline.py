@@ -335,7 +335,8 @@ def strip_block(sp: Strip, gaps: list[Gap], data: CaseRecords) -> str:
 
     peak = max((max(c) for _, c in sp.rows if c), default=1) or 1
     rows = []
-    for app, counts in sp.rows:
+    paces = sp.pace or (None,) * len(sp.rows)
+    for (app, counts), pace in zip(sp.rows, paces, strict=True):
         cells = []
         for i, n in enumerate(counts):
             if quiet(app, i):
@@ -347,18 +348,20 @@ def strip_block(sp: Strip, gaps: list[Gap], data: CaseRecords) -> str:
                 "</span>"
             )
         bars = "".join(cells)
-        per = sum(counts) / max(len(counts), 1)
+        # the pace a quiet stretch's card gives, so the two never disagree
+        per = "" if pace is None else f"{pace:.1f} a day"
         rows.append(
             f"<div class='strip'><div>{q(app)}</div><div class='bars' role='img' "
             f"aria-label='records per {sp.unit}'>{bars}</div>"
-            f"<div class='meta'>{per:.1f}/{sp.unit}</div></div>"
+            f"<div class='meta'>{per}</div></div>"
         )
     first, last = sp.labels[0], sp.labels[-1]
     zone = sp.tz or "UTC (phone zone unknown)"
     return (
         f"<div class='strips'><div><strong>{q(_phone_name(data, sp.source_id))}</strong> "
         f"<span class='meta'>records per local {sp.unit}, {e(zone)}; shaded: a quiet stretch "
-        f"listed below</span></div>{''.join(rows)}"
+        "listed below; at the right, each app's pace between its first and last record, as "
+        f"the cards give it</span></div>{''.join(rows)}"
         f"<div class='strip'><div></div><div class='axis'><span>{first:%b %d}</span>"
         f"<span>{last:%b %d}</span></div><div></div></div></div>"
     )

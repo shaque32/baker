@@ -123,3 +123,42 @@ def test_the_folded_stand_in_banner_is_built_from_the_run(app):
     conn = connect(app.case_db)  # type: ignore[attr-defined]
     note = pages.stand_in_note(conn)
     assert note.startswith("<div class='banner'><details>") and "not made by a person" in note
+
+
+def test_selection_says_where_each_quote_not_placed_is_listed(app):
+    body = _get(app, "/selection")
+    assert "Each quote not placed is listed with its paragraph below." in body
+    # demo: four paragraphs place no quote, and one more quote not placed sits with ¶15
+    assert "1 more quote not placed is listed above" in body
+
+
+def test_the_gaps_strip_gives_each_app_the_cards_pace(app):
+    body = _get(app, "/gaps")
+    q = r"<span class=\"q\">([^<]+)</span>"
+    checked = 0
+    for phone in body.split("<h2>")[1:]:  # each phone's strip, then its cards
+        strip = rf"<div class='strip'><div>{q}</div>.*?([\d.]+) a day</div>"
+        paces = dict(re.findall(strip, phone))
+        # each phone-wide app stretch: "No WhatsApp messages on ...", then its card's pace
+        for app_name, pace in re.findall(
+            rf"No {q} messages on .*?<dt>Pace</dt><dd>([\d.]+)", phone
+        ):
+            assert paces[app_name] == pace, app_name
+            checked += 1
+    assert checked
+
+
+def test_the_report_reads_plainly_and_keeps_every_id_in_its_appendix(app):
+    body = _get(app, "/report")
+    limits = body.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
+    for tier in ("observed", "derived", "inferred", "ai_reviewed", "confirmed"):
+        assert f"<strong>{tier}</strong>:" in limits
+    # no claim here is Supported (AI-reviewed), so that label is not defined; the rule stays
+    assert "would mean a local AI reviewer" not in limits
+    assert "no claim reaches supported on AI review alone" in limits
+    claims = body.split("<h2>Claims</h2>", 1)[1].split("<h2>Searches and coverage</h2>", 1)[0]
+    assert "Rule 3:" not in claims and "How this verdict was reached" not in claims
+    assert "<a href='#ids-C01'>Appendix, C01</a>" in claims
+    appendix = body.split("<h2 id='appendix'>", 1)[1]
+    assert "Rule 3:" in appendix and "How this verdict was reached" in appendix
+    assert "<div class='claim-ids' id='ids-C01'>" in appendix
