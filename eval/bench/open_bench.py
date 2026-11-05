@@ -30,13 +30,16 @@ Usage:
       [--out eval/out/open_bench] [--repeat 2] [--reasoning medium]
   python -m eval.bench.open_bench --dry-run     no network: a stand-in answers every call
   python -m eval.bench.open_bench --list        the screened models and their pinned weights
-Writes <out>/<model>/<prompt>/summary.json per run and <out>/VERDICT.md (with cost and the
-providers that answered). Synthetic data only; case02 is never read.
+Writes <out>/<model>/<prompt>/summary.json per run, served.jsonl beside its call log (one row
+per call, in call order: the provider, served model and request id of each answer) and
+<out>/VERDICT.md (with cost and the providers that answered). Synthetic data only; case02 is
+never read.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -191,6 +194,9 @@ class HostedModel:
     retries: int = 4
     timeout: float = 180.0
     usage: Usage = field(default_factory=Usage)
+    # One row per call, in call order, beside the call log (which keeps no provider): who
+    # served each answer, so a changed repeat can be traced to a provider switch.
+    served: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.name = self.spec.name
@@ -220,6 +226,23 @@ class HostedModel:
         }
 
     def generate_json(self, prompt: str, schema: dict[str, Any], params: Any = None) -> ModelOutput:
+        out = self._generate(prompt, schema)
+        resp = getattr(self, "_last", None) or {}
+        self.served.append(
+            {
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                "provider": resp.get("provider"),
+                "served_model": resp.get("model"),
+                "request_id": resp.get("id"),
+                "finish_reason": ((resp.get("choices") or [{}])[0]).get("finish_reason"),
+                "raw_sha256": hashlib.sha256(out.raw_text.encode("utf-8")).hexdigest(),
+                "error": out.error,
+            }
+        )
+        return out
+
+    def _generate(self, prompt: str, schema: dict[str, Any]) -> ModelOutput:
+        self._last: dict[str, Any] | None = None
         start = time.perf_counter()
         resp, error = None, None
         for attempt in range(self.retries + 1):
@@ -236,6 +259,7 @@ class HostedModel:
         elapsed = time.perf_counter() - start
         self.usage.calls += 1
         self.usage.seconds += elapsed
+        self._last = resp if isinstance(resp, dict) else None
         if resp is None or "choices" not in resp:
             self.usage.failed += 1
             reason = error or f"no answer: {str((resp or {}).get('error'))[:200]}"
@@ -298,6 +322,7 @@ def run_one(hosted: HostedModel, prompt_file: Path, repeat: int, out: Path) -> d
     _reviewer, stance = probe_items(SIGNED_PROBE, LAYOUT)
     cost_before = hosted.usage.cost_usd
     providers_before = dict(hosted.usage.providers)
+    served_before = len(hosted.served)
     out.mkdir(parents=True, exist_ok=True)
     res = run_model(hosted, [], stance, hosted.params, repeat, out, path,  # type: ignore[arg-type]
                     stance_only=True)  # fmt: skip
@@ -312,6 +337,9 @@ def run_one(hosted: HostedModel, prompt_file: Path, repeat: int, out: Path) -> d
         for k, n in hosted.usage.providers.items()
         if n - providers_before.get(k, 0)
     }
+    with (out / "served.jsonl").open("w", encoding="utf-8") as f:
+        for row in hosted.served[served_before:]:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
     (out / "summary.json").write_text(
         json.dumps([res], indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

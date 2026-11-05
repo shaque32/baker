@@ -124,3 +124,19 @@ def test_a_dry_run_writes_the_verdict_with_cost_providers_and_repeats(tmp_path, 
 def test_every_model_pins_its_weights():
     for m in ob.MODELS:
         assert len(m.revision) == 40 and "/" in m.weights and "/" in m.api_model
+
+
+def test_each_answer_records_who_served_it_in_call_order(tmp_path, monkeypatch):
+    """The call log keeps no provider, so served.jsonl does, one row per call."""
+    full = ob.probe_items
+    monkeypatch.setattr(ob, "probe_items", lambda path, layout: ([], full(path, layout)[1][:2]))
+    turns = iter(["A", "B", "A", "C"])
+    m = _hosted(lambda body, key, timeout: _resp(json.dumps(ANSWER), provider=next(turns)))
+    ob.run_one(m, ob.ROOT / "core/audit/prompts/stance_cloud.md", 2, tmp_path)
+    rows = [json.loads(line) for line in (tmp_path / "served.jsonl").read_text().splitlines()]
+    calls = [
+        json.loads(line) for line in next(tmp_path.glob("*.calls.jsonl")).read_text().splitlines()
+    ]
+    assert [r["provider"] for r in rows] == ["A", "B", "A", "C"]
+    assert [r["prompt_sha256"] for r in rows] == [c["prompt_sha256"] for c in calls]
+    assert rows[0]["request_id"] == "gen-1" and rows[0]["finish_reason"] == "stop"
