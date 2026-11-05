@@ -1918,7 +1918,7 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     stipulations = _stipulations_at(conn, log, run, stip_position)
     actions = defaultdict(list)
     for _s, _a, actor, act, p in log:
-        if act in ("verdict.override", "verdict.confirm"):
+        if act in ("verdict.override", "verdict.confirm", "verdict.carry"):
             actions[p.get("verdict_id")].append((actor, act, p))
     decided_at = _decided_at(log, run)
     accepted = testability.accepted_in(conn, run)  # rules 0.4.0: the step's proposals it used
@@ -1959,7 +1959,10 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             out.add(FAIL, "verdicts", f"{claim_id}: {problem}")
             continue
         n += 1
-        overridden += any(a == "verdict.override" for _x, a, _p in actions.get(stored.id, []))
+        overridden += any(
+            a == "verdict.override" or (a == "verdict.carry" and p.get("note") is not None)
+            for _x, a, p in actions.get(stored.id, [])
+        )
     if untimed:
         out.add(
             NOTE,
@@ -2003,7 +2006,13 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
     by: str | None = None
     note: str | None = None
     for actor, act, p in actions:
-        if act == "verdict.override":
+        if act == "verdict.carry":  # an earlier run's decision, kept by a verdict re-run
+            carried = Verdict(p["verdict"])
+            if carried != verdict:  # the expert had overridden the rules' verdict
+                verdict = carried
+                basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
+            by, note = p.get("confirmed_by"), p.get("note")
+        elif act == "verdict.override":
             verdict = Verdict(p["verdict"])
             basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
             by, note = actor, p.get("note")

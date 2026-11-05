@@ -72,7 +72,7 @@ from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove
 from core.review import actions, activity, audit_log, flags, withheld
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from core.review.status import claim_state
+from core.review.status import claim_names, claim_state
 from core.support import bug_report
 from core.timeline import settings as timeline_settings
 from ui import (
@@ -1525,8 +1525,20 @@ class App:
     def _redecide(self, conn: sqlite3.Connection) -> str:
         result = redecide(conn, self.actor)
         msg = f"Verdicts re-run with the rules ({len(result.decisions)} claims)."
+        if result.carried:
+            n = len(result.carried)
+            msg += f" Your verdict decision{'s' if n > 1 else ''} on {n} unchanged claim" + (
+                "s carry over." if n > 1 else " carries over."
+            )
+        if result.lapsed:
+            msg += (
+                " The verdict changed on "
+                + ", ".join(claim_names(conn, result.lapsed))
+                + ", so your earlier confirmation or override no longer applies: confirm "
+                "again."
+            )
         if result.skipped:
-            msg += " Needs a full audit: " + ", ".join(sorted(result.skipped)) + "."
+            msg += " Needs a full audit: " + ", ".join(claim_names(conn, result.skipped)) + "."
         return msg
 
     # -- help and the bug report
