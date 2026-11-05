@@ -330,11 +330,10 @@ class App:
             return self._plain(405, "method not allowed")
         if req.method == "GET" and req.path.startswith(FONT_PREFIX):
             return self._font(req.path[len(FONT_PREFIX) :])
-        if req.method == "POST" and (
-            not self._origin_ok(req)
-            or not hmac.compare_digest(req.form.get("token", ""), self.token)
-        ):
+        if req.method == "POST" and not self._origin_ok(req):
             return self._plain(403, "This form did not come from this review screen.")
+        if req.method == "POST" and not hmac.compare_digest(req.form.get("token", ""), self.token):
+            return self._stale_page()
         if req.method == "POST":
             self._last_view = None  # whatever the post did, the next page is a new view
         if req.method == "GET" and req.path in HELP_GET:
@@ -354,6 +353,11 @@ class App:
             self.case = None
             self.flash = ("The case is locked. Open it with its passphrase.", True)
             return self._redirect("/cases")
+        if req.method == "POST" and req.path not in NO_CASE_POST:  # opening a case is fine
+            stale = self._stale_case(req.form)
+            if stale is not None:
+                self.flash = (stale, True)
+                return self._redirect("/")
         if req.method == "POST" and req.path in OWN_DB_POST:
             return self._post(None, req)
         try:
@@ -384,6 +388,38 @@ class App:
             return self._post(conn, req)
         finally:
             conn.close()
+
+    def _stale_page(self) -> Response:
+        """A post whose token this screen never issued: almost always a tab left open from
+        before Mabillon was restarted (each start makes a new token). Nothing was saved."""
+        page = self._page()
+        return self._html(
+            pages.error_page(
+                page,
+                403,
+                "This page is out of date: Mabillon was restarted after it opened, so nothing "
+                "was saved. Open the case again and make the change there.",
+            ),
+            403,
+        )
+
+    def _stale_case(self, form: dict[str, str]) -> str | None:
+        """Why a post must be refused because its page was drawn for another case (a second tab
+        opened a different case since), or None. A form names its case in for_case; a post
+        that does not (an older test client) is taken as meant for the open case."""
+        sent = form.get("for_case", "")
+        if not sent or self.case is None or sent == _case_key(self.case):
+            return None
+        meant = sent
+        if self.home is not None:
+            meant = next(
+                (c.name for c in cases.list_cases(self.home) if _case_key(c) == sent), sent
+            )
+        return (
+            f"Nothing was saved: that page was for the case {meant}, but {self.case.name} is "
+            "open now (it was opened in another tab or window). Open the right case from Cases "
+            "and make the change there."
+        )
 
     def _note_view(self, conn: sqlite3.Connection, req: Request, resp: Response | None) -> None:
         """Record the page the examiner just opened in the case's audit log (core/review/
@@ -489,6 +525,7 @@ class App:
             many_cases=self.home is not None,
             path=self.path,
             cloud=self._case_uses_cloud(),
+            case_key="" if self.case is None else _case_key(self.case),
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -1385,6 +1422,9 @@ class App:
         def before_file(fields: dict[str, str]) -> None:
             if not hmac.compare_digest(fields.get("token", ""), self.token):
                 raise _Refused
+            stale = self._stale_case(fields)
+            if stale is not None:
+                raise ReviewError(stale.removeprefix("Nothing was saved: "))
             self._last_view = None  # an accepted post: the page it returns to is a new view
             self._guard("/case/import")
             _ = self.actor
@@ -1408,7 +1448,8 @@ class App:
         except _Refused:
             for p in written:
                 cases.discard(p)
-            return self._plain(403, "This form did not come from this review screen.")
+            _drain(stream, length - counted.read_bytes)  # else the browser shows a reset
+            return self._stale_page()
         except (upload.UploadError, ReviewError, OSError) as err:
             for p in written:
                 cases.discard(p)
@@ -1617,6 +1658,11 @@ def _chain_problem(case: cases.Case) -> str | None:
     finally:
         conn.close()
     return None
+
+
+def _case_key(case: cases.Case) -> str:
+    """Names a case in its forms: its folder in a cases folder, else its database file."""
+    return case.folder.name if case.db.name == cases.DB_NAME else case.db.name
 
 
 def _lock_state(case: cases.Case) -> str:

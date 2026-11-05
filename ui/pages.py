@@ -121,8 +121,11 @@ class Page:
         many_cases: bool = False,
         path: str = "",
         cloud: bool = False,
+        case_key: str = "",
     ):
         self.token = token
+        self.case_key = case_key  # names the open case in every form, so a stale tab's post
+        # for another case is refused (ui/app.py, App._stale_case)
         self.expert = expert
         self.flash = flash
         self.case_name = case_name
@@ -142,10 +145,17 @@ class Page:
         return (
             f'<form method="post" action="{e(action)}" class="{cls}">'
             f'<input type="hidden" name="token" value="{e(self.token)}">'
+            + self.case_field()
             + (f'<input type="hidden" name="next" value="{e(back)}">' if back else "")
             + body
             + "</form>"
         )
+
+    def case_field(self) -> str:
+        """The hidden field naming the case this page was drawn for, or nothing with no case."""
+        if not self.case_key:
+            return ""
+        return f'<input type="hidden" name="for_case" value="{e(self.case_key)}">'
 
     def wrap(
         self,
@@ -2251,7 +2261,8 @@ def _upload_form(
     return (
         "<form method='post' action='/case/import' enctype='multipart/form-data' class='box'>"
         f"<input type='hidden' name='token' value='{e(page.token)}'>"
-        f"<input type='hidden' name='kind' value='{e(kind)}'>"
+        + page.case_field()
+        + f"<input type='hidden' name='kind' value='{e(kind)}'>"
         f"<p><strong>{e(label)}</strong>"
         + (f"<br><span class='muted'>{e(hint)}</span>" if hint else "")
         + "</p>"
