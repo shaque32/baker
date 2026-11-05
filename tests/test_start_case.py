@@ -336,7 +336,9 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
         post(app, "/claim/edit", claim=cid, status="removed", next="/setup")
     _add_gold_claims(app, conn)
     page = get(app, "/setup").text
-    assert "has no stipulated user" in page
+    assert "the phone in item1.xlsx, the phone in item2.xlsx have no stipulated user" in (
+        html.unescape(page)
+    )
     # Each removed claim has a Put back button, which accepts it again through /claim/edit.
     removed_list = page.split("<div class='removed'>", 1)[1].split("</div>", 1)[0]
     for cid in proposed:
@@ -638,3 +640,68 @@ def test_own_forms_carry_a_real_origin(app):
     null = Request("POST", "/case/new", {}, {**HOST, "origin": "null"},
                    {"token": app.token, "name": "x"})  # fmt: skip
     assert app.handle(null).status == 403
+
+
+# ---------------------------------------------------------------- orientation and handoff
+
+
+def test_before_the_audit_each_page_names_the_next_step(app, inputs):
+    case = _make_case(app, inputs)
+    conn = connect(case.db)
+    setup = html.unescape(get(app, "/setup").text)
+    # Records differ from the rows imported: the reason is under the number.
+    assert "4 account rows kept as accounts" in setup
+    post(app, "/claims/propose", next="/setup")
+    wait(app.jobs.current)  # type: ignore[arg-type]
+    proposed = [r[0] for r in conn.execute("SELECT id FROM claims WHERE status = 'proposed'")]
+    claims = html.unescape(get(app, "/claims").text)
+    assert f"{len(proposed)} proposed claim" in claims and "Nothing waits on you" not in claims
+    assert "Decide on Set up and run" in claims
+    setup = html.unescape(get(app, "/setup").text)
+    assert f"Accept all {len(proposed)} proposed claim" in setup
+    r = post(app, "/claims/accept_all", claims=",".join(proposed[:-1]), next="/setup")
+    assert r.status == 303
+    left = [r[0] for r in conn.execute("SELECT id FROM claims WHERE status = 'proposed'")]
+    assert left == proposed[-1:]  # only the claims the page listed
+    accepted = conn.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'claim.status'"
+    ).fetchone()[0]
+    assert accepted == len(proposed) - 1  # each acceptance logged under the expert's name
+    post(app, "/stipulate", device="dev:item1", person="Dmitri Petrov", next="/setup")
+    assert "It applies when you run the audit." in html.unescape(get(app, "/setup").text)
+    # The Cases list says the stage and the next step.
+    post(app, "/case/new", name="Second case")
+    cases_page = html.unescape(get(app, "/cases").text)
+    assert "Not audited. Next: Import the government document." in cases_page
+    assert "Not audited. Next: 1 proposed claim(s) still need your decision" in cases_page
+
+
+def test_an_audited_case_opens_on_the_case_page_and_hands_off_cleanly(app, inputs):
+    case = _make_case(app, inputs)
+    conn = connect(case.db)
+    _add_gold_claims(app, conn)
+    _stipulate(app)
+    post(app, "/audit/start", next="/run")
+    wait(app.jobs.current)  # type: ignore[arg-type]
+    assert app.jobs.current.state == "done", app.jobs.current.message  # type: ignore[union-attr]
+    # Opening it again lands on the Case page, and the list says what waits.
+    r = post(app, "/case/open", case=case.folder.name)
+    assert r.header("Location") == "/"
+    listed = html.unescape(get(app, "/cases").text)
+    assert "Audited 20" in listed and ("need you" in listed or "Nothing waits" in listed)
+    setup = html.unescape(get(app, "/setup").text)
+    assert "Run the full audit again" in setup and "was audited on" in setup
+    # The verdict sign-off is named, with its time, on the claim page and in the report.
+    post(app, "/verdict", claim="C05", action="confirm", note="", next="/claim?id=C05")
+    page = html.unescape(get(app, "/claim", id="C05").text)
+    assert "Verdict confirmed by Test Expert, 20" in page
+    assert "spreadsheet row" in page and "not the report's # column" in page
+    report = get(app, "/report")
+    text = html.unescape(report.text)
+    assert "Verdict confirmed by Test Expert, 20" in text
+    assert "prepared by" in text and "United States v. Petrov (synthetic)" in text
+    assert "Save this report (HTML)" in text and "Back to the case" in text
+    saved = get(app, "/report", download="1")
+    disposition = saved.header("Content-Disposition") or ""
+    assert "mabillon-report-united-states-v-petrov-synthetic-" in disposition
+    assert "Save this report" not in saved.text  # the saved copy has no screen links

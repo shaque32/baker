@@ -497,6 +497,46 @@ def source_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return out
 
 
+def audited_on(conn: sqlite3.Connection, run: dict) -> str:
+    """The date of the audit a run's evidence came from (a verdict re-run reuses an earlier
+    audit's evidence, so its own date is not when the case was audited)."""
+    source = run.get("evidence_from_run")
+    if source:
+        row = conn.execute(
+            "SELECT started_at_utc FROM pipeline_runs WHERE id = ?", (source,)
+        ).fetchone()
+        if row is not None:
+            return str(row[0])[:10]
+    return str(run["started_at_utc"])[:10]
+
+
+def stage_line(
+    case: Case, conn: sqlite3.Connection, needs_you: int | None = None, stale: bool = False
+) -> str:
+    """Where a case is and what comes next, for the Cases list. needs_you: claims waiting on
+    the expert in the audit on screen (the caller counts them as the Claims page does)."""
+    run = pipeline.view_run(conn)
+    if run is None:
+        todo = [r for r in readiness(case, conn) if not r.ok]
+        if not todo:
+            return "Not audited. Next: start the audit on Set up and run."
+        return f"Not audited. Next: {todo[0].text}"
+    if run.get("partial"):
+        return (
+            f"Audit stopped after {len(run['manifest'])} of {len(run['claim_order'] or ())} "
+            "claims. Next: resume it on Set up and run."
+        )
+    line = f"Audited {audited_on(conn, run)}."
+    if needs_you:
+        many = needs_you != 1
+        line += f" {needs_you} claim{'s' if many else ''} need{'' if many else 's'} you."
+    elif needs_you == 0:
+        line += " Nothing waits on you."
+    if stale:
+        line += " Verdicts are out of date: re-run them."
+    return line
+
+
 def last_audit_line(conn: sqlite3.Connection) -> str:
     run = pipeline.view_run(conn)
     if run is None:
@@ -562,10 +602,17 @@ def readiness(case: Case, conn: sqlite3.Connection) -> list[Ready]:
     }
     missing = [d for (d,) in devices if d not in stipulated]
     if devices and missing:
+        files = dict(
+            conn.execute(
+                "SELECT d.id, s.file_name FROM devices d JOIN sources s ON s.id = d.source_id"
+            )
+        )
+        named = [f"the phone in {files[d]}" if d in files else d for d in missing]
         out.append(
             Ready(
                 False,
-                f"Confirm who used each phone: {', '.join(missing)} has no stipulated user. "
+                f"Say who used each phone: {', '.join(named)} "
+                f"{'has' if len(named) == 1 else 'have'} no stipulated user. "
                 "Without one, checks on who sent a message come back inconclusive.",
                 acknowledge="owners_ok",
             )

@@ -434,6 +434,8 @@ MASKS = (
     (re.compile(rf"<tr><td>(\d+)</td><td>{TIME}</td>"), r"<tr><td>\1</td><td><time></td>"),
     (re.compile(rf" stipulated on {TIME}:"), " stipulated on <time>:"),  # limitations
     (re.compile(rf" confirmed on {TIME} that "), " confirmed on <time> that "),  # limitations
+    # a verdict's sign-off: "Verdict confirmed by <name>, 2026-11-04 01:20 UTC."
+    (re.compile(r", \d{4}-\d\d-\d\d \d\d:\d\d UTC\.</strong>"), ", <time> UTC.</strong>"),
 )
 
 

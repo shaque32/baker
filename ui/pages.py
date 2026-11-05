@@ -14,6 +14,7 @@ shows as confirmed.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import Counter
 from collections.abc import Iterable
@@ -86,6 +87,7 @@ from core.review.status import (
     claim_state,
     claim_states,
     queue,
+    signoff,
 )
 from core.selection.audit import selection_audit
 from core.selection.paired import paired_check
@@ -231,6 +233,7 @@ TAB_GROUPS = [
         ("/log", "Audit log"),
         ("/activity", "Activity"),
     ],
+    [("/cases", "All cases")],  # switching case is the most common move between sessions
 ]
 
 
@@ -450,7 +453,11 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
             else "full audit"
         )
         rows += [
-            ("Latest run", f"<span class='mono'>{e(run['run_id'])}</span> ({mode})"),
+            (
+                "Latest run",
+                f"<span class='mono'>{e(run['run_id'])}</span> ({mode}) · "
+                "<a href='/run'>its claims, one by one</a>",
+            ),
             ("Started (UTC)", e(run["started_at_utc"])),
             (
                 "Versions",
@@ -625,7 +632,54 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
     out.append("</table>")
     if not devices:
         out.append("<p class='muted'>No devices imported.</p>")
+    out.append(_device_notes(conn))
     return "".join(out)
+
+
+def _digits(number: str) -> str:
+    """A phone number compared by its last ten digits (+1 212 555 0111 and 2125550111 match)."""
+    d = re.sub(r"\D", "", number)
+    return d[-10:] if len(d) >= 10 else ""
+
+
+def _device_notes(conn: sqlite3.Connection) -> str:
+    """Two cheap checks on the phones, as notes, never merges: two reports that list the same
+    number as the phone's own (the same handset in two formats, or two handsets that shared a
+    SIM), and a document whose phone numbers match none of the phones' own numbers."""
+    own: dict[str, set[str]] = {}
+    files = dict(
+        conn.execute("SELECT d.id, s.file_name FROM devices d JOIN sources s ON s.id = d.source_id")
+    )
+    for dev, ident in conn.execute(
+        "SELECT device_id, identifier FROM accounts WHERE device_id IS NOT NULL"
+    ):
+        d = _digits(ident or "")
+        if d:
+            own.setdefault(dev, set()).add(d)
+    notes = []
+    devs = sorted(own)
+    for i, a in enumerate(devs):
+        for b in devs[i + 1 :]:
+            if own[a] & own[b]:
+                notes.append(
+                    f"The phones in {q(files.get(a, a))} and {q(files.get(b, b))} list the same "
+                    "number as their own. They may be one handset in two report formats (or two "
+                    "handsets that shared a SIM). Mabillon keeps them apart: stipulate each, "
+                    "the same way if they are one phone."
+                )
+    numbers = {
+        _digits(m)
+        for (text,) in conn.execute("SELECT text FROM govdoc_paragraphs")
+        for m in re.findall(r"\+?\(?\d[\d\s().-]{8,}\d", text or "")
+    } - {""}
+    mine = set().union(*own.values()) if own else set()
+    if numbers and mine and not numbers & mine:
+        notes.append(
+            "The government document gives phone numbers, and none of them is a number these "
+            "phones list as their own. Check that the reports belong to this case (a number "
+            "can also be missing from a report's own accounts)."
+        )
+    return "".join(f"<p class='note device-note'>{n}</p>" for n in notes)
 
 
 # ---------------------------------------------------------------- queue
@@ -770,22 +824,38 @@ def _group_rows(rows: list[ClaimState], g: str, folded: bool) -> str:
     return f"<details class='fold'><summary>{show}</summary>{ul}</details>"
 
 
-def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
+def claims_queue(conn: sqlite3.Connection, page: Page, next_step: str | None = None) -> str:
+    """next_step: before the first audit, the setup step that comes next (the overview then
+    says so instead of "Nothing waits on you")."""
     states = queue(conn)
     by: dict[str, list[ClaimState]] = {g: [] for g, _ in GROUPS}
     for st in states:
         by[_group(st)].append(st)
     you, total = len(by["you"]), len(states)
+    proposed = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
     if not total:
         head = "No claims yet"
     elif you:
         head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you."
+    elif proposed:
+        head = f"{proposed} proposed claim{'s' if proposed != 1 else ''} wait for your decision."
+    elif next_step:
+        head = "Not audited yet."
     else:
         head = "Nothing waits on you."
+    lede = ""
+    if proposed:
+        lede = (
+            f"<p class='lede'>{proposed} claim{'s' if proposed != 1 else ''} the local model "
+            "proposed wait for you to accept, edit or remove them. Nothing is audited until you "
+            "accept it. <a href='/setup#claims'>Decide on Set up and run</a>.</p>"
+        )
+    elif next_step and not you:
+        lede = f"<p class='lede'>Next: {e(next_step)} <a href='/setup'>Set up and run</a>.</p>"
     out = [
         "<div class='pg-claims'>"
         f"<div class='overview-head'><h1>{e(head)}</h1>"
-        "<a class='button' href='/claim/new'>Add a claim</a></div>",
+        "<a class='button' href='/claim/new'>Add a claim</a></div>" + lede,
         "<nav class='tiles' aria-label='Claims by finding'>"
         + "".join(_tile(g, name, len(by[g])) for g, name in GROUPS if by[g] or g != "not")
         + "</nav>",
@@ -940,6 +1010,7 @@ def evidence_card(
         + "</div>"
         + shown
         + f"<p class='ev-rec'>{record_line(conn, item.record_id, found)}</p>"
+        + f"<p class='ev-src muted'>{source_line(conn, item.ref.source_id, item.ref.locator)}</p>"
         + (
             f"<p>{rationale_html(item, withheld)}</p>"
             + ("" if withheld.acknowledged else _acknowledge_form(page, item, back))
@@ -957,6 +1028,49 @@ def evidence_card(
         + "</p></details>"
         + f"{flag}{around_a}</div></div>"
     )
+
+
+def _records_note(conn: sqlite3.Connection, source_id: str, records: int) -> str:
+    """Why Records differs from the rows the coverage line says were imported: rows kept as
+    accounts are not records, and one row can hold several records (a contact's two numbers)."""
+    row = conn.execute(
+        "SELECT payload_json FROM source_coverage WHERE source_id = ?", (source_id,)
+    ).fetchone()
+    try:
+        tables = json.loads(row[0]).get("tables", []) if row else []
+    except (ValueError, AttributeError):
+        return ""
+    imported = sum(int(t.get("rows_imported") or 0) for t in tables)
+    if not imported or imported == records:
+        return ""
+    accounts = sum(int(t.get("rows_imported") or 0) for t in tables if t.get("kind") == "accounts")
+    parts = []
+    if accounts:
+        parts.append(f"{accounts} account row{'s' if accounts != 1 else ''} kept as accounts")
+    extra = records - (imported - accounts)
+    if extra > 0:
+        parts.append(f"{extra} more from rows that hold two or more records (a contact's numbers)")
+    elif extra < 0:
+        parts.append(f"{-extra} row{'s' if extra != -1 else ''} not stored as records")
+    return f"<span class='muted rec-note'>{e('; '.join(parts))}</span>" if parts else ""
+
+
+_EXCEL_ROW = re.compile(r"^(?P<sheet>.+)!(?P<row>\d+)$")
+
+
+def source_line(conn: sqlite3.Connection, source_id: str, locator: str) -> str:
+    """Where a record is in the original file, unfolded on every card: the file, then the sheet
+    and spreadsheet row for an Excel report. The row is the spreadsheet's own row number, which
+    is not the report's "#" column (a header row and title rows come before the first record)."""
+    row = conn.execute("SELECT file_name, kind FROM sources WHERE id = ?", (source_id,)).fetchone()
+    name, kind = (row[0], row[1]) if row else (source_id, "")
+    m = _EXCEL_ROW.match(locator)
+    if kind == "cellebrite_excel" and m:
+        return (
+            f"From {q(name)}, {q(m['sheet'])} sheet, spreadsheet row {e(m['row'])} "
+            "(Excel's row number, not the report's # column)"
+        )
+    return f"From {q(name)}, at {e(locator)}"
 
 
 def _conversation(
@@ -1274,10 +1388,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append(mixed_app_note(conn, st))
     if d is not None:
         out.append(_why(conn, st, d))
-        if d.confirmed_by:
+        signed = signoff(conn, d)
+        if signed:
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
-            kind = "overrode" if d.override_note is not None else "confirmed"
-            out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
+            out.append(f"<p class='signoff'><strong>{e(signed)}</strong>{note}</p>")
         out.append(
             f"</div><div class='in vacts'>{_verdict_forms(page, st, back)}"
             f"{_flag_verdict_form(conn, page, st, back)}"
@@ -2345,6 +2459,7 @@ def setup_page(
     cloud_key: str | None = "",  # None: a key is set up; else why not
     cloud_key_from: str | None = None,  # core.llm.cloud.key_source
     model_ok: bool | None = None,  # the last model check passed, failed, or none ran
+    audited: str | None = None,  # the date of the last finished audit, if one finished
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
@@ -2380,7 +2495,7 @@ def setup_page(
                 fc = tested.for_source(conn, sid)
                 what += format_notice(fc) if fc is not None else ""
                 cov = e(COVERAGE.get(fidelity, fidelity)) + _import_coverage(conn, sid)
-                recs = str(counts.get(sid, 0))
+                recs = str(counts.get(sid, 0)) + _records_note(conn, sid, counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td>"
                 f"<td>{what}<div class='coverage'>{cov}</div></td>"
@@ -2492,6 +2607,22 @@ def setup_page(
                 f"{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )
         out.append("</table>")
+        waiting = [cid for cid in order if claims[cid].status.value == "proposed"]
+        if waiting and not audit_busy:
+            n_w = len(waiting)
+            out.append(
+                page.form(
+                    "/claims/accept_all",
+                    f"<input type='hidden' name='claims' value='{e(','.join(waiting))}'>"
+                    "<div class='inline-actions'><button type='submit'>Accept all "
+                    f"{n_w} proposed claim{'s' if n_w != 1 else ''} as written</button>"
+                    "<span class='muted'>Read them first. Each acceptance is logged under your "
+                    "name.</span></div>",
+                    "plain",
+                    back="/setup",
+                    anchor="claims",
+                )
+            )
         removed = [c for c in claims.values() if c.status.value == "removed"]
         if removed:
             out.append(
@@ -2602,6 +2733,15 @@ def setup_page(
         out.append("<p><a href='/run'>The audit is running. See its progress.</a></p>")
     else:
         start = "Resume the audit" if resumable else "Start the audit"
+        again = ""
+        if audited and not resumable:
+            start = "Run the full audit again"
+            again = (
+                f"<p class='muted'>This case was audited on {e(audited)}. Running it again "
+                "sends every claim through the model again, for hours; your evidence decisions "
+                "are kept. To apply decisions you made since, use Re-run verdicts in the "
+                "Verdicts are out of date banner instead (rules only, no model).</p>"
+            )
         off = " disabled" if (busy or blocking) else ""
         out.append(
             page.form(
@@ -2613,7 +2753,8 @@ def setup_page(
                 "failed check already decides. Their verdict cannot change.</label><label><input "
                 "type='checkbox' name='no_challenge' value='1'> Skip the challenge step, code's "
                 "search for what undercuts a claim close to supported.</label></div></details>"
-                "<div class='inline-actions'>"
+                + again
+                + "<div class='inline-actions'>"
                 f"<button type='submit' class='primary'{off}>{start}</button>"
                 "</div>",
                 back="/run",

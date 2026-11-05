@@ -67,6 +67,7 @@ from core.db import CaseLocked, connect
 from core.encryption import EncryptionError
 from core.identity.links import propose_links
 from core.llm import cloud as cloud_llm
+from core.report.html import Header as ReportHeader
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
@@ -74,6 +75,7 @@ from core.review import actions, activity, audit_log, flags, withheld
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.review.status import claim_names, claim_state
+from core.review.status import claim_states as claim_states_now
 from core.support import bug_report
 from core.timeline import settings as timeline_settings
 from ui import (
@@ -102,6 +104,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claim/edit": ("audit",),
     "/claim/add": ("audit", "propose"),
     "/claims/move": ("audit",),
+    "/claims/accept_all": ("audit", "propose"),
     "/stipulate": ("audit",),
     "/stipulation/withdraw": ("audit",),
     "/device/names": ("audit",),
@@ -557,7 +560,7 @@ class App:
         if p == "/":
             return self._html(pages.overview(conn, page))
         if p == "/claims":
-            return self._html(pages.claims_queue(conn, page))
+            return self._html(pages.claims_queue(conn, page, self._next_step(conn)))
         if p == "/claim":
             body = pages.claim_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such claim")
@@ -630,15 +633,24 @@ class App:
                 self._close_broken(case)
                 self.flash = (f"No report: {err}", True)
                 return self._redirect("/cases")
-            body = render_report(conn, timeline=self._timeline())
+            made = self.clock()
+            header = ReportHeader(case.name, self.expert, made)
+            body = render_report(conn, timeline=self._timeline(), header=header)
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+                # On screen only: a way back into the app and a way to save it.
+                body = body.replace(
+                    "<h1>Mabillon claims report</h1>",
+                    "<p class='screen-only' style='margin:0 0 12px'><a href='/'>Back to the "
+                    "case</a> · <a href='/report?download=1'>Save this report (HTML)</a></p>"
+                    "<h1>Mabillon claims report</h1>",
+                    1,
+                )
             resp = self._html(body)
             if download:
-                resp.headers.append(
-                    ("Content-Disposition", 'attachment; filename="mabillon-report.html"')
-                )
+                name = _report_file_name(case.name, made)
+                resp.headers.append(("Content-Disposition", f'attachment; filename="{name}"'))
             return resp
         return self._not_found(page, "no such page")
 
@@ -664,6 +676,7 @@ class App:
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
             "/rationale/acknowledge": lambda: self._acknowledge(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
+            "/claims/accept_all": lambda: self._accept_all(conn, f),  # type: ignore[arg-type]
             "/claim/add": lambda: self._add_claim(conn, f),  # type: ignore[arg-type]
             "/claims/move": lambda: self._move_claim(conn, f),  # type: ignore[arg-type]
             "/claims/propose": lambda: self._propose(),
@@ -706,7 +719,7 @@ class App:
             if req.path == "/claim/add":
                 back = pages.link("/claim", id=f.get("id", ""))
             if req.path in ("/case/new", "/case/open"):
-                back = "/setup#recovery" if self._recovery_for_open() else "/setup"
+                back = "/setup#recovery" if self._recovery_for_open() else self._landing()
             if req.path == "/case/encrypt":
                 back = "/setup#recovery"
             if req.path == "/case/lock":
@@ -925,6 +938,27 @@ class App:
         actions.set_claim_status(conn, f.get("claim", ""), status, self.actor, text)
         return f"Claim {_named(conn, f.get('claim', ''))} is {status.value}."
 
+    def _accept_all(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """Accept, as written, the proposed claims the page listed (only those: a claim
+        proposed after the page was drawn was not read, so it waits)."""
+        shown = [c for c in f.get("claims", "").split(",") if c]
+        still = {
+            r[0]
+            for r in conn.execute("SELECT id FROM claims WHERE status = 'proposed'")
+            if r[0] in shown
+        }
+        if not still:
+            raise ReviewError("no proposed claim from that list is still waiting")
+        for cid in shown:
+            if cid in still:
+                actions.set_claim_status(conn, cid, ClaimStatus.ACCEPTED, self.actor)
+        left = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
+        return f"Accepted {len(still)} claim{'s' if len(still) != 1 else ''} as written." + (
+            f" {left} more proposed since that page was drawn; decide on them below."
+            if left
+            else ""
+        )
+
     def _add_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         # What the expert typed is kept for the form if anything below refuses it.
         self._claim_draft = {k: f.get(k, "") for k in ("paragraph", "text", "id", "type")}
@@ -948,13 +982,15 @@ class App:
         names = [n for n in f.get("names", "").split(",") if n.strip()]
         kept = actions.name_device(conn, f.get("device", ""), names, self.actor)
         if not kept:
-            return "Names cleared. Run the audit again to apply it."
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that name it are tested."
+            return "Names cleared." + _applies(conn, " Run the audit again to apply it.")
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that name it are tested."
+        )
 
     def _stipulate(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.stipulate_device_owner(conn, f.get("device", ""), f.get("person", ""), self.actor)
         propose_links(conn)  # a renamed owner may carry other names now
-        return "Stipulation recorded. Re-run the verdicts to apply it."
+        return "Stipulation recorded." + _applies(conn, " Re-run the verdicts to apply it.")
 
     # -- identities
 
@@ -975,8 +1011,10 @@ class App:
         names = [n for n in f.get("aliases", "").split(",") if n.strip()]
         kept = actions.set_aliases(conn, f.get("id", ""), names, self.actor)
         if not kept:
-            return "Other names cleared. It applies on the next audit run."
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+            return "Other names cleared." + _applies(conn, " It applies on the next audit run.")
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that use them are tested."
+        )
 
     def _add_alias(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         from core.identity import aliases
@@ -984,7 +1022,9 @@ class App:
         pid = f.get("id", "")
         have = [a.alias for a in aliases.stored(conn) if a.person_id == pid]
         kept = actions.set_aliases(conn, pid, [*have, f.get("alias", "")], self.actor)
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that use them are tested."
+        )
 
     def _add_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         first = f.get("first_day", "")
@@ -997,7 +1037,9 @@ class App:
             f.get("defined_as", ""),
             self.actor,
         )
-        return f"Saved the event {name}. Run the audit again so claims dated by it are tested."
+        return f"Saved the event {name}." + _applies(
+            conn, " Run the audit again so claims dated by it are tested."
+        )
 
     def _remove_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.remove_event(conn, f.get("name", ""), self.actor)
@@ -1044,7 +1086,7 @@ class App:
 
     def _withdraw(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.withdraw_stipulation(conn, f.get("id", ""), self.actor)
-        return "Stipulation withdrawn. Re-run the verdicts to apply it."
+        return "Stipulation withdrawn." + _applies(conn, " Re-run the verdicts to apply it.")
 
     # -- cases
 
@@ -1070,7 +1112,7 @@ class App:
                     try:
                         try:
                             audit_log.require_intact(conn, audit_log.anchors_path(c.db))
-                            state = cases.last_audit_line(conn)
+                            state = _stage(c, conn)
                         except audit_log.ChainBroken as err:
                             state = f"Review blocked: {err.problem}"
                     finally:
@@ -1105,6 +1147,24 @@ class App:
                 "top of this page."
             )
         return f"Made the case {case.name}. Import its files below."
+
+    def _next_step(self, conn: sqlite3.Connection) -> str | None:
+        """Before the first audit, the setup step that comes next, in its own words."""
+        if self.case is None or pipeline.view_run(conn) is not None:
+            return None
+        todo = [r for r in cases.readiness(self.case, conn) if not r.ok]
+        return todo[0].text if todo else "start the audit."
+
+    def _landing(self) -> str:
+        """Where opening a case lands: an audited case on its Case page, with what waits on the
+        expert; a case still being set up on Set up and run."""
+        if self.case is None:
+            return "/setup"
+        conn = connect(self.case.db)
+        try:
+            return "/" if pipeline.view_run(conn) is not None else "/setup"
+        finally:
+            conn.close()
 
     def _open_case(self, f: dict[str, str]) -> str:
         if self.home is None:
@@ -1280,6 +1340,7 @@ class App:
             cloud_case=cloud_policy.case_cloud(conn),
             cloud_key=self._cloud_key_state(),
             cloud_key_from=self._cloud_key_source(),
+            audited=_audited(conn),
             model_ok=None
             if check is None or (job is not None and job.running and job.kind == "model_check")
             else check.ok,
@@ -1451,10 +1512,18 @@ class App:
             if choice.use and choice.config is not None
             else ""
         )
+        attempt = pipeline.latest_attempt(conn)
+        reused = len(attempt["manifest"]) if attempt is not None else 0
+        what = f"{len(order)} claims"
+        if reused:
+            # A resume reuses finished claims' stored outputs; the estimate is for the rest.
+            left = max(len(order) - reused, 0)
+            job.estimate_seconds = jobs.estimate_seconds(left, spc, cloud_spc)
+            what = f"the {left} claims left ({reused} already finished are reused)"
         first = (
-            f"Checking the model first; if it passes, the audit runs on {len(order)} claims"
+            f"Checking the model first; if it passes, the audit runs on {what}"
             if check is not None
-            else f"The audit started on {len(order)} claims"
+            else f"The audit started on {what}"
         )
         return (
             f"{first}, {jobs.duration(job.estimate_seconds)} by a rough estimate.{where} Each "
@@ -1812,6 +1881,39 @@ def _when(iso_utc: str) -> str:
     if at.date() == now.date():
         return f"today at {clock}"
     return f"on {at.day} {at.strftime('%b')} at {clock}"
+
+
+def _audited(conn: sqlite3.Connection) -> str | None:
+    """The date of the last finished audit, or None."""
+    run = pipeline.last_run(conn)
+    if run is None or run.get("partial") or run.get("status") not in (None, "completed"):
+        return None
+    return cases.audited_on(conn, run)
+
+
+def _applies(conn: sqlite3.Connection, after_a_run: str) -> str:
+    """The second half of a setup change's message: before any audit it simply applies when
+    the audit runs; after one, what to run again."""
+    if conn.execute("SELECT 1 FROM pipeline_runs LIMIT 1").fetchone() is None:
+        return " It applies when you run the audit."
+    return after_a_run
+
+
+def _report_file_name(case_name: str, made: datetime) -> str:
+    """A saved report's file name, so two cases' reports never share one:
+    mabillon-report-us-v-alvarez-2026-11-05.html (letters, digits and dashes only)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", case_name.lower()).strip("-")[:60].strip("-") or "case"
+    return f"mabillon-report-{slug}-{made.strftime('%Y-%m-%d')}.html"
+
+
+def _stage(case: cases.Case, conn: sqlite3.Connection) -> str:
+    """The Cases list's line for a case: its stage, what waits on the expert, what is next."""
+    if pipeline.view_run(conn) is None:
+        return cases.stage_line(case, conn)
+    states = claim_states_now(conn)
+    waiting = sum(1 for st in states if pages.needs_you(st))
+    stale = any(st.decision is not None and st.stale for st in states)
+    return cases.stage_line(case, conn, needs_you=waiting, stale=stale)
 
 
 def _case_key(case: cases.Case) -> str:
