@@ -278,3 +278,91 @@ def test_a_removed_documents_proposed_claims_still_verify(app, inputs):
         assert not _verify_dependents(conn), _verify_dependents(conn)
     finally:
         conn.close()
+
+
+def test_a_phones_user_with_a_confirmed_link_from_another_file_blocks_removal(app, inputs):
+    from core.contracts import IdentityLinkStatus
+    from core.review import actions
+
+    send(app, inputs["item1"], "report")
+    send(app, inputs["item2"], "report")
+    post(app, "/stipulate", device="dev:item1", person="Daniel Petrov")
+    conn = connect(app.case.db)
+    try:
+        (account,) = conn.execute(
+            "SELECT id FROM accounts WHERE source_id = 'item2' ORDER BY id LIMIT 1"
+        ).fetchone()
+        link = actions.link_account(
+            conn, account, "person:dev:item1:owner", "expert:Test Expert", "Same number."
+        )
+        (sid,) = conn.execute("SELECT id FROM stipulations").fetchone()
+    finally:
+        conn.close()
+    post(app, "/stipulation/withdraw", id=sid)
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "link from an account to its phone's user" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        actions.decide_identity_link(
+            conn, link, IdentityLinkStatus.REJECTED, "expert:Test Expert", "Not him."
+        )
+    finally:
+        conn.close()
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "Removed item1.xlsx" in app.flash[0], app.flash
+    conn = connect(app.case.db)
+    try:
+        assert not conn.execute("SELECT 1 FROM identity_links WHERE id = ?", (link,)).fetchone()
+        assert not conn.execute(
+            "SELECT 1 FROM persons WHERE id = 'person:dev:item1:owner'"
+        ).fetchone()  # a later phone with the same id starts with no user
+        assert not _verify_dependents(conn), _verify_dependents(conn)
+    finally:
+        conn.close()
+
+
+def test_a_link_made_again_after_the_file_is_imported_again_verifies(app, inputs):
+    from core.contracts import IdentityLinkStatus
+    from core.review import actions
+
+    send(app, inputs["item1"], "report")
+    send(app, inputs["item2"], "report")
+    post(app, "/stipulate", device="dev:item2", person="Daniel Petrov")
+    owner = "person:dev:item2:owner"
+    q = "SELECT id FROM accounts WHERE source_id = 'item1' ORDER BY id LIMIT 1"
+    conn = connect(app.case.db)
+    try:
+        (account,) = conn.execute(q).fetchone()
+        link = actions.link_account(conn, account, owner, "expert:Test Expert", "First reason.")
+        actions.decide_identity_link(
+            conn, link, IdentityLinkStatus.REJECTED, "expert:Test Expert", "Not him."
+        )
+    finally:
+        conn.close()
+    post(app, "/case/remove_file", source="item1", reason="Wrong phone.")
+    assert "Removed item1.xlsx" in app.flash[0], app.flash
+    assert "Imported item1.xlsx" in send(app, inputs["item1"], "report")
+    conn = connect(app.case.db)
+    try:
+        assert conn.execute(q).fetchone() == (account,)  # the same id again
+        again = actions.link_account(conn, account, owner, "expert:Test Expert", "Second.")
+        assert again == link
+        assert not _verify_dependents(conn), _verify_dependents(conn)
+    finally:
+        conn.close()
+
+
+def test_the_command_line_refuses_the_same_file_twice(inputs, tmp_path, capsys):
+    from cli.main import main as cli_main
+
+    db = tmp_path / "c.db"
+    assert cli_main(["init", "--db", str(db)]) == 0
+    report = str(inputs["item1"])
+    assert cli_main(["import", "--db", str(db), "--report", report]) == 0
+    assert cli_main(["import", "--db", str(db), "--report", report]) == 2
+    assert "already in the case, as item1.xlsx (item1)" in capsys.readouterr().err
+    conn = connect(db)
+    try:
+        assert [r[0] for r in conn.execute("SELECT id FROM sources")] == ["item1"]
+    finally:
+        conn.close()

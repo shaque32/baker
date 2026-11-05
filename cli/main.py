@@ -187,6 +187,12 @@ def cmd_import(a: argparse.Namespace) -> int:
 
         with a.report.open("rb") as fh:
             sha = hashlib.file_digest(fh, "sha256").hexdigest()
+        dup = conn.execute("SELECT id, file_name FROM sources WHERE sha256 = ?", (sha,)).fetchone()
+        if dup is not None:  # the same file again, not another file with the same stem
+            print(
+                f"import: this file is already in the case, as {dup[1]} ({dup[0]})", file=sys.stderr
+            )
+            return 2
         sid = _free_source_id(conn, a.report, sha)
     try:
         src = Importer(source_id=sid, date_order=a.date_order).import_source(a.report, conn)

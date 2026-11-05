@@ -92,6 +92,17 @@ def _blockers(conn: sqlite3.Connection, source_id: str) -> list[str]:
         ).fetchone()
     ):
         out.append("a confirmed account link to a person (reject it on Identities)")
+    # A confirmed link from another file's account to this phone's user: the user's person row
+    # is kept by device id, so a later report with the same file name would take it over.
+    if (
+        owners
+        and conn.execute(
+            f"SELECT 1 FROM identity_links WHERE person_id IN ({_in(owners)})"  # noqa: S608
+            " AND status = 'confirmed'",
+            owners,
+        ).fetchone()
+    ):
+        out.append("a confirmed link from an account to its phone's user (reject it on Identities)")
     paragraphs = _ids(
         conn,
         "SELECT p.id FROM govdoc_paragraphs p JOIN govdocs g ON g.id = p.govdoc_id"
@@ -153,6 +164,12 @@ def delete_rows(conn: sqlite3.Connection, source_id: str) -> dict[str, list[str]
         where = f"subject_id IN ({_in(devices)}) AND status != 'confirmed'"
         gone["stipulations_removed"] = _ids(conn, _select("stipulations", where), *devices)
         conn.execute(f"DELETE FROM stipulations WHERE {where}", devices)  # noqa: S608
+        # Links not confirmed from any account to this phone's user go too (a confirmed one
+        # blocks the removal), so no later phone with the same id inherits them.
+        owners = [f"person:{d}:owner" for d in devices]
+        where = f"person_id IN ({_in(owners)}) AND status != 'confirmed'"
+        gone["links_removed"] += _ids(conn, _select("identity_links", where), *owners)
+        conn.execute(f"DELETE FROM identity_links WHERE {where}", owners)  # noqa: S608
         for d in devices:
             owner = f"person:{d}:owner"
             used = any(

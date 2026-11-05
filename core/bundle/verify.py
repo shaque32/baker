@@ -1267,6 +1267,7 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
         elif act in ("person.remove", "case.remove_file"):
             for lid in p.get("links_removed") or []:
                 state.pop(lid, None)
+                basis.pop(lid, None)  # a link made again later has its own basis
     bad = 0
     stored = conn.execute(
         "SELECT id, account_id, person_id, status, tier, basis, decided_by, decided_at_utc"
