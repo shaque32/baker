@@ -1,4 +1,4 @@
-## 2026-11-05: App look: one badge shape, one frame per item, no periods in titles (#PR)
+## 2026-11-05: App look: one badge shape, one frame per item, no periods in titles (#222)
 - Changed: first app fixes from the AI design slop audit (Arsh's "20 AI design slop
   indicators", 2026-11-04), PRs A and B of that audit in one PR. Look and wording only.
   Badges: one shape everywhere (4px corners, a tint, no outline); the round "Records found"
@@ -20,7 +20,7 @@
   Kept on purpose: the demo banner, "not tested" notices, verdict and review-state names, every
   provenance tier and source line, the picked-message ring on Selection and the "This record"
   outline on the claim page.
-- Where: PR #PR
+- Where: PR #222
 - Verified: ruff; `make check` (numbers in the PR); the demo at 1280 px before and after, and a
   computed-style count over 16 app pages: round pills and chips outside the Set up step strip
   34 to 0, titles ending in a period 11 to 1 (a two-sentence notice on Case), text with negative
