@@ -185,6 +185,46 @@ def load_config(path: Path | None = None, case_db: Path | None = None) -> CloudC
     return CloudConfig(api_key=key, model=model, effort=effort, base_url=base_url)
 
 
+def key_source(path: Path | None = None, case_db: Path | None = None) -> str | None:
+    """Where the key load_config would use comes from: "environment", "case" (sealed in this
+    encrypted case), "file" (the plain cloud config on this computer), or None."""
+    if key_from_environment():
+        return "environment"
+    try:
+        if (case_key(case_db) or "").strip():
+            return "case"
+    except CloudConfigError:
+        return None
+    path = path or config_path()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        return None
+    return "file" if isinstance(raw, dict) and str(raw.get("api_key") or "").strip() else None
+
+
+def remove_key(path: Path | None = None, case_db: Path | None = None) -> str | None:
+    """Remove the saved key load_config would use: the one sealed in this case, else the
+    config file's. Returns where it was ("case" or "file"), or None if none was saved."""
+    from core import encryption
+
+    where = key_source(path, case_db)
+    if where == "case" and case_db is not None:
+        encryption.secret_path(case_db, CASE_SECRET).unlink(missing_ok=True)
+        return "case"
+    if where == "file":
+        path = path or config_path()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.pop("api_key", None)
+        tmp = path.with_name(f".{path.name}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+        return "file"
+    return None
+
+
 def key_from_environment() -> bool:
     return bool(paths.env("ANTHROPIC_API_KEY"))
 

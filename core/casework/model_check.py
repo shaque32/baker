@@ -107,6 +107,22 @@ def _read_cache(cache: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def next_step(platform: str | None = None) -> str:
+    """What the expert does about a missing or damaged model, on this kind of computer."""
+    platform = platform or sys.platform
+    if platform == "darwin":
+        return (
+            "To fix it, run Install Mabillon.command (or packaging/mac/install.sh) again: it "
+            "picks up a stopped download and leaves your cases alone."
+        )
+    if platform == "win32":
+        return (
+            "To fix it, run Mabillon Setup again with Download the AI model ticked: it leaves "
+            "your cases alone."
+        )
+    return "To fix it, run Mabillon's installer again: it leaves your cases alone."
+
+
 def check_model(
     config: Path | None = None,
     cache: Path | None = CACHE,
@@ -123,14 +139,18 @@ def check_model(
     except ModelConfigError as e:
         out.add(
             "fail",
-            f"No usable model is set up ({e}). Mabillon reads the model's name, file path and "
-            f"SHA-256 from {where}.",
+            f"No usable model is set up. {next_step()} (Detail: {e}. Mabillon reads the "
+            f"model's name, file path and SHA-256 from {where}.)",
         )
         return out
     out.model_name = cfg.name
     out.add("ok", f"Model config found: {cfg.name}, at {where}.")
     if not cfg.path.is_file():
-        out.add("fail", f"The model file is not on this computer: {cfg.path}.")
+        out.add(
+            "fail",
+            f"The AI model file is not on this computer. {next_step()} "
+            f"(Mabillon looked for {cfg.path}.)",
+        )
         return out
     size = cfg.path.stat().st_size
     out.add("ok", f"Model file found: {cfg.path} ({size / GB:.1f} GB).")
@@ -145,7 +165,7 @@ def check_model(
             out.add(
                 "fail",
                 f"The model file's SHA-256 is {digest}, not the {cfg.sha256} the config pins. "
-                "It is a different or damaged file; Mabillon will not use it.",
+                "It is a different or damaged file; Mabillon will not use it. " + next_step(),
             )
             return out
         out.add("ok", "SHA-256 matches the config.")
