@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import pytest
 
 from core.llm.runtime import FakeModel, GenerationParams
 from eval.probe import repeat_check as rc
@@ -147,3 +151,94 @@ def test_the_dry_run_estimates_without_a_model(capsys):
     assert rc.main(["--dry-run", "--claims", "C01"]) == 0
     est = json.loads(capsys.readouterr().out)
     assert est["calls"]["A"] == 2 * est["calls"]["B"] > 0 and est["estimated_hours"] > 0
+
+
+def _finished_run(folder: Path, sha: str, a_rows: list[dict], machine: str) -> Path:
+    folder.mkdir(parents=True)
+    (folder / "A.jsonl").write_text("".join(json.dumps(r) + "\n" for r in a_rows))
+    summary = {"model_sha256": sha, "machine": machine, "gpu": None, "host": {"aws_ami_id": None}}
+    (folder / "summary.json").write_text(json.dumps(summary))
+    return folder
+
+
+def test_two_machines_are_compared_on_first_asks_only(tmp_path, capsys):
+    """AWS against the Mac: each run's first asks, matched by item and prompt digest."""
+    sha = "5" * 64
+    first = _finished_run(
+        tmp_path / "aws",
+        sha,
+        [
+            {"key": "P1", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "x"},
+            {"key": "P1", "ask": 2, "prompt_sha256": "p", "raw": ANSWER % "second ask"},
+            {"key": "P2", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "y"},
+        ],  # fmt: skip
+        "Linux-x86_64",
+    )
+    second = _finished_run(
+        tmp_path / "mac",
+        sha,
+        [
+            {"key": "P1", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "x"},
+            {"key": "P2", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "reworded"},
+            {"key": "P3", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "z"},
+        ],  # fmt: skip
+        "macOS-15.6.1-arm64",
+    )
+    out = tmp_path / "cross"
+    assert rc.main(["--compare", str(first), str(second), "--out", str(out)]) == 0
+    result = json.loads((out / "cross.json").read_text())
+    probe = result["probe"]
+    assert (probe["compared"], probe["raw_identical"], probe["label_identical"]) == (2, 1, 2)
+    assert probe["only_in_second"] == 1 and "case01" not in result
+    md = capsys.readouterr().out
+    assert "Linux-x86_64" in md and "macOS-15.6.1-arm64" in md and "not in both runs" in md
+
+
+def test_runs_of_different_model_files_are_never_compared(tmp_path):
+    row = [{"key": "P1", "ask": 1, "prompt_sha256": "p", "raw": ANSWER % "x"}]
+    first = _finished_run(tmp_path / "a", "1" * 64, row, "m")
+    second = _finished_run(tmp_path / "b", "2" * 64, row, "m")
+    result = rc.compare_runs(first, second)
+    assert "refused" in result and "probe" not in result
+    assert "Not compared" in rc.cross_markdown(result)
+    assert rc.main(["--compare", str(first), str(second)]) == 1
+
+
+def test_the_summary_names_the_cloud_machine(tmp_path, monkeypatch):
+    """--host (eval/probe/aws_repeat.sh) lands in the summary and its markdown."""
+    _scripted(monkeypatch, lambda p: ANSWER % "same")
+    monkeypatch.setattr(rc.subprocess, "run", _no_subprocess)
+    host = tmp_path / "host.json"
+    host.write_text(json.dumps({"aws_ami_id": "ami-0abc", "aws_instance_type": "g5.xlarge"}))
+    models = tmp_path / "models.json"
+    models.write_text(json.dumps([{"name": "qwen3-14b", "path": "x.gguf", "sha256": "0" * 64}]))
+    out = tmp_path / "run"
+    rc.main(["--models", str(models), "--stages", "A", "--out", str(out), "--host", str(host)])
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["host"]["aws_instance_type"] == "g5.xlarge"
+    assert "- aws_ami_id: ami-0abc" in (out / "summary.md").read_text()
+
+
+def _no_subprocess(cmd, **kw):  # noqa: ANN001, ANN003, ANN202
+    """Stage processes run in-process here; git and nvidia-smi report nothing."""
+    import subprocess
+
+    if cmd[:3] == [rc.sys.executable, "-m", "eval.probe.repeat_check"]:
+        args = rc.argparse.Namespace(
+            models=Path(cmd[cmd.index("--models") + 1]), model=None,
+            stance_prompt=rc.prompts.STANCE_SIGNED, cpu_items=2, claims=("C01",), n_ctx=4096,
+            chat_template="gguf", out=Path(cmd[cmd.index("--out") + 1]),
+        )  # fmt: skip
+        rc.stage_probe(args, cmd[cmd.index("--stage") + 1])
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    raise OSError("not on this machine")
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.parametrize(
+    "script", ["eval/aws_setup.sh", "eval/validation/aws_run.sh", "eval/probe/aws_repeat.sh"]
+)
+def test_the_aws_scripts_parse(script):
+    root = Path(__file__).resolve().parents[1]
+    bash = shutil.which("bash")
+    assert subprocess.run([bash, "-n", str(root / script)], check=False).returncode == 0  # noqa: S603

@@ -6,6 +6,9 @@ Usage:
       [--stages A,B,C,D] [--chat-template gguf|no-think] [--out eval/out/repeat/<time>]
   python -m eval.probe.repeat_check --dry-run
       No model: prints the calls each stage makes and a time estimate.
+  python -m eval.probe.repeat_check --compare FIRST SECOND [--out DIR]
+      No model: two finished runs' folders (two machines, for example AWS and the Mac) compared
+      on what both asked: the probe answers (A, first asks) and the case01 audit (D1).
 
 Mabillon records each local model run's file SHA-256, prompt, settings and seed, and decodes
 greedily (temperature 0, core/llm/runtime.py), so a repeat is expected to match. That is
@@ -22,8 +25,9 @@ For each comparison it reports how many answers are identical byte for byte, how
 same stance and quote (the label), and lists every difference. A failed generation or an answer
 that is not a stance object never counts as a match: it is counted under "failed" instead.
 Writes <out>/summary.md (paste it back) and <out>/summary.json, with the llama-cpp-python
-version, the machine, the model file's digest and the commit (marked if the checkout had
-uncommitted changes).
+version, the machine and its graphics card and driver, the model file's digest and the commit
+(marked if the checkout had uncommitted changes). `--host FILE` adds what a cloud machine is
+(eval/probe/aws_repeat.sh passes the AWS image, instance type and CUDA compiler).
 Synthetic data only; case02 is never read.
 """
 
@@ -308,9 +312,11 @@ def summarize(out: Path) -> dict[str, Any]:
 
 def markdown(summary: dict[str, Any]) -> str:
     lines = [f"# Repeat check ({summary.get('run_at_utc')})", ""]
-    for key in ("commit", "machine", "model", "model_sha256", "llama_cpp_python",
+    for key in ("commit", "machine", "gpu", "model", "model_sha256", "llama_cpp_python",
                 "stance_prompt"):  # fmt: skip
         lines.append(f"- {key}: {summary.get(key)}")
+    for key, value in (summary.get("host") or {}).items():
+        lines.append(f"- {key}: {value}")
     lines += ["", "| comparison | compared | failed | identical bytes | same label | differences |",
               "|---|---|---|---|---|---|"]  # fmt: skip
     names = {
@@ -345,6 +351,97 @@ def markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------- two machines
+
+
+CROSS = {
+    "probe": ("A.jsonl", "probe set, first asks (A)"),
+    "case01": ("D1.jsonl", "case01 audit, first (D1)"),
+}
+
+# What each run says about itself, printed above the comparison.
+RUN_KEYS = ("run_at_utc", "commit", "machine", "gpu", "model_sha256", "llama_cpp_python",
+            "stance_prompt")  # fmt: skip
+
+
+def _first_asks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in rows if r.get("ask", 1) == 1]
+
+
+def compare_runs(first: Path, second: Path) -> dict[str, Any]:
+    """Two finished runs, usually on two machines, compared on the answers both gave to the same
+    prompt (matched by item and prompt digest, as in compare). The runs are only comparable for
+    the same model file: a different digest is reported and nothing is compared."""
+    runs = []
+    for folder in (first, second):
+        path = folder / "summary.json"
+        summary = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        runs.append(
+            {
+                "folder": str(folder),
+                **{k: summary.get(k) for k in RUN_KEYS},
+                "host": summary.get("host"),
+            }
+        )
+    result: dict[str, Any] = {"runs": runs}
+    shas = {r["model_sha256"] for r in runs}
+    if len(shas) != 1 or None in shas:
+        result["refused"] = f"not the same model file: {sorted(map(str, shas))}"
+        return result
+    for key, (name, _title) in CROSS.items():
+        a, b = _read(first / name), _read(second / name)
+        if a and b:
+            result[key] = compare(_first_asks(a), _first_asks(b))
+    if (first / "D1.evidence.jsonl").exists() and (second / "D1.evidence.jsonl").exists():
+        result["case01_evidence"] = _evidence_compare(
+            first / "D1.evidence.jsonl", second / "D1.evidence.jsonl"
+        )
+    return result
+
+
+def cross_markdown(result: dict[str, Any]) -> str:
+    lines = ["# Repeat check across two runs", ""]
+    for n, run in enumerate(result["runs"], 1):
+        lines.append(f"## Run {n}: {run['folder']}")
+        lines.append("")
+        for key, value in run.items():
+            if key == "host":
+                for hk, hv in (value or {}).items():
+                    lines.append(f"- {hk}: {hv}")
+            elif key != "folder":
+                lines.append(f"- {key}: {value}")
+        lines.append("")
+    if result.get("refused"):
+        return "\n".join([*lines, f"Not compared: {result['refused']}."]) + "\n"
+    lines += ["| comparison | compared | only in run 1 | only in run 2 | failed "
+              "| identical bytes | same label | differences |",
+              "|---|---|---|---|---|---|---|---|"]  # fmt: skip
+    for key, (_name, title) in CROSS.items():
+        c = result.get(key)
+        if c is None:
+            lines.append(f"| {title} | not in both runs | | | | | | |")
+            continue
+        lines.append(
+            f"| {title} | {c['compared']} | {c['only_in_first']} | {c['only_in_second']} "
+            f"| {c['failed']} | {c['raw_identical']} | {c['label_identical']} "
+            f"| {len(c['differences'])} |"
+        )
+    ev = result.get("case01_evidence")
+    if ev:
+        lines += ["", f"case01 evidence rows identical across the two runs: {ev['same_rows']} "
+                  f"({ev['items_first']} vs {ev['items_second']} items)"]  # fmt: skip
+    for key, (_name, title) in CROSS.items():
+        c = result.get(key) or {}
+        for part, head in (("failures", "Failed answers"), ("differences", "Differences")):
+            if not c.get(part):
+                continue
+            lines += ["", f"## {head}, {title}", ""]
+            for d in c[part][:20]:
+                lines += [f"- {d['key']}", f"  - run 1: {d['first'][:400]}",
+                          f"  - run 2: {d['second'][:400]}"]  # fmt: skip
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------- driver
 
 
@@ -364,6 +461,19 @@ def _git_commit() -> str:
     except (subprocess.SubprocessError, OSError):
         return "unknown"
     return f"{commit} with uncommitted changes" if dirty else commit
+
+
+def _gpu() -> str | None:
+    """The NVIDIA card, driver and memory as nvidia-smi reports them; None without one."""
+    try:
+        out = subprocess.run(  # noqa: S603 - fixed arguments
+            ["nvidia-smi", "--query-gpu=name,driver_version,memory.total",  # noqa: S607
+             "--format=csv,noheader"],
+            capture_output=True, text=True, check=True, timeout=20,
+        )  # fmt: skip
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return out.stdout.strip() or None
 
 
 def estimate(cpu_items: int, claims: tuple[str, ...]) -> dict[str, Any]:
@@ -398,6 +508,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--n-ctx", type=int, default=8192)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--dry-run", action="store_true", help="no model: calls and a time estimate")
+    ap.add_argument("--compare", nargs=2, type=Path, metavar=("FIRST", "SECOND"),
+                    help="no model: compare two finished runs' folders")  # fmt: skip
+    ap.add_argument("--host", type=Path, default=None,
+                    help="JSON describing the machine, added to the summary")  # fmt: skip
     ap.add_argument("--stage", default=None, help=argparse.SUPPRESS)  # one stage, internal
     args = ap.parse_args(argv)
     args.claims = tuple(c.strip() for c in args.claims.split(",") if c.strip())
@@ -405,6 +519,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(json.dumps(estimate(args.cpu_items, args.claims), indent=2))
         return 0
+    if args.compare:
+        result = compare_runs(*args.compare)
+        md = cross_markdown(result)
+        if args.out:
+            args.out.mkdir(parents=True, exist_ok=True)
+            (args.out / "cross.json").write_text(
+                json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            (args.out / "cross.md").write_text(md, encoding="utf-8")
+        print(md)
+        return 1 if result.get("refused") else 0
     if args.models is None:
         ap.error("pass --models (or --dry-run)")
     if args.stage is not None:
@@ -441,6 +566,8 @@ def main(argv: list[str] | None = None) -> int:
         "run_at_utc": stamp,
         "commit": _git_commit(),
         "machine": platform.platform(),
+        "gpu": _gpu(),
+        "host": json.loads(args.host.read_text(encoding="utf-8")) if args.host else None,
         "model": entry["name"],
         "model_sha256": next((m["model_sha256"] for m in metas), entry.get("sha256")),
         "llama_cpp_python": next((m["llama_cpp_python"] for m in metas), None),
