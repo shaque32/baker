@@ -231,3 +231,26 @@ def test_a_supported_override_lapses_on_a_verdict_re_run(root):
     assert (verdict, basis, by, note) == ("unproven", None, None, None)
     assert json.loads(cited_json)["evidence"] == []
     assert _get(_app(root), "/claim", id="C05").status == 200
+
+
+def test_a_default_bundle_keeps_override_support_dismissed_before_and_after(root, tmp_path):
+    """Greptile on #205: support dismissed when the rules ran, accepted for the override, then
+    dismissed again is still shipped, with its reviews, so the bundle verifies the override."""
+    from core.review.redecide import redecide
+
+    conn = connect(_case(root).db)
+    items = _supports(conn, "C05")
+    for x in items:
+        actions.decide_evidence(conn, x.id, EvidenceStatus.DISMISSED, EXPERT, "Not yet.")
+    redecide(conn, EXPERT)
+    items = _supports(conn, "C05")
+    for x in items:
+        actions.decide_evidence(conn, x.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
+    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Sent March 12 local.")
+    for x in items:
+        actions.decide_evidence(conn, x.id, EvidenceStatus.DISMISSED, EXPERT, "Second look.")
+    path = export.export_bundle(
+        conn, tmp_path / "b.zip", EXPERT, counsel_confirmed=True, include=None
+    ).path
+    findings = verify_bundle(path)
+    assert not [f for f in findings if f.level == FAIL], [f for f in findings if f.level == FAIL]

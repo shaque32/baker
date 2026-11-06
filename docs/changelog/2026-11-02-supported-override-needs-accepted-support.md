@@ -19,12 +19,13 @@
   re-run never carries an override to Supported forward (`core/review/redecide.py`): it cites
   support accepted on the old run, so it lapses and the claim waits for the expert again.
 - Where: PR #205
-- Verified: tests/test_verdict_override.py (8 tests: refusal stores and logs nothing; the screen
+- Verified: tests/test_verdict_override.py (9 tests: refusal stores and logs nothing; the screen
   flashes the reason and every page stays 200; dismissed support does not count; accepted
   support is cited, logged, renders, and the exported bundle verifies, also after overriding
   away again; the verifier refuses a forged override citing an unaccepted or foreign item; an
   old bad row shows the re-run page and the re-run repairs it; the CLI names `mabillon
-  redecide` and it repairs the row; a Supported override lapses on a re-run); `make check` (numbers in the PR).
+  redecide` and it repairs the row; a Supported override lapses on a re-run; a default-scope bundle keeps
+  override-cited support dismissed before and after, with its reviews); `make check` (numbers in the PR).
 - Open: a contradicted-to-Supported override keeps the contradiction's cited checks alongside
   the accepted support. Bundles made before this keep verifying (their overrides carry no
   `cited_evidence_ids`). On the command line a command that meets such a row prints the

@@ -2034,6 +2034,8 @@ def _override_support(
         if not isinstance(cited, list) or not cited or not set(cited) <= set(items["evidence"]):
             return "an override to Supported cites evidence that is not the claim's"
         found = {x.id: x for x in pipeline.load_evidence(conn, cited)}
+        if set(found) != set(cited):
+            return "an override to Supported cites evidence the bundle does not hold"
         statuses = _statuses_at(conn, log, p["_seq"], cited)
         if any(
             statuses[i] is not EvidenceStatus.ACCEPTED
