@@ -14,7 +14,8 @@
   Demo" apps in ~/Applications (icon from the app's mark; logs in ~/Library/Logs/Mabillon.log);
   the Desktop browser launchers stay. The Windows installer adds "Mabillon" and "Mabillon demo"
   to the Start menu and an optional desktop icon, run with pythonw (no console; output goes to
-  %LOCALAPPDATA%\Mabillon\Mabillon.log). New optional
+  %LOCALAPPDATA%\Mabillon\Mabillon.log; on a PC without WebView2 the shortcut starts Mabillon
+  again in a console window, in the browser, so closing that window stops it). New optional
   dependency group `app` (pywebview, pythonnet on Windows); the installers include it. Second PR
   of the desktop-app plan (plans/desktop-app-sign-in.md). No sign-in, no new network use.
 - Where: PR #219

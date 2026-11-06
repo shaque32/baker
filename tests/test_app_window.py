@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import sys
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -169,6 +170,30 @@ def test_with_no_window_serve_opens_the_browser(home, tmp_path, monkeypatch):
     assert served == [None]  # in a browser, the browser saves downloads
 
 
+def test_from_a_windows_shortcut_with_no_window_mabillon_restarts_in_a_console(
+    home, tmp_path, monkeypatch
+):
+    # pythonw has no console to stop a browser screen from: start again in a console window.
+    started: list[tuple[list[str], int]] = []
+    pythonw = tmp_path / "python" / "pythonw.exe"
+    pythonw.parent.mkdir()
+    (pythonw.parent / "python.exe").write_bytes(b"")
+    monkeypatch.setattr(window, "show", lambda link, audit_running: False)
+    monkeypatch.setattr(cli, "_no_console_on_windows", lambda: True)
+    monkeypatch.setattr(cli.sys, "executable", str(pythonw))
+    monkeypatch.setattr(cli.sys, "argv", ["cli", "serve", "--window"])
+    monkeypatch.setattr(cli, "_open_in_browser", lambda link: pytest.fail("no browser here"))
+    monkeypatch.setattr(cli, "_serve_until_stopped", lambda *a: pytest.fail("never serves"))
+    monkeypatch.setattr(
+        "subprocess.Popen", lambda cmd, creationflags: started.append((cmd, creationflags))
+    )
+    assert cli.cmd_serve(args(tmp_path)) == 0
+    ((cmd, flags),) = started
+    assert cmd == [str(pythonw.parent / "python.exe"), "-X", "utf8", "-m", "cli", "serve", "--open"]
+    assert flags == 0x10  # CREATE_NEW_CONSOLE
+    assert list(screen_key.key_dir().glob("*.key")) == []  # this launch's key is gone
+
+
 def test_demo_passes_window_through(monkeypatch: pytest.MonkeyPatch):
     p = cli.parser()
     assert p.parse_args(["demo", "--window"]).window is True
@@ -198,6 +223,20 @@ def test_attachment_names_are_safe_file_names():
         downloads.attachment_name(Response(500, b"", [("Content-Disposition", "attachment")]))
         is None
     )
+
+
+def test_downloads_go_where_the_account_keeps_them(tmp_path, monkeypatch):
+    assert downloads.downloads_folder(tmp_path) == tmp_path / "Downloads"
+    if sys.platform == "win32":  # the Windows runner asks Windows itself
+        found = downloads.windows_downloads()
+        assert found is not None and found.is_absolute()
+        assert downloads.downloads_folder() == found
+    moved = tmp_path / "D" / "My downloads"
+    monkeypatch.setattr(downloads.sys, "platform", "win32")
+    monkeypatch.setattr(downloads, "windows_downloads", lambda: moved)
+    assert downloads.downloads_folder() == moved  # moved in its Location settings
+    monkeypatch.setattr(downloads, "windows_downloads", lambda: None)
+    assert downloads.downloads_folder() == Path.home() / "Downloads"
 
 
 def test_a_saved_download_never_overwrites(tmp_path: Path):

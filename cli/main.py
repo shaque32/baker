@@ -740,6 +740,16 @@ def _serve_in_window(server: HTTPServer, key: ScreenKey, where: str) -> int:
         return 0
     # No window here: the browser, as `serve --open`, with downloads left to the browser.
     handler.download_folder = None  # type: ignore[attr-defined]
+    if _no_console_on_windows():
+        # A Start-menu shortcut (pythonw) has no console to stop a browser screen from, so start
+        # again in a console window of its own: closing it, or Ctrl+C, stops Mabillon, as before.
+        server.server_close()
+        screen_key.remove_key(key)
+        if _restart_in_console():
+            print("No window here: Mabillon started again in a console window, in the browser.")
+            return 0
+        print("No window here, and no console could be opened to run it in the browser.")
+        return 1
     print(f"Opening it in your browser instead: {launch_url(server)}")
     print("Ctrl+C stops it.")
     _open_in_browser(launch_url(server))
@@ -1104,6 +1114,33 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+_NO_CONSOLE = False  # set when started with no console (pythonw: the Windows shortcuts)
+
+
+def _no_console_on_windows() -> bool:
+    return _NO_CONSOLE and sys.platform == "win32"
+
+
+def _restart_in_console() -> bool:
+    """Start this same command again, without --window, under python.exe in a new console window
+    (serve also opens the browser). False when that cannot be done."""
+    import subprocess
+
+    exe = Path(sys.executable).with_name("python.exe")
+    if not exe.exists():
+        return False
+    args = [arg for arg in sys.argv[1:] if arg != "--window"]
+    if args[:1] == ["serve"] and "--open" not in args:
+        args.append("--open")
+    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10)
+    try:
+        # this same command, from its own arguments
+        subprocess.Popen([str(exe), "-X", "utf8", "-m", "cli", *args], creationflags=flags)  # noqa: S603
+    except OSError:
+        return False
+    return True
+
+
 def _log_when_no_console() -> None:
     """pythonw (the Windows Start-menu shortcuts) runs Mabillon with no console, so sys.stdout and
     sys.stderr are None and anything that writes to them, such as the screen's request log, would
@@ -1111,6 +1148,9 @@ def _log_when_no_console() -> None:
     if sys.stdout is not None and sys.stderr is not None:
         return
     import os
+
+    global _NO_CONSOLE
+    _NO_CONSOLE = True
 
     base = os.environ.get("LOCALAPPDATA")
     folder = Path(base) / "Mabillon" if base else Path.home() / ".mabillon"
