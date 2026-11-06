@@ -437,9 +437,10 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = F
             last_sender.clear()
             continue
         ln = row.line
-        same = plain and last_sender.get(ln.direction) == (ln.sender, ln.shown_as)
+        side = "out" if ln.direction == "outgoing" else "in"  # as _bubble draws it
+        same = plain and last_sender.get(side) == (ln.sender, ln.shown_as)
         out.append(_bubble(unit, row, marks.get(ln.record_id, []), plain, p.thread.app, same))
-        last_sender[ln.direction] = (ln.sender, ln.shown_as)
+        last_sender[side] = (ln.sender, ln.shown_as)
     out.append("</div>")
     return "".join(out)
 

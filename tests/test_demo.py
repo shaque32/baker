@@ -341,6 +341,15 @@ def test_claim_page_keeps_recipients_when_more_than_one_account_answers():
         [line(1, "Telegram 1", "incoming"), line(2, "Telegram 9", "outgoing", "Telegram 1")]
     )
     assert " to <span" not in pair
+    # an unknown direction draws on the left with incoming messages, so it shares their side
+    mixed = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "unknown"),
+            line(3, "Telegram 1", "incoming"),
+        ]
+    )
+    assert mixed.count("<div class='who2'") == 3
 
 
 def test_sender_words_puts_the_printed_name_first_and_keeps_the_account():

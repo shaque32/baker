@@ -1153,8 +1153,9 @@ def _msgs(lines: list[ContextLine]) -> str:
         # an outgoing message to the one account seen answering here needs no "to"
         to = "" if others == {ln.to} else ln.to
         key = (ln.sender, ln.shown_as, to)
-        out.append(_msg(ln, to, same=last.get(ln.direction) == key and not ln.is_target))
-        last[ln.direction] = key
+        side = "out" if ln.direction == "outgoing" else "in"  # as _msg draws it
+        out.append(_msg(ln, to, same=last.get(side) == key and not ln.is_target))
+        last[side] = key
     return "".join(out)
 
 
