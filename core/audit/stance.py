@@ -24,6 +24,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -47,6 +48,7 @@ from core.audit._local_model import (
     SentLog,
     open_run,
 )
+from core.audit.checks._common import fold_text
 from core.audit.quotes import find_quote
 from core.contracts import (
     Assumption,
@@ -93,23 +95,67 @@ NOT_THE_MESSAGE = (
 )
 
 
-def subject_stance(assumption: Assumption, record_text: str, stance: Stance) -> Stance:
-    """The stance to store for a label on one record.
+# A "supports" on a record that is not the quoted message (validation run 3 on a public phone:
+# "Glad they chose the Dominant." labelled as supporting a claim that quotes "Glad they chose
+# the Dominion"). Version 2 adds these two rewrites; version 1 rewrote "contradicts" only.
+SUBJECT_VERSION = "2"
+NEAR_MISS = (
+    "Recorded as complicates, not supports: this record's words are close to the quoted "
+    "message but not the same, so it cannot support that message. Model's rationale: "
+)
+NOT_THE_MESSAGE_SUPPORT = (
+    "Recorded as irrelevant, not supports: this record is not the message the assumption "
+    "names, so it cannot support it. Model's rationale: "
+)
+# How close a record's words must come to the quote, in some run of as many words, to count as
+# a near miss: "Dominant." for "Dominion" is 0.91, "trashed" for "deleted" 0.78, a link for
+# "Done. It's been deleted." 0.24 (difflib ratio, case and the checks' fold not counted).
+NEAR_MISS_RATIO = 0.7
 
-    "The message X was sent by Y" or "... was sent on Z" can only be contradicted by the
-    message X itself: another message with another sender or time says nothing against it.
-    A model's "contradicts" on any other record is kept in front of the expert as
-    "complicates", so it still blocks SUPPORTED but never makes the claim CONTRADICTED alone.
+
+def near_miss(quoted: str, record_text: str) -> bool:
+    """True when some run of the record's words, as many as the quote's give or take one, reads
+    close to the quote (NEAR_MISS_RATIO) without being it."""
+    want = fold_text(quoted).casefold().strip()
+    words = fold_text(record_text).casefold().split()
+    n = len(want.split())
+    if not want or not words:
+        return False
+    for size in {max(1, n - 1), n, n + 1}:
+        for i in range(max(1, len(words) - size + 1)):
+            got = " ".join(words[i : i + size])
+            if SequenceMatcher(None, want, got, autojunk=False).ratio() >= NEAR_MISS_RATIO:
+                return True
+    return False
+
+
+def subject_label(assumption: Assumption, record_text: str, stance: Stance) -> tuple[Stance, str]:
+    """The stance to store for a label on one record, and the note that goes before the
+    model's rationale when code changed it ("" when it did not).
+
+    "The message X was sent by Y" or "... was sent on Z" is about the message X alone.
+    - Another record can say nothing against it: a model's "contradicts" on it is kept in
+      front of the expert as "complicates", so it still blocks SUPPORTED but never makes the
+      claim CONTRADICTED alone.
+    - Nor can another record support it. A record whose words come close to the quote
+      without being it (as the checks match text) is "complicates": the expert sees the near
+      miss, and it blocks SUPPORTED until dismissed. Any other record is "irrelevant".
     """
     quoted = assumption.params.quoted_text
-    if (
-        stance is Stance.CONTRADICTS
-        and assumption.template_id in ONE_MESSAGE_TEMPLATES
-        and quoted
-        and find_quote(quoted, record_text) is None
-    ):
-        return Stance.COMPLICATES
-    return stance
+    if assumption.template_id not in ONE_MESSAGE_TEMPLATES or not quoted:
+        return stance, ""
+    if stance is Stance.CONTRADICTS and find_quote(quoted, record_text) is None:
+        return Stance.COMPLICATES, NOT_THE_MESSAGE
+    if stance is Stance.SUPPORTS and find_quote(fold_text(quoted), fold_text(record_text)) is None:
+        if near_miss(quoted, record_text):
+            return Stance.COMPLICATES, NEAR_MISS
+        return Stance.IRRELEVANT, NOT_THE_MESSAGE_SUPPORT
+    return stance, ""
+
+
+def subject_stance(assumption: Assumption, record_text: str, stance: Stance) -> Stance:
+    """The stance to store for a label on one record (subject_label)."""
+    return subject_label(assumption, record_text, stance)[0]
 
 
 def default_record(candidate: EvidenceCandidate) -> str:

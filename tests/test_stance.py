@@ -289,8 +289,11 @@ def test_only_the_named_message_can_contradict_a_one_message_assumption():
     other, named = "customer wants it by friday", "ok need 2 more by friday!"
     assert subject_stance(sender, other, Stance.CONTRADICTS) == Stance.COMPLICATES
     assert subject_stance(sender, named, Stance.CONTRADICTS) == Stance.CONTRADICTS
-    for s in (Stance.SUPPORTS, Stance.COMPLICATES, Stance.IRRELEVANT):
+    for s in (Stance.COMPLICATES, Stance.IRRELEVANT):
         assert subject_stance(sender, other, s) == s
+    # nor support it: another record is irrelevant (test_only_the_named_message_can_support...)
+    assert subject_stance(sender, other, Stance.SUPPORTS) == Stance.IRRELEVANT
+    assert subject_stance(sender, named, Stance.SUPPORTS) == Stance.SUPPORTS
     # Word-aligned like the checks: "need 2 more by friday" is not inside "need 2 more by fridays".
     assert (
         subject_stance(sender, "need 2 more by fridays", Stance.CONTRADICTS) == Stance.COMPLICATES
@@ -303,3 +306,49 @@ def test_only_the_named_message_can_contradict_a_one_message_assumption():
         True,
     )
     assert subject_stance(contact, "Mike +12125550122", Stance.CONTRADICTS) == Stance.CONTRADICTS
+
+
+@pytest.mark.parametrize(
+    "record, stored",
+    [
+        # the named message, as the checks match it: curly quotes and runs of spaces fold
+        ("Glad they picked the  Riverside \u2019team\u2019.", Stance.SUPPORTS),
+        # words close to the quote but not it: kept in front of the expert, blocking SUPPORTED
+        ("Glad they picked the Riverdale 'team'.", Stance.COMPLICATES),
+        ("ok. Glad they picked the Riverside crew", Stance.COMPLICATES),
+        # another message altogether
+        ("pic.example.com/x7Qz", Stance.IRRELEVANT),
+        ("See you at nine.", Stance.IRRELEVANT),
+    ],
+)
+def test_only_the_named_message_can_support_a_one_message_assumption(record, stored):
+    # Validation run 3 on a public test phone: a record that only nearly matched the quote was
+    # labelled "supports", so a false claim showed the expert support alone.
+    from core.audit.assumptions import instantiate
+    from core.audit.stance import (
+        NEAR_MISS,
+        NOT_THE_MESSAGE_SUPPORT,
+        subject_label,
+    )
+
+    p = {"quoted_text": "Glad they picked the Riverside 'team'", "person_ids": ["person:petrov"]}
+    window = {
+        "start_utc": "2026-03-12T09:00:00Z",
+        "end_utc": "2026-03-12T10:00:00Z",
+        "tz": "UTC",
+        "raw": "March 12, 2026",
+    }
+    for a in (
+        instantiate("C05", "sender", p, True),
+        instantiate("C05", "record_time", {**p, "window": window}, True),
+    ):
+        got, note = subject_label(a, record, Stance.SUPPORTS)
+        assert got == stored
+        assert (
+            note
+            == {
+                Stance.SUPPORTS: "",
+                Stance.COMPLICATES: NEAR_MISS,
+                Stance.IRRELEVANT: NOT_THE_MESSAGE_SUPPORT,
+            }[stored]
+        )

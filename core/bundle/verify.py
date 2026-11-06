@@ -870,21 +870,25 @@ def _stand_in(conn: sqlite3.Connection, model_run_id: str | None, test_run: bool
 
 def _same_label(item: tuple, answer: Any) -> bool:
     """The item is the model's answer exactly, or exactly as the pipeline rewrites one it
-    records as complicates (core/pipeline.py _Run._label): a "contradicts" on a record that is
-    not the message the assumption is about (core/audit/stance.py subject_stance), or a
-    "supports" or "contradicts" on forwarded words (core/ingest/forwarded.py)."""
+    records otherwise (core/pipeline.py _Run._label): a "contradicts" or "supports" on a
+    record that is not the message the assumption is about (core/audit/stance.py
+    subject_label), or a "supports" or "contradicts" on forwarded words
+    (core/ingest/forwarded.py)."""
     stance_, quote, rationale = item[3], item[4], item[5]
     if answer.quote != quote:
         return False
     model = Stance(answer.stance)
     if model.value == stance_:
         return rationale == answer.rationale
+    if model is Stance.SUPPORTS and stance_ == Stance.IRRELEVANT.value:
+        return rationale == stance.NOT_THE_MESSAGE_SUPPORT + answer.rationale
     if stance_ != Stance.COMPLICATES.value or model not in (Stance.SUPPORTS, Stance.CONTRADICTS):
         return False
+    subject = stance.NOT_THE_MESSAGE if model is Stance.CONTRADICTS else stance.NEAR_MISS
     return rationale in (
         f"{forwarded.STANCE_NOTE}{model.value}. {answer.rationale}",
         f"{forwarded.BAKER_STANCE_NOTE}{model.value}. {answer.rationale}",
-        *((stance.NOT_THE_MESSAGE + answer.rationale,) if model is Stance.CONTRADICTS else ()),
+        subject + answer.rationale,
     )
 
 
