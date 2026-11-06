@@ -14,7 +14,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=799dbd80">
+<link rel="stylesheet" href="styles.css?v=437a0c3f">
 <script src="main.js?v=04378050" defer></script>
 </head>
 <body>
@@ -42,6 +42,56 @@
           <a class="link" href="#how">See how it works</a>
         </div>
         <p class="audience-note">For defense forensic examiners. Attorneys, <a href="#status">bring Mabillon with your expert</a>.</p>
+      </div>
+      <figure class="app-win reveal" aria-label="The Mabillon review screen on an example case: paragraph 16 is contradicted because the only copy of the message was sent a day later. Example data.">
+        <div class="app-bar"><span>State v. Example, a synthetic case</span><span>Local model, offline</span></div>
+        <div class="app-body">
+          <div class="app-list" aria-hidden="true">
+            <p class="grp">Needs you</p>
+            <p class="row"><i class="dot wait"></i>¶18 The number ending 0192 belongs to PETROV</p>
+            <p class="grp">Contradicted</p>
+            <p class="row sel"><i class="dot con"></i>¶16 PETROV replied “ok same place” on March 5</p>
+            <p class="grp">Unproven</p>
+            <p class="row"><i class="dot unp"></i>¶15 REYES called PETROV on March 4</p>
+            <p class="grp">Supported</p>
+            <p class="row"><i class="dot sup"></i>¶14 REYES texted “bring it tonight” at 9 p.m.</p>
+          </div>
+          <div class="app-main">
+            <p class="app-ref">Affidavit page 6, paragraph 16</p>
+            <p class="app-claim">PETROV texted REYES “ok same place” on March 5</p>
+            <p class="app-verdict"><em class="status con">Contradicted by a failed check</em></p>
+            <p class="app-ref">What has to be true</p>
+            <ul class="chk">
+              <li><span>Reads “ok same place”</span><em class="status sup">Found word for word</em><small>Chats, row 341, the only copy</small></li>
+              <li><span>Sent from PETROV's account</span><em class="status sup">Passed</em><small>+1 410-555-0192, linked to PETROV by you</small></li>
+              <li class="bad"><span>Sent on March 5</span><em class="status con">Failed</em><small>Sent 10:02:55 on March 6 at UTC−05:00</small></li>
+            </ul>
+          </div>
+          <dl class="app-props">
+            <dt>Status</dt><dd>Contradicted</dd>
+            <dt>Set by</dt><dd>Rules 0.4.0, a date check</dd>
+            <dt>Labelled by</dt><dd>Local model, on this computer</dd>
+            <dt>Source</dt><dd>Phone extraction, opened read-only</dd>
+            <dt>Your call</dt><dd>You can override it, with a reason</dd>
+          </dl>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section class="band formats">
+    <div class="wrap">
+      <p>Reads the files you already have</p>
+      <ul><li>Cellebrite UFDR</li><li>Cellebrite Excel</li><li>Magnet AXIOM</li><li>The affidavit as a PDF</li></ul>
+    </div>
+  </section>
+
+  <section class="band split" id="affidavit">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <h2>Start from the affidavit you were served</h2>
+        <p>Mabillon proposes each claim on the page. You accept, edit or remove it, and every claim you keep
+          gets a status with the record behind it.</p>
       </div>
       <figure class="sheet reveal" aria-label="An example affidavit page with each claim marked and its status in the margin. Example data.">
         <div class="sheet-head"><span>Affidavit in support of a search warrant, page 6</span><span>State v. Example</span></div>
@@ -149,7 +199,7 @@
   <section class="band" id="rules">
     <div class="wrap">
       <div class="section-head reveal">
-        <h2>A model labels records, never the claim.</h2>
+        <h2>A model labels records, never the claim</h2>
         <p>Code rules — not the model — set every status, and the rules version goes into each report. You can override any status.</p>
       </div>
       <div class="cols three reveal">
@@ -178,7 +228,7 @@
   <section class="band" id="data">
     <div class="wrap">
       <div class="section-head reveal">
-        <h2>Local by default. Cloud AI only when your case allows it and you opt in.</h2>
+        <h2>Local by default. Cloud AI only when your case allows it and you opt in</h2>
       </div>
       <figure class="flow-diagram reveal" aria-label="The case stays on your computer. The path to cloud AI is locked closed unless you opt in for that case.">
         <svg viewBox="0 0 640 130" aria-hidden="true">
@@ -226,12 +276,12 @@
     </div>
   </section>
 
-  <section class="band cta" id="pilot">
+  <section class="band cta ink" id="pilot">
     <div class="wrap">
-      <h2>Bring your next case review.</h2>
+      <h2>Bring your next case review</h2>
       <p>We'll walk you through Mabillon on a synthetic case. Or write to <a class="addr" href="mailto:support@getmabillon.com">support@getmabillon.com</a>.
         Please don't send any case material.</p>
-      <a class="button" href="demo.html">Book a demo</a>
+      <a class="button" href="demo.html">Book a demo <span aria-hidden="true">→</span></a>
     </div>
   </section>
 </main>
