@@ -49,24 +49,33 @@ function Get-Text([System.Windows.Automation.AutomationElement]$window) {
 }
 
 function Get-Button([System.Windows.Automation.AutomationElement]$window) {
-    # Next, Install or Finish, enabled: the button a person presses to go on.
-    $cond = New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)
-    # IsOffscreen is not checked: UI Automation reports it unreliably for Setup's own controls.
-    foreach ($b in $window.FindAll($tree::Descendants, $cond)) {
-        $label = $b.Current.Name -replace '&', ''
-        if ($label -match '^\s*(Next|Install|Finish)\b' -and $b.Current.IsEnabled) { return $b }
+    # Next, Install or Finish, enabled: the control a person presses to go on. Matched by its
+    # label, not its control type: Setup's buttons do not report themselves as buttons to UI
+    # Automation (the first CI runs found the label "Next" but no Button element).
+    $cond = New-Object System.Windows.Automation.PropertyCondition($A::IsEnabledProperty, $true)
+    foreach ($e in $window.FindAll($tree::Descendants, $cond)) {
+        $label = ($e.Current.Name -replace '[&>]', '').Trim()
+        if ($label -match '^(Next|Install|Finish)$' -and $e.Current.NativeWindowHandle) { return $e }
     }
     return $null
 }
 
-function Show-Buttons([System.Windows.Automation.AutomationElement]$window) {
-    # For the log: every button UI Automation sees, so a page with no way on can be diagnosed.
-    $cond = New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)
-    ($window.FindAll($tree::Descendants, $cond) | ForEach-Object {
-        "'$($_.Current.Name)' enabled=$($_.Current.IsEnabled) offscreen=$($_.Current.IsOffscreen) class=$($_.Current.ClassName)"
-    }) -join '; '
+function Show-Controls([System.Windows.Automation.AutomationElement]$window) {
+    # For the log: what UI Automation sees on the page, so a page with no way on can be diagnosed.
+    ($window.FindAll($tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+        Where-Object { $_.Current.Name } | ForEach-Object {
+            "'$($_.Current.Name)' $($_.Current.ControlType.ProgrammaticName) class=$($_.Current.ClassName) enabled=$($_.Current.IsEnabled)"
+        }) -join '; '
+}
+
+Add-Type -Namespace Win32 -Name Native -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, System.IntPtr w, System.IntPtr l);
+'@
+
+function Press([System.Windows.Automation.AutomationElement]$control) {
+    # A click as Windows sends it to a button (BM_CLICK), straight to the control's window.
+    [void][Win32.Native]::SendMessage([IntPtr]$control.Current.NativeWindowHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
 }
 
 # The Setup process Start-Process returns is the one that shows the wizard (Inno Setup 6 runs
@@ -96,13 +105,13 @@ while ((Get-Date) -lt $deadline) {
         Save-Shot $window $name
         "$name : $text" | Out-File (Join-Path $Out 'pages.txt') -Append -Encoding utf8
         Write-Host "$name text: $text"
-        Write-Host "$name window '$($window.Current.Name)' class=$($window.Current.ClassName); buttons: $(Show-Buttons $window)"
+        Write-Host "$name window '$($window.Current.Name)' class=$($window.Current.ClassName); controls: $(Show-Controls $window)"
         $lastText = $text
     }
     if (-not $button) { continue }  # the install itself, or a page still drawing
-    $label = $button.Current.Name -replace '&', ''
+    $label = ($button.Current.Name -replace '[&>]', '').Trim()
     Write-Host "page $page : pressing $label"
-    $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Press $button
     if ($label -like 'Finish*') { $finished = $true }
 }
 if (-not $finished) {
