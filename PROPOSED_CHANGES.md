@@ -1163,3 +1163,75 @@ placeholders, and change the header's second line to "v1.1, signed by Arsh on <d
 docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28)." The draft's header then says
 signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md) <(sed -n
 '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
+SIGNED by Arsh on 2026-11-03 at 21:03Z ("approve", project thread "Build agents into the
+audit"), the draft v1.1 as it stands in PR #210. APPLIED on claude/project-thread-6i2msb-case06
+(#211): the signed copy's body is the draft's from `<!-- prompt starts -->` down (the diff
+above prints nothing), its header says v1.1, and the draft's header says signed.
+
+## 2026-11-03 claude/project-thread-6i2msb-case06: sign case06's key and assumption sheet
+File: eval/gold/case06/gold.jsonl, eval/gold/case06/assumptions.jsonl (new)
+Why: the case05 go/no-go (2026-11-03, NO-GO on conversion, 5 of 33) spent case05, so the next
+testability go/no-go needs a new held-out case (plans/testability-pass.md, step 5; Arsh chose
+"Phone designations, then replay" on 2026-11-03 and wrote "i need this to work"). A builder who
+never read the step's prompt, code, tests or demo, the filler or name code, the eval runner, or
+any case04 or case05 result or diagnosis, drafted all 48 claims and 89 sheet rows under case05's
+design, from a brief that adds only what the product reads (phone, number and event names in
+case.json, and code's window conventions). A second blind reader checked them (10 findings, 9
+fixed, 1 kept with a reason, answered in the signing sheet) and rechecked the fixes.
+`eval/gold/` is human-owned, so the signed copies are Arsh's to write. Until they exist,
+`eval/run_pipeline.py` reports case06's key and sheet as drafts, the testability step refuses to
+run on the draft sheet, and no go/no-go is given. case06 stays out of `make eval` and every
+merge gate. Arsh reads `eval/synthetic/case06/SIGNING_SHEET.md` (its count tables, the claims,
+the assumption rows, the six windows that follow no convention, the SKIP and DUKE naming
+departure, and the second read) and may change any verdict or row first; the commands below copy
+the drafts as they stand.
+Diff: on main after the case06 PR merges, from the repo root (macOS and GNU sed):
+   D=$(date -u +%Y-%m-%d); T=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   mkdir -p eval/gold/case06
+   sed -e "s/\"labeled_by\":\"DRAFT (case06 builder, not signed by Arsh)\"/\"labeled_by\":\"Arsh, $D\"/" \
+       -e "s/\"labeled_at\":\"2026-11-03T00:00:00Z\"/\"labeled_at\":\"$T\"/" \
+       eval/synthetic/case06/draft_gold.jsonl > eval/gold/case06/gold.jsonl
+   sed -e "s/\"labeled_by\": \"DRAFT (case06 builder, not signed by Arsh)\"/\"labeled_by\": \"Arsh, $D\"/" \
+       eval/synthetic/case06/draft_assumptions.jsonl > eval/gold/case06/assumptions.jsonl
+   grep -c DRAFT eval/gold/case06/gold.jsonl eval/gold/case06/assumptions.jsonl
+The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
+(and, in the key, `labeled_at`) changed: 48 key lines and 89 sheet rows.
+SIGNED by Arsh on 2026-11-03 at 21:03Z ("approve", project thread "Build agents into the
+audit"), the key and sheet as they stood after the second blind read and its recheck (24
+supported, 12 contradicted, 12 unproven; 89 rows), with the conversion bar unchanged (his choice
+on the card the same minute: the share of changed claims on the key's verdict is reported beside
+it, not a bar). APPLIED on claude/project-thread-6i2msb-case06 (#211) with the commands above,
+D=2026-11-03: only `labeled_by` and `labeled_at` changed; `grep -c DRAFT` prints 0 for both, and
+both report as signed.
+
+## 2026-11-04 claude/project-thread-6i2msb-case06: sign the testability prompt v1.2
+File: core/audit/prompts/agent_testability.md (signed v1.1; human-owned)
+Why: Codex on #211 (4168585). v1.1 changed the "handles" rule from v1.0's "handles or display
+names exactly as written" to "handles exactly as written ... A name a contact was saved as goes
+in quoted_text". The same-account check (`core/audit/checks/identity.py`, `resolve_handle`)
+resolves a handle from account names, thread titles, the sender text a report printed and saved
+contacts, and `same_account` needs at least two handles and takes no accounts and no quoted
+words. So under v1.1 a claim that names accounts by display names had no field for them, and the
+testability step could not repair it, which would lower the case06 conversion measure for a
+reason that is the prompt's, not the agent's. Draft v1.2 (`docs/prompts/agent_testability.md`)
+changes only that rule: display names go in "handles" again; a contact entry's saved name stays
+in "quoted_text". It is written from the code and v1.0 and names no case's words. The case06
+go/no-go waits for this signature.
+Diff: the prompt body changes in one place:
+   -- "handles": handles exactly as written, e.g. "@bluefox". A name a contact was saved as goes
+   -  in "quoted_text", not here.
+   +- "handles": handles or display names exactly as written, e.g. "@bluefox", for an assumption
+   +  that names accounts by them. For a contact entry, the name the contact was saved as goes in
+   +  "quoted_text", not here.
+Once Arsh signs, replace everything from `<!-- prompt starts -->` down in
+`core/audit/prompts/agent_testability.md` with the draft's text from that line down (the same
+bytes as in `docs/prompts/agent_testability.md` at the commit Arsh signs), and change the
+header's second line to "v1.2, signed by Arsh on <date> from the
+docs/prompts/agent_testability.md draft v1.2 (v1.1: 2026-11-03; v1.0: 2026-10-28)." The draft's
+header then says signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md)
+<(sed -n '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
+SIGNED by Arsh on 2026-11-04 at 19:44Z ("approve", project thread "Build agents into the
+audit"), draft v1.2 as it stands in PR #211 (aedc100). APPLIED on
+claude/project-thread-6i2msb-case06 (#211): the signed copy's body is the draft's from
+`<!-- prompt starts -->` down (the diff above prints nothing), its header says v1.2, and the
+draft's header says signed.
