@@ -1,13 +1,22 @@
-# Testability agent prompt (DRAFT v1.1, for Arsh to sign; v1.0 is signed)
+# Testability agent prompt (draft v1.2, signed by Arsh on 2026-11-04)
 
 Draft by the agent thread "Build agents into the audit", 2026-10-28 (plans/agentic.md step 3).
-Arsh signed draft v0.1 word for word as v1.0 on 2026-10-28. This is draft v1.1 (2026-11-03,
-plans/testability-pass.md step 3), not signed: `core/audit/testability.py` loads only the signed
-copy at `core/audit/prompts/agent_testability.md`, which stays v1.0 until Arsh signs. The eval
-can name this draft (`eval/run_pipeline.py --testability-prompt`), and its output then says the
-prompt is a draft and gives no go/no-go.
+Arsh signed draft v0.1 word for word as v1.0 on 2026-10-28, and draft v1.1 (2026-11-03,
+plans/testability-pass.md step 3) word for word as v1.1 on 2026-11-03, and this draft v1.2
+(2026-11-04), which changes one rule of v1.1 (below), word for word as v1.2 on 2026-11-04.
+`core/audit/testability.py` loads only the signed copy at
+`core/audit/prompts/agent_testability.md`. The eval can still name this file
+(`eval/run_pipeline.py --testability-prompt`), and its output then says the prompt is a draft and
+gives no go/no-go; the go/no-go runs on the signed copy.
 
-Changes from v1.0, each a rule the templates already have, written out:
+Change from v1.1 (Codex on #211), a rule the templates already have:
+- "handles" takes display names again, as v1.0 said. The same-account check resolves a
+  handle from account names, thread titles, the sender text a report printed and saved
+  contacts, so a display name is a handle; v1.1's "handles only" left a claim that names
+  accounts by display names with no field for them. A contact entry's saved name still goes
+  in "quoted_text".
+
+Changes from v1.0 to v1.1, each a rule the templates already have, written out:
 - A retry changes what the reasons name. In the case05 go/no-go the second try repeated the
   first exactly on 23 of the 29 claims that had two, so the cap of 2 bought little.
 - A name the lookups list as an account (an expert's name for a number, "TARGET TELEPHONE 2")
@@ -91,8 +100,9 @@ For each assumption the claim needs, give one object with these fields. Leave a 
   lookups list as an account, each with its app, e.g. {"as_written": "+1 (555) 010-0199",
   "app": "Phone"}. Use "Phone" for a number that was called or saved as a contact, and "SMS"
   for a number that was texted. Never a person's name, an app's name or a phone.
-- "handles": handles exactly as written, e.g. "@bluefox". A name a contact was saved as goes
-  in "quoted_text", not here.
+- "handles": handles or display names exactly as written, e.g. "@bluefox", for an assumption
+  that names accounts by them. For a contact entry, the name the contact was saved as goes in
+  "quoted_text", not here.
 - "phones": phones exactly as the document names them.
 - "channels": apps the claim names, from the list above. "texted" or "texting" means SMS; a
   phone call, or speaking by phone, means "call". If the claim names no app, leave it empty;

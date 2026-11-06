@@ -30,6 +30,15 @@ UNEXPECTED = (
     "Mabillon hit an unexpected error and did not finish this request. Open /help to save a bug "
     "report (it holds no case data) and send it to support."
 )
+_UNEXPECTED_PAGE = (
+    "<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Unexpected error"
+    "</title></head><body style='font-family:system-ui,sans-serif;max-width:40rem;margin:3rem "
+    "auto;padding:0 1rem;line-height:1.5'><h1>Something went wrong</h1><p>"
+    + UNEXPECTED
+    + "</p><p>Nothing in the case changed because of this error.</p><p><a href='/help'>Save a"
+    " bug report</a> &middot; <a href='/'>Back to Mabillon</a> (or use your browser's Back"
+    " button)</p></body></html>"
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -82,10 +91,18 @@ class _Handler(BaseHTTPRequestHandler):
             # The browser went away mid-answer: not a Mabillon failure, kept out of the report.
             return
         except Exception as err:  # noqa: BLE001 - one bad request never stops the screen
-            support_errors.note(where, err)
+            event = support_errors.note(where, err)
+            # One line in the Terminal window: the error's type, never its message (which can
+            # hold case data), so whoever runs Mabillon sees that something failed.
+            print(  # noqa: T201
+                f"Mabillon: unexpected error ({'/'.join(event.types) or 'unknown'}) while "
+                "answering the screen. Open /help to save a bug report.",
+                file=sys.stderr,
+            )
             try:
-                headers = [("Content-Type", "text/plain; charset=utf-8")]
-                self._send(Response(500, UNEXPECTED.encode("utf-8"), headers + _SECURITY))
+                headers = [("Content-Type", "text/html; charset=utf-8")]
+                body = _UNEXPECTED_PAGE.encode("utf-8")
+                self._send(Response(500, body, headers + _SECURITY))
             except OSError:
                 pass  # the browser went away
 
@@ -176,13 +193,15 @@ def make_server(
     port: int = DEFAULT_PORT,
     expert: str | None = None,
     home: Path | None = None,
+    name_file: Path | None = None,
     download_folder: Path | None = None,
 ) -> HTTPServer:
     """Bind 127.0.0.1:port (0 picks a free port). Nothing else is ever bound. On one case
     database (db) or on a cases folder (home). The server's screen key is new on every call;
-    only launch_url(server) opens the screen. With download_folder (Mabillon's own window), the
-    screen saves downloads into that folder itself."""
-    app = App(db, expert=expert, home=home)
+    only launch_url(server) opens the screen. name_file remembers the examiner's name between
+    launches (the command passes ~/.mabillon/reviewer.json). With download_folder (Mabillon's
+    own window), the screen saves downloads into that folder itself."""
+    app = App(db, expert=expert, home=home, name_file=name_file)
     handler = type("Handler", (_Handler,), {"app": app, "download_folder": download_folder})
     server = _Server((HOST, port), handler)
     app.port = server.server_address[1]

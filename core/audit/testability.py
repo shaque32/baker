@@ -23,7 +23,9 @@ time ranges from the claim's text. A try that names anything else is rejected wh
 In the eval, code then checks the try against the claim's signed assumption sheet too
 (`mismatch`): every person, phone and time window the repaired set names must be one the
 sheet's core rows for the claim name, and so must every account, handle, app, template and
-quoted words. A claim the sheet gives no core row is never repaired there. That makes what the
+quoted words. For a claim the sheet ties to no phone, an account is any report's copy of it
+(`account_copies`), as the filler reads such a claim. A claim the sheet gives no core row is
+never repaired there. That makes what the
 eval counts as converted an upper bound filtered by gold, so the tries the sheet check rejects
 after the claim-only check passed them are reported beside it (eval/run_pipeline.py): how often
 the claim-only check alone would let a wrong person, phone or window through.
@@ -98,6 +100,7 @@ from core.audit.assumption_filler import (
     unquoted_time_quote,
 )
 from core.audit.assumptions import Proposal, from_proposal, templates_for
+from core.audit.checks._common import key
 from core.audit.invariants import InvariantViolation
 from core.contracts import (
     Assumption,
@@ -336,10 +339,15 @@ def named(rows: Iterable[tuple[str, Mapping[str, Any]]]) -> Named:
 
 
 def sheet_named(
-    rows: Iterable[Mapping[str, Any]], people: Mapping[str, str] | None = None
+    rows: Iterable[Mapping[str, Any]],
+    people: Mapping[str, str] | None = None,
+    copies: Callable[[str], Iterable[str]] | None = None,
 ) -> dict[str, Named]:
     """Claim id -> what the signed sheet's core rows for it name. `people` maps the sheet's
-    person ids to the case's (eval/run_pipeline.sheet_people)."""
+    person ids to the case's (eval/run_pipeline.sheet_people). `copies` (account_copies) gives
+    every report's copy of an account: when a claim's rows name no phone, an account they name is
+    that account in any report, not one report's copy of it, as the filler reads a claim that
+    names no phone (Codex on #211). A claim the rows tie to a phone keeps the exact ids."""
     by_claim: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for r in rows:
         if not r.get("is_core"):
@@ -348,7 +356,28 @@ def sheet_named(
         if people and params.get("person_ids"):
             params["person_ids"] = [people.get(p, p) for p in params["person_ids"]]
         by_claim.setdefault(r["claim_id"], []).append((r["template_id"], params))
-    return {cid: named(ps) for cid, ps in by_claim.items()}
+    out = {}
+    for cid, ps in by_claim.items():
+        n = named(ps)
+        if copies is not None and not n.phones:
+            n = dataclasses.replace(
+                n, accounts=frozenset({*n.accounts, *(c for a in n.accounts for c in copies(a))})
+            )
+        out[cid] = n
+    return out
+
+
+def account_copies(conn: sqlite3.Connection) -> Callable[[str], frozenset[str]]:
+    """Account id -> every account in the case on the same app with the same identifier, the
+    id itself included. Two reports that both hold a number on one app hold one party (ruling
+    R6), and the filler finds both for a claim that names no phone."""
+    same: dict[tuple[str, Any], set[str]] = {}
+    of: dict[str, tuple[str, Any]] = {}
+    for aid, app, ident in conn.execute("SELECT id, app, identifier FROM accounts ORDER BY id"):
+        k = ((app or "").casefold(), key(app or "", ident or ""))
+        same.setdefault(k, set()).add(aid)
+        of[aid] = k
+    return lambda aid: frozenset(same[of[aid]]) if aid in of else frozenset({aid})
 
 
 def mismatch(repair: Named, sheet: Named) -> list[str]:
@@ -606,7 +635,7 @@ class Proposed:
 def proposals(conn: sqlite3.Connection, run: Mapping[str, Any] | None) -> dict[str, Proposed]:
     """Claim id -> the try the step proposed for it in the audit whose evidence `run` shows (a
     verdict re-run shows its source audit's), with the expert's latest decision on it."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = run.get("evidence_from_run", run["run_id"])
     out: dict[str, Proposed] = {}
@@ -707,7 +736,7 @@ def accepted_in(
     """Claim id -> (assumption ids, claim hash) of the proposal the audit `run` (or the audit a
     verdict re-run took its evidence from) used under an expert's acceptance in force then
     (`in_force`): the assumptions rules.decide_verdict gets as agent_proposed."""
-    if run is None:
+    if not run or "run_id" not in run:  # no audit yet ({} is how callers say "no run")
         return {}
     source = str(run.get("evidence_from_run", run["run_id"]))
     return {

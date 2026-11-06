@@ -168,10 +168,15 @@ def create_case(
     finally:
         conn.close()
     case.save_settings(name=name, created_at_utc=_iso(now), created_by=actor)
+    if passphrase is not None:
+        case.save_settings(**{RECOVERY_UNCONFIRMED: True})  # until the expert writes it down
     return case
 
 
 _new_recovery: dict[Path, str] = {}
+# In case.json while a recovery key was made but the expert has not said it is written down.
+# A restart, or a lock, before then loses the only copy; the screen then offers a new key.
+RECOVERY_UNCONFIRMED = "recovery_unconfirmed"
 
 
 def recovery_key_for(case: Case) -> str | None:
@@ -355,10 +360,13 @@ def import_upload(
             require_sha256(name, upload_sha256, sha256_input(path))
             Importer = report_importer(path)  # noqa: N806 - a class
 
-            src = Importer(date_order=date_order, expected_sha256=upload_sha256).import_source(
-                path, conn
-            )
+            src = Importer(
+                date_order=date_order,
+                expected_sha256=upload_sha256,
+                source_id=_free_source_id(conn, path, upload_sha256),
+            ).import_source(path, conn)
             stored_sha = src.sha256
+            _refuse_unusable_report(conn, src.id, name, suffix, date_order, actor, clock)
             summary = (
                 "coverage not known"
                 if src.fidelity.value == "unknown"
@@ -398,6 +406,92 @@ def import_upload(
     return Imported(src.id, path.name, src.sha256, path, summary)
 
 
+def _free_source_id(conn: sqlite3.Connection, path: Path, sha256: str) -> str:
+    """The importers' own id for the file (its stem, or src_<sha12>), made unique in the case:
+    item1.xlsx and item1.ufdr, Cellebrite's names for one extraction, are item1 and item1-2."""
+    base = path.stem if re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", path.stem) else f"src_{sha256[:12]}"
+    sid, n = base, 1
+    while conn.execute("SELECT 1 FROM sources WHERE id = ?", (sid,)).fetchone():
+        n += 1
+        sid = f"{base[:60]}-{n}"
+    return sid
+
+
+class _Unusable(ReviewError):
+    """A report that imported, but cannot be what the expert meant: its rows are taken out."""
+
+
+def _counter(payload: object, name: str) -> int:
+    if isinstance(payload, dict):
+        return sum(
+            (v if k == name and isinstance(v, int) else _counter(v, name))
+            for k, v in payload.items()
+        )
+    if isinstance(payload, list):
+        return sum(_counter(v, name) for v in payload)
+    return 0
+
+
+def _refuse_unusable_report(
+    conn: sqlite3.Connection,
+    source_id: str,
+    name: str,
+    suffix: str,
+    date_order: str | None,
+    actor: str = "system",
+    clock: Clock | None = None,
+) -> None:
+    """Take back an import the expert cannot have meant, with what to do instead: a PDF with no
+    report tables in it (often the government document in the wrong slot), or a report whose
+    dates contradict the date order the expert stated."""
+    records = sum(
+        conn.execute(f"SELECT COUNT(*) FROM {t} WHERE source_id = ?", (source_id,)).fetchone()[0]  # noqa: S608
+        for t in ("messages", "calls", "contacts", "locations")
+    )
+    problem = None
+    if suffix == ".pdf" and records == 0:
+        problem = (
+            f"{name} holds no Cellebrite report tables, so nothing was imported. If it is the "
+            "government document, import it under Government document"
+        )
+    elif date_order is not None:
+        row = conn.execute(
+            "SELECT payload_json FROM source_coverage WHERE source_id = ?", (source_id,)
+        ).fetchone()
+        n = _counter(json.loads(row[0]), "values_contradicting_stated_date_order") if row else 0
+        if n:
+            stated = "day first" if date_order == "dmy" else "month first"
+            other = "month first" if date_order == "dmy" else "day first"
+            problem = (
+                f"{n:,} dates in {name} can only be read {other}, not {stated} as chosen, so "
+                f"nothing was imported. Import it again with {other}, or let Mabillon work it out"
+            )
+    if problem is not None:
+        from core.casework.remove import ACTION, delete_rows
+
+        row = conn.execute("SELECT kind, sha256 FROM sources WHERE id = ?", (source_id,)).fetchone()
+        with conn:
+            delete_rows(conn, source_id)
+        # The importer's own `import` entry is already in the log: the take-back is logged as
+        # a removal, so the log never names a source the case no longer holds (verify-bundle
+        # reads it so).
+        _logged(
+            conn,
+            _now(clock),
+            actor,
+            ACTION,
+            {
+                "source_id": source_id,
+                "file_name": name,
+                "kind": row[0] if row else None,
+                "sha256": row[1] if row else None,
+                "copied_to": None,
+                "reason": f"refused on import: {problem}"[:500],
+            },
+        )
+        raise _Unusable(problem)
+
+
 def _forget(conn: sqlite3.Connection, path: Path, shas: set[str | None]) -> None:
     """Undo a failed import: the copy is deleted. The importers store nothing until they have
     parsed the whole file and checked its hash against the upload's, so the database needs no
@@ -425,6 +519,46 @@ def source_counts(conn: sqlite3.Connection) -> dict[str, int]:
         for sid, n in rows:
             out[sid] = out.get(sid, 0) + n
     return out
+
+
+def audited_on(conn: sqlite3.Connection, run: dict) -> str:
+    """The date of the audit a run's evidence came from (a verdict re-run reuses an earlier
+    audit's evidence, so its own date is not when the case was audited)."""
+    source = run.get("evidence_from_run")
+    if source:
+        row = conn.execute(
+            "SELECT started_at_utc FROM pipeline_runs WHERE id = ?", (source,)
+        ).fetchone()
+        if row is not None:
+            return str(row[0])[:10]
+    return str(run["started_at_utc"])[:10]
+
+
+def stage_line(
+    case: Case, conn: sqlite3.Connection, needs_you: int | None = None, stale: bool = False
+) -> str:
+    """Where a case is and what comes next, for the Cases list. needs_you: claims waiting on
+    the expert in the audit on screen (the caller counts them as the Claims page does)."""
+    run = pipeline.view_run(conn)
+    if run is None:
+        todo = [r for r in readiness(case, conn) if not r.ok]
+        if not todo:
+            return "Not audited. Next: start the audit on Set up and run."
+        return f"Not audited. Next: {todo[0].text}"
+    if run.get("partial"):
+        return (
+            f"Audit stopped after {len(run['manifest'])} of {len(run['claim_order'] or ())} "
+            "claims. Next: resume it on Set up and run."
+        )
+    line = f"Audited {audited_on(conn, run)}."
+    if needs_you:
+        many = needs_you != 1
+        line += f" {needs_you} claim{'s' if many else ''} need{'' if many else 's'} you."
+    elif needs_you == 0:
+        line += " Nothing waits on you."
+    if stale:
+        line += " Verdicts are out of date: re-run them."
+    return line
 
 
 def last_audit_line(conn: sqlite3.Connection) -> str:
@@ -463,9 +597,9 @@ def readiness(case: Case, conn: sqlite3.Connection) -> list[Ready]:
     out.append(
         Ready(
             bool(reports),
-            f"{reports} extraction report(s) imported."
+            f"{reports} phone report(s) imported."
             if reports
-            else "Import at least one extraction report.",
+            else "Import at least one phone report.",
         )
     )
     proposed = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
@@ -492,10 +626,17 @@ def readiness(case: Case, conn: sqlite3.Connection) -> list[Ready]:
     }
     missing = [d for (d,) in devices if d not in stipulated]
     if devices and missing:
+        files = dict(
+            conn.execute(
+                "SELECT d.id, s.file_name FROM devices d JOIN sources s ON s.id = d.source_id"
+            )
+        )
+        named = [f"the phone in {files[d]}" if d in files else d for d in missing]
         out.append(
             Ready(
                 False,
-                f"Confirm who used each phone: {', '.join(missing)} has no stipulated user. "
+                f"Say who used each phone: {', '.join(named)} "
+                f"{'has' if len(named) == 1 else 'have'} no stipulated user. "
                 "Without one, checks on who sent a message come back inconclusive.",
                 acknowledge="owners_ok",
             )

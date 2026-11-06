@@ -163,6 +163,8 @@ def test_the_check_reads_the_rationale_as_it_would_be_printed():
     assert withheld.forbidden_word("undeleted, not innocently") is None
     # what Mabillon puts in front of a model's rationale is clean, so only the model's words count
     assert withheld.forbidden_word(stance_mod.NOT_THE_MESSAGE) is None
+    assert withheld.forbidden_word(stance_mod.NEAR_MISS) is None
+    assert withheld.forbidden_word(stance_mod.NOT_THE_MESSAGE_SUPPORT) is None
     assert withheld.forbidden_word(forwarded.STANCE_NOTE + "supports. ok") is None
     assert withheld.forbidden_word(forwarded.BAKER_STANCE_NOTE + "supports. ok") is None
 

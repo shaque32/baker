@@ -8,9 +8,9 @@
   report, flag summary) are saved into the Downloads folder by the screen itself
   (`ui/downloads.py`), because WebKit's download path re-fetches without the key. Without
   pywebview or a web view (on Windows, without Edge WebView2: pywebview would otherwise use
-  Internet Explorer's engine) it opens the browser. The report on screen now starts with "Back to
-  the claims" and "Save the report" links (never printed, never in the saved copy), since the
-  window has no Back button. The Mac installer builds "Mabillon" and "Mabillon
+  Internet Explorer's engine) it opens the browser. The report on screen (which already links back to the case and
+  saves itself) now also says where a save went, or why it failed, since the window has no
+  download bar. The Mac installer builds "Mabillon" and "Mabillon
   Demo" apps in ~/Applications (icon from the app's mark; logs in ~/Library/Logs/Mabillon.log);
   the Desktop browser launchers stay. The Windows installer adds "Mabillon" and "Mabillon demo"
   to the Start menu and an optional desktop icon, run with pythonw (no console; output goes to

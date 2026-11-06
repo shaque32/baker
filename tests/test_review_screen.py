@@ -481,14 +481,12 @@ def test_report_has_awaiting_versions_coverage_log_and_print_layout(conn, tmp_pa
 
 def test_report_on_screen_has_a_way_back_and_the_saved_copy_does_not(db):
     # Mabillon's own window has no Back button: the report on screen links back to the case.
-    from ui.app import REPORT_BACK
-
     app = App(db, expert="Test Expert", port=PORT)
     on_screen = get(app, "/report").body.decode()
-    assert on_screen.count(REPORT_BACK) == 1 and "href='/claims'" in on_screen
-    assert "@media print{.screen-back,.screen-said{display:none}}" in on_screen
+    assert on_screen.count("Back to the case</a>") == 1
+    assert "@media print{.screen-said{display:none}}" in on_screen
     saved = get(app, "/report", download="1").body.decode()
-    assert "screen-back" not in saved
+    assert "Back to the case" not in saved and "screen-said" not in saved
     # in the window, saving comes back here: the report says where it went, or why it did not
     for flash in (("Saved r.html in /x <D>.", False), ("Not saved in /x: disk full", True)):
         app.flash = flash
