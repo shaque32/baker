@@ -12,7 +12,7 @@ Setup does not finish, a page has no button to go on, or Mabillon is not install
 param(
     [Parameter(Mandatory)][string]$Installer,
     [Parameter(Mandatory)][string]$Out,
-    [int]$TimeoutSeconds = 600
+    [int]$TimeoutSeconds = 420
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
@@ -52,13 +52,21 @@ function Get-Button([System.Windows.Automation.AutomationElement]$window) {
     # Next, Install or Finish, enabled: the button a person presses to go on.
     $cond = New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty,
         [System.Windows.Automation.ControlType]::Button)
+    # IsOffscreen is not checked: UI Automation reports it unreliably for Setup's own controls.
     foreach ($b in $window.FindAll($tree::Descendants, $cond)) {
         $label = $b.Current.Name -replace '&', ''
-        if ($label -match '^(Next|Install|Finish)\b' -and $b.Current.IsEnabled -and -not $b.Current.IsOffscreen) {
-            return $b
-        }
+        if ($label -match '^\s*(Next|Install|Finish)\b' -and $b.Current.IsEnabled) { return $b }
     }
     return $null
+}
+
+function Show-Buttons([System.Windows.Automation.AutomationElement]$window) {
+    # For the log: every button UI Automation sees, so a page with no way on can be diagnosed.
+    $cond = New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Button)
+    ($window.FindAll($tree::Descendants, $cond) | ForEach-Object {
+        "'$($_.Current.Name)' enabled=$($_.Current.IsEnabled) offscreen=$($_.Current.IsOffscreen) class=$($_.Current.ClassName)"
+    }) -join '; '
 }
 
 # The Setup process Start-Process returns is the one that shows the wizard (Inno Setup 6 runs
@@ -87,6 +95,8 @@ while ((Get-Date) -lt $deadline) {
         $name = '{0:D2}-page' -f $page
         Save-Shot $window $name
         "$name : $text" | Out-File (Join-Path $Out 'pages.txt') -Append -Encoding utf8
+        Write-Host "$name text: $text"
+        Write-Host "$name window '$($window.Current.Name)' class=$($window.Current.ClassName); buttons: $(Show-Buttons $window)"
         $lastText = $text
     }
     if (-not $button) { continue }  # the install itself, or a page still drawing
@@ -95,7 +105,10 @@ while ((Get-Date) -lt $deadline) {
     $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     if ($label -like 'Finish*') { $finished = $true }
 }
-if (-not $finished) { throw "Setup did not reach Finish within $TimeoutSeconds s (pages seen: $page; see $log)" }
+if (-not $finished) {
+    if (Test-Path $log) { Write-Host '--- last lines of setup.log'; Get-Content $log -Tail 25 }
+    throw "Setup did not reach Finish within $TimeoutSeconds s (pages seen: $page; see $log)"
+}
 $first.WaitForExit(60000) | Out-Null
 $app = Join-Path $env:LOCALAPPDATA 'Programs\Mabillon'
 if (-not (Test-Path (Join-Path $app 'mabillon.cmd'))) { throw "Mabillon is not installed at $app" }
