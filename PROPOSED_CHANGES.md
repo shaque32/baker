@@ -1252,12 +1252,17 @@ claim SUPPORTED, so they need signed-file changes.
   nothing blocking under rules 3d and 3e, is SUPPORTED with the new basis checked ("Supported
   by the records (code checks)"). It cites checks and stipulations, never evidence. Content
   meaning, identity, role and absence claims are excluded.
+- Precondition for C (Greptile review on #228): the count check must not pass "exactly N" on a
+  curated report, which may omit messages or calls. Count check 1.3.0 makes "exactly" pass only
+  on a full extraction, as "at most" already does. It lands in the C apply PR, before rules
+  0.5.0 takes effect, with an audit of every other check that can pass on a curated report.
 - Basis order: confirmed, then checked, then counsel_reviewed, then ai_reviewed.
 Measured (synthetic only, scratch worktree on main fe829fc with these diffs and the invariants
 change below; not on main):
-- `make eval-model-free`: case01 unreviewed accuracy 0.55 -> 0.75 (C03, C05, C09, C12 become
-  SUPPORTED checked; all four are gold-supported), 0 false supported. After the simulated
-  expert: 1.00, 0 false supported, unchanged.
+- `make eval-model-free`: case01 unreviewed accuracy 0.55 -> 0.70 (C05, C09, C12 become
+  SUPPORTED checked; all three are gold-supported), 0 false supported. After the simulated
+  expert: 1.00, 0 false supported, unchanged. Without the count check fix C03 ("exactly", on a
+  curated report) was also promoted, for 0.75; it is gold-supported, but only by luck.
 - `make eval-hostile`: none of the 7 structural claims and 0 of 5 model-only claims supported.
 - Earlier log-only prototype of C on case04 and case05: 10 of 22 and 10 of 23 gold-supported
   claims promoted, 0 false. case02 not run (held out); the apply PR's `make eval` reports it.
@@ -1268,7 +1273,7 @@ change below; not on main):
   0.5.0), the new enum values, decision 6 wording ("await an expert"), the plain-language
   lines that read rule text (test_why_lines, test_first_read_fixes), and tests that assume an
   unreviewed run has nothing SUPPORTED (test_simulated_expert, test_demo, test_start_case).
-Apply PRs (not signed files, after approval): core/audit/invariants.py (a checked SUPPORTED
+Apply PRs (not signed files, after approval): count check 1.3.0 (above), core/audit/invariants.py (a checked SUPPORTED
 cites passing checks on every core assumption and no evidence; counsel_accepted counts as an
 acceptance; the diff below), status and report labels for the three bases, bundle verify,
 core/review/actions.py counsel actor that refuses to overwrite an expert review, activity
