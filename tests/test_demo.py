@@ -224,7 +224,7 @@ def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels." in page and agent in page
+    assert "Demo case: synthetic data, scripted labels</strong>" in page and agent in page
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
     assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
     purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))
@@ -242,6 +242,39 @@ def test_every_claim_page_and_the_report_render(root):
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_screen_writes_sources_in_words_and_draws_a_shared_record_once(root):
+    """C05's two assumptions cite the same message: the screen draws its conversation once and
+    the second item points up, with its own quote, source line, tier and decision form. Sources
+    and the tier read as words on the screen; the exported report keeps its ids."""
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    claim = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    items = re.findall(r"<div class='item' id='([^']+)'>", claim)
+    assert len(items) == 2
+    assert claim.count("<div class='thread mini'>") == 1
+    assert f"<a href='#{items[0]}'>the item above</a>" in claim
+    assert claim.count("value='accepted'") >= 2  # each item keeps its own decision
+    assert claim.count("<span class='badge b-open'>supports</span>") == 2
+    selection = app.handle(Request("GET", "/selection", {}, dict(HOST))).body.decode()
+    assert "item1 · Chats, row 948" in selection and "Tier: derived" in selection
+    assert "item1 Chats!948</span>" not in selection
+    overview = app.handle(Request("GET", "/", {}, dict(HOST))).body.decode()
+    assert "(dev:item1)" not in overview and "From item1" in overview
+    setup = app.handle(Request("GET", "/setup", {}, dict(HOST))).body.decode()
+    assert "Cellebrite Excel export, logical extraction" in setup
+    assert "<h2 id='files'>Files</h2>" in setup
+    report = render_report(connect(case.db))
+    assert "tier derived" in report and "Chats!948" in report
+
+
+def test_plain_locator_reads_a_sheet_row_and_leaves_other_shapes():
+    from core.report.selection import plain_locator
+
+    assert plain_locator("item1", "Chats!948") == "item1 · Chats, row 948"
+    assert plain_locator("item3", "chat[2]/message[5]") == "item3 · chat[2]/message[5]"
 
 
 def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(root):
@@ -462,7 +495,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
-    assert "5 claims need you." in page  # C05, C16, D03 and these two
+    assert "5 claims need you</h1>" in page  # C05, C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):
