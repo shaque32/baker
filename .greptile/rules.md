@@ -33,6 +33,8 @@ evaluation case.
 
 ## How comments are handled
 
-The PR's author verifies every comment against the code, then either pushes a fix and replies
-with what changed, or replies with the reason it is not a bug. Make each comment checkable: name
-the input, the line, and the wrong output.
+Greptile's pass is the final review before merge (docs/MERGING.md, line 8). The PR's author
+applies each suggestion by default and replies with what changed. A suggestion is left unfixed
+only when it would break a rule in `CLAUDE.md`, a test or the eval gate, or change a signed
+file; the reply then gives that reason. Make each comment checkable: name the input, the line,
+and the wrong output, so a fix can be tested.
