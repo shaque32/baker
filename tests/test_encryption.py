@@ -384,7 +384,7 @@ def test_an_encrypted_case_imports_and_keeps_only_encrypted_copies(tmp_path, inp
     }
     conn.close()
     assert shown == ["affidavit.pdf", "item1.xlsx"]
-    assert copied == {f"inputs/{n}" for n in names}
+    assert {Path(c).parts for c in copied} == {("inputs", n) for n in names}  # \ on Windows
 
 
 def test_encrypting_an_existing_case_keeps_every_row_and_file(tmp_path, inputs):
