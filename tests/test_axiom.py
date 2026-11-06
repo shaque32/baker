@@ -453,7 +453,8 @@ def test_an_encrypted_case_imports_an_axiom_xml_through_decryption(case01, tmp_p
     assert case is not None and encryption.is_encrypted_case(case.db)
     assert _send(app, path).status == 303
     assert "Imported item2-axiom.xml" in _setup(app)
-    assert encryption.is_encrypted_file(case.inputs / "item2-axiom.xml")
+    (copy,) = case.inputs.iterdir()  # named input-<random>; the real name is encrypted
+    assert encryption.is_encrypted_file(copy)
     conn = connect(case.db)
     sid = conn.execute("SELECT id FROM sources WHERE kind = 'axiom'").fetchone()[0]
     plain = _db()

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sqlite3
 import time
 import zipfile
@@ -372,7 +373,18 @@ def test_an_encrypted_case_imports_and_keeps_only_encrypted_copies(tmp_path, inp
     _no_plain_case_data(case, marker, {k: inputs[k] for k in ("item1", "affidavit")})
     with pytest.raises(ReviewError, match="already in the case"):
         _import(case, inputs["item1"], "report")
-    assert sorted(p.name for p in case.inputs.iterdir()) == ["affidavit.pdf", "item1.xlsx"]
+    # The copies carry random names; their real names are only in the encrypted database.
+    names = sorted(p.name for p in case.inputs.iterdir())
+    assert len(names) == 2 and all(re.fullmatch(r"input-[0-9a-f]{24}", n) for n in names)
+    conn = connect(case.db)
+    shown = sorted(r[0] for r in conn.execute("SELECT file_name FROM sources"))
+    copied = {
+        json.loads(p)["copied_to"]
+        for (p,) in conn.execute("SELECT payload_json FROM audit_log WHERE action = 'case.import'")
+    }
+    conn.close()
+    assert shown == ["affidavit.pdf", "item1.xlsx"]
+    assert copied == {f"inputs/{n}" for n in names}
 
 
 def test_encrypting_an_existing_case_keeps_every_row_and_file(tmp_path, inputs):
@@ -539,7 +551,8 @@ def test_screen_makes_an_encrypted_case_shows_its_recovery_key_once_and_locks(ap
 
     assert send_file(app, inputs["item1"], "report").status == 303
     assert "Imported item1.xlsx" in get(app, "/setup").text
-    assert encryption.is_encrypted_file(case.inputs / "item1.xlsx")
+    (copy,) = case.inputs.iterdir()
+    assert copy.name.startswith(cases.HIDDEN_PREFIX) and encryption.is_encrypted_file(copy)
 
     assert post(app, "/case/lock").header("Location") == "/cases"
     assert app.case is None and protect.is_locked(case)

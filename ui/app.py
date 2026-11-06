@@ -1369,7 +1369,7 @@ class App:
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         delta = -1 if f.get("delta") == "-1" else 1
-        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta)
+        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta, self.actor)
         cid = f.get("claim", "")
         return f"{_named(conn, cid)} now runs at position {order.index(cid) + 1}."
 

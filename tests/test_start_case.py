@@ -354,6 +354,15 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     order = cases.claim_order(case, conn)
     assert order.index("C05") == 2 and not set(proposed) & set(order)
     assert json.loads(case.settings_path.read_text())["claim_order"][2] == "C05"
+    moves = [
+        (actor, json.loads(p))
+        for actor, p in conn.execute(
+            "SELECT actor, payload_json FROM audit_log WHERE action = 'claim.move' ORDER BY seq"
+        )
+    ]
+    assert [m["claim_id"] for _, m in moves] == ["C05", "C05"]
+    assert [m["to"] for _, m in moves] == [m["from"] - 1 for _, m in moves]
+    assert moves[-1][1]["to"] == 3 and {a for a, _ in moves} == {"expert:Test Expert"}
 
 
 # ---------------------------------------------------------------- the background audit
