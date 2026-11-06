@@ -12,11 +12,11 @@
   the project thread. Why: to spend fewer Codex credits on routine review. No product code
   changes.
 - Where: PR #227
-- Verified: both JSON files parse; `make check` on this branch. Field names follow Greptile's
-  published docs and public repos using the same format (2026-11-06), not a live run.
-- Open: Arsh installed the app 2026-11-06; the first live Greptile review is on this PR.
-  The bot account name `greptile-apps[bot]` and the `@greptileai` re-review trigger are
-  unverified until it posts. Greptile reads `.greptile/` from the PR's own branch, so a PR
+- Verified: both JSON files parse; `make check` on this branch; one live Greptile review
+  (see Open). Whether every config field took effect is not checked one by one.
+- Open: Arsh installed the app 2026-11-06. The first live review ran on this PR the same day
+  (commit df7bf4e): an `@greptileai` comment triggered it, it posted as `greptile-apps[bot]`,
+  confidence 5/5, no inline findings. Greptile reads `.greptile/` from the PR's own branch, so a PR
   can change its own review rules. Verdict-path code no longer needs a second model's review
   before merge.
 - Affects: none (developer tooling; the public repository's code is read by a third-party
