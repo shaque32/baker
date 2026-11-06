@@ -383,3 +383,73 @@ def test_only_the_account_client_connects():
         assert "account.client" not in _imports(py), py
     for py in (ROOT / "core").rglob("*.py"):
         assert not {n for n in _imports(py) if n.split(".")[0] == "account"}, py
+
+
+# -- the license server (workers/license/), when Node is here
+
+
+def _node() -> str | None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        return None
+    out = subprocess.run([node, "--version"], capture_output=True, text=True, check=False)  # noqa: S603
+    major = out.stdout.strip().lstrip("v").split(".")[0]
+    return node if major.isdigit() and int(major) >= 22 else None
+
+
+NODE = _node()
+needs_node = pytest.mark.skipif(NODE is None, reason="Node 22 or later is not installed")
+
+
+@needs_node
+def test_license_server_tests_pass():
+    import subprocess
+
+    out = subprocess.run(  # noqa: S603
+        [NODE, "--no-warnings", str(ROOT / "workers/license/test.mjs")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr + out.stdout
+    assert "all tests passed" in out.stdout
+
+
+@needs_node
+def test_a_license_the_server_signs_verifies_in_the_app():
+    """The Worker's signLicense and the app's verify agree on the bytes, the key format and the
+    date format."""
+    import subprocess
+
+    key = Ed25519PrivateKey.generate()
+    raw = key.private_bytes_raw()
+    pub = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()  # noqa: E731
+    jwk = {"kty": "OKP", "crv": "Ed25519", "d": b64(raw), "x": b64(pub)}
+    script = (
+        "import { signLicense } from "
+        + json.dumps((ROOT / "workers/license/src/index.js").as_uri())
+        + ";\nconst env = { KEY_ID: 'k9', SIGNING_KEY_JWK: process.env.JWK };\n"
+        "const lic = { id: 'lic_abcdefgh1234', email: 'expert@lab.example', plan: 'pilot', "
+        "paid_through: '2027-11-06T00:00:00.000Z' };\n"
+        "const now = new Date('2026-11-06T12:00:00Z');\n"
+        "console.log(JSON.stringify(await signLicense(env, lic, now)));"
+    )
+    out = subprocess.run(  # noqa: S603
+        [NODE, "--no-warnings", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+        env={**__import__("os").environ, "JWK": json.dumps(jwk)},
+    )
+    assert out.returncode == 0, out.stderr
+    signed = lic.Signed.from_json(json.loads(out.stdout))
+    got = lic.verify(signed, {"k9": pub.hex()})
+    assert got.email == "expert@lab.example" and got.issued_at == NOW
+    assert got.expires == datetime(2027, 11, 6, tzinfo=UTC)
+    assert lic.status(lic.Stored(signed, "t" * 30), NOW, {"k9": pub.hex()}).state == "active"

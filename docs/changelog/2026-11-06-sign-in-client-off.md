@@ -1,4 +1,4 @@
-## 2026-11-06: Sign-in client, built and switched off (license check, browser hand-back)
+## 2026-11-06: Sign-in, built and switched off: the app's license check and the license server
 - Changed: Arsh asked to start sign-in now (2026-11-06), browser-based like Claude Desktop, with
   no login for pilots. New package `account/`, outside `core/`: `account/license.py` checks an
   Ed25519-signed license on this computer (30 days of grace after the last renewal; a license
@@ -13,8 +13,12 @@
   new audit; opening, review, the report and export never need one. `mabillon license status |
   import FILE | sign-out`. **Off:** `account.SIGNIN_ON = False` and `SIGNING_KEYS` is empty, so
   `serve` builds no sign-in, there is no Account page or link, `/signin/done` answers 404, every
-  audit starts as before and nothing connects. The license server (`workers/license/`) is not
-  written yet. Plan and privacy wording: plans/desktop-sign-in.md.
+  audit starts as before and nothing connects. The license server is `workers/license/`, a
+  Cloudflare Worker for account.getmabillon.com with one D1 database (`workers/license/schema.sql`,
+  the server's own tables, never case data): emailed one-time links through Resend, a "Continue"
+  button so mail scanners cannot spend a link, codes bound to the app's PKCE challenge, hashed
+  links, codes and tokens, and Ed25519-signed licenses. Not deployed; Arsh sets it up
+  (`workers/license/README.md`). Plan and privacy wording: plans/desktop-sign-in.md.
 - Where: local only (branch claude/project-thread-jvh1pc after #219 merges)
 - Verified: `tests/test_account.py` (signatures, edited or foreign licenses refused, status
   through a license's life, file permissions, license files, the RFC 7636 example challenge,
@@ -24,10 +28,16 @@
   `tests/test_account_screen.py` (off: no page, no sign-in built, audits start; on: sign in and
   out, hand-back over real HTTP without the key, wrong or reused state refused before any
   exchange, wrong Host refused, audits held back signed out, renewal at most hourly, offline sign
-  out); `make check` on Linux. Not run against a real license server (none exists).
+  out); `node workers/license/test.mjs` (the whole sign-in on node:sqlite standing in for D1:
+  only loopback return addresses, the same answer for unlicensed addresses, links that a GET
+  does not spend, one use each, timeouts, a wrong verifier spends the code, renewal, revoked and
+  ended licenses, sign out), run by `tests/test_account.py` when Node 22 is installed, which also
+  checks that a license the Worker signs verifies in the app; `make check` on Linux. Not run on
+  Cloudflare (not deployed).
 - Open: turning it on needs Arsh's signed wording (docs/SECURITY_PRIVACY.md row and section,
   site privacy page, the CLAUDE.md line in PROPOSED_CHANGES.md), the license server and its
-  signing key, and a real sign-in on a Mac and a Windows PC. The "Offline" pill's tooltip
+  deployed (Cloudflare D1, Resend, the signing key), and a real sign-in on a Mac and a Windows
+  PC. Making license files for offline labs needs an admin step, not written. The "Offline" pill's tooltip
   ("Nothing leaves this computer") must say "nothing from this case" once it is on. A clock set
   back can stretch the 30-day grace; not handled. A license file is imported from the command
   line only, not yet from the screen.

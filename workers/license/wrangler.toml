@@ -1,0 +1,26 @@
+# Mabillon's license server: browser sign-in and license renewal for the Mabillon app
+# (workers/license/README.md). Deployed by Workers Builds from this folder. Holds no case data.
+name = "mabillon-license"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "account.getmabillon.com", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mabillon-license"
+database_id = "REPLACE_WITH_THE_D1_DATABASE_ID"  # from `npx wrangler d1 create mabillon-license`
+
+# Sign-in emails: 5 a minute per address and email (period must be 10 or 60 seconds).
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1002"
+simple = { limit = 5, period = 60 }
+
+[vars]
+ORIGIN = "https://account.getmabillon.com"
+FROM = "Mabillon <signin@getmabillon.com>"
+KEY_ID = "k1"
+# Secrets (npx wrangler secret put <NAME>), never in this repo:
+#   SIGNING_KEY_JWK  the Ed25519 private key from make-key.mjs
+#   RESEND_KEY       the Resend API key that sends the sign-in emails
