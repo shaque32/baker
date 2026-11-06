@@ -111,6 +111,7 @@ class Links:
     context: Callable[[str], str] | None = None  # message id -> its whole conversation
     claim: Callable[[str], str] | None = None  # claim id -> the claim page
     gaps: str | None = None  # the Gaps page, which shows each quiet stretch in full
+    plain: bool = False  # the screen writes sources and the tier in words; the report keeps ids
 
 
 def anchor(unit_id: str) -> str:
@@ -300,7 +301,18 @@ _PICK = {"document": "Quoted in {label}", "exhibit": "In this exhibit", "tags": 
 _LEFT = {"document": "Not quoted", "exhibit": "Not in this exhibit", "tags": "Not tagged"}
 
 
-def _bubble(unit: Unit, row: Row, marks: list[Mark]) -> str:
+_SHEET_ROW = re.compile(r"^(?P<sheet>[^!]+)!(?P<row>\d+)$")
+
+
+def plain_locator(source_id: str, locator: str) -> str:
+    """A record's place in its file, in words: "item1 Chats!948" becomes "item1 · Chats, row
+    948". A locator of any other shape (a UFDR path, an AXIOM id) is shown as it is."""
+    m = _SHEET_ROW.match(locator)
+    where = f"{m['sheet']}, row {m['row']}" if m else locator
+    return f"{source_id} · {where}"
+
+
+def _bubble(unit: Unit, row: Row, marks: list[Mark], plain: bool = False) -> str:
     ln = row.line
     assert ln is not None  # noqa: S101 - count rows are drawn as dividers
     tags: list[tuple[str, str]] = []
@@ -332,7 +344,13 @@ def _bubble(unit: Unit, row: Row, marks: list[Mark]) -> str:
         f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)} · observed</div>"
         f"<div class='body'>{body}</div>{files}"
         f"<div class='t'>{chips}<span>{e(ln.local)}</span>"
-        f"<span>{e(ln.source_id)} {e(ln.locator)}</span></div></div>"
+        + (
+            f"<span title='{e(ln.source_id)} {e(ln.locator)}'>"
+            f"{e(plain_locator(ln.source_id, ln.locator))}</span>"
+            if plain
+            else f"<span>{e(ln.source_id)} {e(ln.locator)}</span>"
+        )
+        + "</div></div>"
     )
 
 
@@ -343,7 +361,7 @@ _MORE = {
 }
 
 
-def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
+def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = False) -> str:
     """The passage as a conversation. Dividers mark a pause longer than an exchange allows,
     where the exchange starts and ends, and runs of messages not shown."""
     out = ["<div class='sel-convo'>"]
@@ -365,7 +383,7 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
             more = _MORE.get(row.role, "{n} not shown").format(n=_n(row.more, "message"))
             out.append(f"<div class='divider'>{more}</div>")
             continue
-        out.append(_bubble(unit, row, marks.get(row.line.record_id, [])))
+        out.append(_bubble(unit, row, marks.get(row.line.record_id, []), plain))
     out.append("</div>")
     return "".join(out)
 
@@ -373,11 +391,12 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
 # ---------------------------------------------------------------- a passage
 
 
-def _where(p: Passage) -> str:
+def _where(p: Passage, plain: bool = False) -> str:
     t = p.thread
     return (
         f"{q(t.app)} conversation {q(t.title or '(untitled)')} · {q(t.device)} · "
-        f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · tier derived"
+        f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · "
+        + ("Tier: derived" if plain else "tier derived")
     )
 
 
@@ -405,8 +424,10 @@ def _passage_html(
             f"is not the same there: it holds {_n(p.only_here, 'message')} that the exchange "
             f"there does not, and lacks {p.only_there:,} that it holds.</p>"
         )
-    out.append(f"<div class='where'>{_where(p)}</div><ul class='sum'>{items}</ul></div>")
-    out.append(_convo(unit, p, marks))
+    out.append(
+        f"<div class='where'>{_where(p, links.plain)}</div><ul class='sum'>{items}</ul></div>"
+    )
+    out.append(_convo(unit, p, marks, links.plain))
     foot: list[str] = []
     if p.nearby:
         total = len(p.nearby) + p.nearby_more
