@@ -302,6 +302,29 @@ def test_screen_names_a_sender_once_per_side(root):
     assert "Telegram 5551234</span> · incoming · observed" in report
 
 
+def test_claim_page_keeps_recipients_when_more_than_one_account_answers():
+    from core.audit.context import ContextLine
+    from ui.pages import _msgs
+
+    def line(n: int, sender: str, direction: str, to: str = "") -> ContextLine:
+        return ContextLine(f"m{n}", f"Chats!{n}", sender, None, direction, "t", "x", False, to)
+
+    group = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "incoming"),
+            line(3, "Telegram 9 (this phone)", "outgoing", "Telegram 1"),
+            line(4, "Telegram 9 (this phone)", "outgoing", "Telegram 2"),
+        ]
+    )
+    assert ' to <span class="q">Telegram 1</span>' in group
+    assert ' to <span class="q">Telegram 2</span>' in group  # a new recipient is named again
+    pair = _msgs(
+        [line(1, "Telegram 1", "incoming"), line(2, "Telegram 9", "outgoing", "Telegram 1")]
+    )
+    assert " to <span" not in pair
+
+
 def test_sender_words_puts_the_printed_name_first_and_keeps_the_account():
     from core.report.selection import sender_words
 

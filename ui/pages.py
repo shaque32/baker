@@ -1123,7 +1123,7 @@ def _msgs(lines: list[ContextLine]) -> str:
     last: dict[str, tuple[str, str | None, str]] = {}
     for ln in lines:
         # an outgoing message to the one account seen answering here needs no "to"
-        to = "" if ln.to in others else ln.to
+        to = "" if others == {ln.to} else ln.to
         key = (ln.sender, ln.shown_as, to)
         out.append(_msg(ln, to, same=last.get(ln.direction) == key and not ln.is_target))
         last[ln.direction] = key
