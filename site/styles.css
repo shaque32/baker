@@ -1,6 +1,8 @@
 /* Layout: the app's palette (warm paper, ink, navy, verdict colors) kept quiet. One text face (IBM Plex
-   Sans); Instrument Serif only for the wordmark and headlines. The hero shows a case's claims taking
-   their statuses; the walkthrough below builds one claim's check as you scroll. */
+   Sans) for headlines and text, at normal tracking and without closing periods; Instrument Serif only
+   for the wordmark and for quoted affidavit text. The dark hero shows the review screen on one claim;
+   below it, an affidavit page has its claims marked and given statuses, and the walkthrough steps
+   through one claim's check. */
 @font-face { font-family: "Instrument Serif"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/instrument-serif-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 100 700; font-display: swap; src: url("fonts/ibm-plex-sans-latin-wght-normal.woff2") format("woff2"); }
 
@@ -21,6 +23,7 @@
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --ease: cubic-bezier(.22, 1, .36, 1);
+  --ink: #141413; --ink-fg: #f3efe7; --ink-muted: #a9a398; --ink-line: #33312c;
   --measure: 62ch;
   --wide: 1120px;
 }
@@ -31,6 +34,7 @@
     --sup: #92c4a2; --sup-bg: #1b2a20;
     --con: #eea193; --con-bg: #33201c;
     --unp: #e3bd6c; --unp-bg: #2e2716;
+    --ink: #0a0a09; --ink-line: #262420;
     color-scheme: dark;
   }
 }
@@ -40,6 +44,7 @@
   --sup: #92c4a2; --sup-bg: #1b2a20;
   --con: #eea193; --con-bg: #33201c;
   --unp: #e3bd6c; --unp-bg: #2e2716;
+  --ink: #0a0a09; --ink-line: #262420;
   color-scheme: dark;
 }
 
@@ -48,9 +53,9 @@ html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 400 1.0625rem/1.6 var(--sans); text-rendering: optimizeLegibility; overflow-x: hidden; }
 a { color: var(--accent); text-underline-offset: 0.18em; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-h1, h2 { font-family: var(--serif); font-weight: 400; line-height: 1.05; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(2.6rem, 6.2vw, 4.75rem); }
-h2 { font-size: clamp(2rem, 3.8vw, 2.9rem); }
+h1, h2 { font-family: var(--sans); font-weight: 600; line-height: 1.12; letter-spacing: 0; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.2rem, 4.4vw, 3.4rem); }
+h2 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); }
 h3 { font: 600 1.02rem/1.35 var(--sans); margin: 0; }
 p { margin: 0; }
 .wrap { max-width: var(--wide); margin-inline: auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
@@ -64,8 +69,8 @@ p { margin: 0; }
 .link:hover { border-color: var(--fg); }
 
 /* Header */
-.site-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--bg); }
+.site-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--ink); color: var(--ink-fg); border-bottom: 1px solid var(--ink-line); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--ink); }
 .site-head .wrap { display: flex; align-items: center; gap: 16px 28px; padding-block: 12px; flex-wrap: wrap; }
 .wordmark { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); text-decoration: none; font: 400 1.55rem/1 var(--serif); }
 .mark { width: 24px; height: 24px; flex: none; }
@@ -78,12 +83,131 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .site-nav a, .link, .audience-note a, .site-foot a, .fine a, .addr, .wordmark { position: relative; }
 .site-nav a::after, .link::after, .audience-note a::after, .site-foot a::after, .fine a::after, .addr::after, .wordmark::after { content: ""; position: absolute; inset: -14px -4px; }
 .site-nav .cta-sm { color: var(--fg); border: 1px solid var(--line-strong); padding: 6px 13px; border-radius: 7px; font-weight: 500; }
+/* The header sits on ink, like the hero below it */
+.site-head .wordmark { color: var(--ink-fg); }
+.site-head .mark .page { fill: var(--ink-fg); }
+.site-head .mark .ln { stroke: var(--ink); }
+.site-head .site-nav a { color: var(--ink-muted); }
+.site-head .site-nav a:hover { color: var(--ink-fg); }
+.site-head .site-nav .cta-sm { color: var(--ink); background: var(--ink-fg); border-color: var(--ink-fg); }
+.site-head :focus-visible { outline-color: var(--ink-fg); }
 
 /* Hero */
-.hero > .wrap { padding-block: 96px 104px; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; align-items: center; }
-.hero-copy { display: grid; gap: 28px; justify-items: start; }
-.hero h1 { max-width: 12em; }
-.hero h1 span { color: var(--muted); }
+/* Hero: the pitch on ink, and one affidavit page laid on it that runs over into the paper below */
+.hero { background: var(--ink); color: var(--ink-fg); }
+.hero > .wrap { padding-block: 104px 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 72px; }
+.hero-copy { display: grid; gap: 26px; justify-items: start; }
+.hero h1 { font-weight: 450; font-size: clamp(2.6rem, 5.8vw, 4.6rem); line-height: 1.03; max-width: 13em; }
+.hero .lede { color: var(--ink-muted); }
+.hero .button { background: var(--ink-fg); color: var(--ink); gap: 10px; }
+.hero .button span { transition: transform 0.2s var(--ease); }
+.hero .button:hover { opacity: 1; }
+.hero .button:hover span { transform: translateX(3px); }
+.hero .link { color: var(--ink-fg); border-color: var(--ink-line); }
+.hero .link:hover { border-color: var(--ink-fg); }
+.hero .audience-note, .hero .audience-note a { color: var(--ink-muted); }
+.hero .audience-note a { text-decoration-color: var(--ink-line); }
+.hero .audience-note a:hover { color: var(--ink-fg); }
+.hero :focus-visible { outline-color: var(--ink-fg); }
+.hero + .band { border-top: 0; padding-top: calc(160px + 72px); }
+
+/* Hero window: the review screen on one claim, drawn in HTML. It sits on the dark band and runs
+   into the light page below. When it comes into view the checks resolve one by one, the failed
+   one last, and then the claim gets its status. */
+.app-win { position: relative; margin: 0 0 -160px; border: 1px solid var(--ink-line); border-radius: 12px; overflow: hidden;
+  background: #191917; color: var(--ink-fg); font-size: 0.9rem; line-height: 1.45; box-shadow: 0 40px 100px -40px rgb(0 0 0 / 0.6);
+  --w-line: #2c2a26; --w-dim: #9a958b; --w-sup: #7cc597; --w-con: #ee8a76; --w-unp: #dfae4f; }
+.app-win p { margin: 0; }
+.app-win em { font-style: normal; }
+.app-bar { display: flex; justify-content: space-between; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--w-line); font-size: 0.8rem; color: var(--w-dim); }
+.app-body { display: grid; grid-template-columns: 17rem minmax(0, 1fr) 14rem; min-height: 420px; }
+.app-list { border-right: 1px solid var(--w-line); padding: 10px 0 16px; font-size: 0.84rem; }
+.app-list .grp { padding: 12px 18px 4px; font-size: 0.76rem; color: var(--w-dim); }
+.app-list .row { display: flex; gap: 10px; padding: 8px 18px; color: #d8d3c9; }
+.app-list .row.sel { background: #24231f; color: var(--ink-fg); }
+.app-list .dot { flex: none; width: 7px; height: 7px; margin-top: 0.45em; border-radius: 50%; background: currentColor; }
+.app-list .dot.sup { color: var(--w-sup); } .app-list .dot.con { color: var(--w-con); } .app-list .dot.unp { color: var(--w-unp); }
+.app-list .dot.wait { color: var(--w-dim); background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.app-main { display: grid; gap: 14px; align-content: start; padding: 26px 30px 30px; min-width: 0; }
+.app-ref { font-size: 0.8rem; color: var(--w-dim); }
+.app-claim { font-size: 1.3rem; line-height: 1.35; font-weight: 450; }
+.app-verdict { margin-bottom: 8px !important; }
+.app-win .status { font-size: 0.82rem; font-weight: 500; }
+.app-win .status.sup { color: var(--w-sup); } .app-win .status.con { color: var(--w-con); } .app-win .status.unp { color: var(--w-unp); }
+.chk { list-style: none; margin: 0; padding: 0; }
+.chk li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 11px 0; border-top: 1px solid var(--w-line); }
+.chk small { grid-column: 1 / -1; font-size: 0.78rem; color: var(--w-dim); }
+.app-props { margin: 0; padding: 26px 20px; border-left: 1px solid var(--w-line); display: grid; gap: 3px; align-content: start; font-size: 0.82rem; }
+.app-props dt { color: var(--w-dim); margin-top: 11px; } .app-props dt:first-child { margin-top: 0; }
+.app-props dd { margin: 0; color: #e8e3d9; }
+.js .app-win.reveal { opacity: 1; transform: none; }
+.js .app-win .chk em, .js .app-win .chk small, .js .app-win .app-verdict, .js .app-props dd:first-of-type { opacity: 0; transition: opacity 0.5s var(--ease); }
+.js .app-win .chk li.bad { transition: background-color 0.6s var(--ease); }
+.js .app-win.in .chk em, .js .app-win.in .chk small, .js .app-win.in .app-verdict, .js .app-win.in .app-props dd:first-of-type { opacity: 1; }
+.js .app-win.in .chk li:nth-child(1) em, .js .app-win.in .chk li:nth-child(1) small { transition-delay: 0.5s; }
+.js .app-win.in .chk li:nth-child(2) em, .js .app-win.in .chk li:nth-child(2) small { transition-delay: 1s; }
+.js .app-win.in .chk li:nth-child(3) em, .js .app-win.in .chk li:nth-child(3) small { transition-delay: 1.6s; }
+.js .app-win.in .app-verdict, .js .app-win.in .app-props dd:first-of-type { transition-delay: 2.2s; }
+
+/* The affidavit section gives the page more room than its heading */
+#affidavit > .wrap { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); }
+#affidavit .sheet-body { grid-template-columns: minmax(0, 1fr) 14rem; }
+
+/* Motion borrowed from React Bits patterns, written as plain CSS and script for this static page.
+   The hero headline comes into focus word by word; the claim list in the hero window arrives in
+   order; "Book a demo" leans toward the pointer; one heading lights up word by word as it scrolls
+   through the screen. Reduced motion turns all of it off and shows the finished state. */
+.blur-in .w { display: inline-block; animation: blur-in 0.9s var(--ease) both; }
+@keyframes blur-in { from { opacity: 0; filter: blur(12px); transform: translateY(-0.16em); } }
+.blur-in .ph .w:nth-child(1) { animation-delay: 0.07s; } .blur-in .ph .w:nth-child(2) { animation-delay: 0.14s; }
+.blur-in > .w:nth-child(3) { animation-delay: 0.21s; }
+.blur-in > .w:nth-child(4) { animation-delay: 0.28s; }
+.blur-in > .w:nth-child(5) { animation-delay: 0.35s; }
+.blur-in > .w:nth-child(6) { animation-delay: 0.42s; }
+.blur-in > .w:nth-child(7) { animation-delay: 0.49s; }
+.blur-in > .w:nth-child(8) { animation-delay: 0.56s; }
+.blur-in > .w:nth-child(9) { animation-delay: 0.63s; }
+/* "every claim" then gets a frame drawn around it, with a small pointer at its corner
+   (from Aceternity's pointer highlight) */
+.ph { position: relative; display: inline-block; }
+.ph::before { content: ""; position: absolute; inset: 0.04em -0.14em -0.02em; border: 1.5px solid var(--ink-muted); border-radius: 3px;
+  animation: ph-draw 0.9s var(--ease) 1.05s both; }
+.ph::after { content: ""; position: absolute; right: -0.42em; bottom: -0.3em; width: 0.32em; height: 0.36em; background: var(--ink-fg);
+  clip-path: polygon(0 0, 100% 62%, 52% 64%, 34% 100%); animation: ph-point 0.5s var(--ease) 1.8s both; }
+@keyframes ph-draw { from { clip-path: inset(0 100% 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes ph-point { from { opacity: 0; transform: translate(-0.3em, -0.3em); } }
+.hero .lede, .hero .actions, .hero .audience-note { animation: rise-in 0.9s var(--ease) 0.55s both; }
+.hero .actions { animation-delay: 0.7s; } .hero .audience-note { animation-delay: 0.8s; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } }
+.js .app-win .app-list p { opacity: 0; transform: translateY(8px) scale(0.98); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
+.js .app-win.in .app-list p { opacity: 1; transform: none; }
+.js .app-win.in .app-list p:nth-child(2) { transition-delay: 0.06s; } .js .app-win.in .app-list p:nth-child(3) { transition-delay: 0.12s; }
+.js .app-win.in .app-list p:nth-child(4) { transition-delay: 0.18s; } .js .app-win.in .app-list p:nth-child(5) { transition-delay: 0.24s; }
+.js .app-win.in .app-list p:nth-child(6) { transition-delay: 0.3s; } .js .app-win.in .app-list p:nth-child(7) { transition-delay: 0.36s; }
+.js .app-win.in .app-list p:nth-child(8) { transition-delay: 0.42s; }
+/* The hero window's tilt, set from main.js as the page scrolls (from Aceternity's container scroll) */
+.hero > .wrap { perspective: 1400px; }
+.hero .app-win { transform-origin: 50% 0; will-change: transform; }
+.magnet { transition: transform 0.4s var(--ease), opacity 0.2s; will-change: transform; }
+.js .scrub .w { opacity: 0.2; transition: opacity 0.35s linear; }
+.js .scrub .w.lit { opacity: 1; }
+
+/* The file formats Mabillon reads, as plain names under the hero window */
+.band.formats { padding-bottom: 8px; }
+.band.formats + .band { border-top: 0; }
+.formats > .wrap { justify-items: center; gap: 18px; text-align: center; }
+.formats p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+.formats ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 52px; font-size: 1.1rem; font-weight: 500; color: var(--muted); }
+
+/* Closing call to action on the same dark band as the hero */
+.band.cta.ink { background: var(--ink); color: var(--ink-fg); border-top: 0; }
+.cta.ink p { color: var(--ink-muted); }
+.cta.ink .addr { color: var(--ink-fg); }
+.cta.ink .button { background: var(--ink-fg); color: var(--ink); gap: 10px; }
+.cta.ink .button span { transition: transform 0.2s var(--ease); }
+.cta.ink .button:hover { opacity: 1; }
+.cta.ink .button:hover span { transform: translateX(3px); }
+.cta.ink :focus-visible { outline-color: var(--ink-fg); }
 .lede { font-size: clamp(1.08rem, 1.5vw, 1.2rem); color: var(--muted); max-width: 34em; }
 .actions { display: flex; gap: 14px 26px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 
@@ -91,25 +215,33 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .audience-note a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 0.22em; }
 .audience-note a:hover { color: var(--fg); text-decoration-color: var(--fg); }
 
-/* Hero ledger: an example case's claims, each taking its status in turn */
-.ledger { margin: 0; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; }
-.ledger-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 0.84rem; font-weight: 600; }
-.ledger-head .muted { font-weight: 400; }
-.ledger ol { list-style: none; margin: 0; padding: 4px 20px; }
-.ledger li { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); }
-.ledger li:last-child { border-bottom: 0; }
-.ledger b { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
-.ledger li > span { font: 400 1.08rem/1.4 var(--serif); }
-.ledger em { font-style: normal; justify-self: end; white-space: nowrap; }
-.ledger small { grid-column: 2 / -1; font-size: 0.8rem; color: var(--muted); }
-.ledger figcaption { padding: 10px 20px 14px; font: italic 400 0.76rem/1.4 var(--sans); color: var(--muted); border-top: 1px solid var(--line); }
-/* Verdicts arrive in order when the ledger comes into view, not on load. The sequence IS the
-   pitch, so it should play when the visitor sees it, not before. */
-.js .ledger.in li em, .js .ledger.in li small { animation: rise 0.45s var(--ease) both; }
-.js .ledger.in li:nth-child(1) em, .js .ledger.in li:nth-child(1) small { animation-delay: 0.35s; }
-.js .ledger.in li:nth-child(2) em, .js .ledger.in li:nth-child(2) small { animation-delay: 0.75s; }
-.js .ledger.in li:nth-child(3) em, .js .ledger.in li:nth-child(3) small { animation-delay: 1.15s; }
-.js .ledger.in li:nth-child(4) em, .js .ledger.in li:nth-child(4) small { animation-delay: 1.55s; }
+/* Hero sheet: a page of the affidavit with each claim marked, and the examiner's status for it in
+   the margin. Serif here is the government's document; everything Mabillon says is in the sans. */
+.sheet { margin: 0; background: var(--card); border: 1px solid var(--line-strong); border-radius: 4px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 4px 24px; flex-wrap: wrap; padding: 14px 32px; border-bottom: 1px solid var(--line); font-size: 0.82rem; color: var(--muted); }
+.sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) 17rem; padding: 12px 0; }
+.sheet .para { padding: 16px 40px 16px 32px; font: 400 1.22rem/1.55 var(--serif); color: var(--muted); border-right: 1px solid var(--line); }
+.sheet .para b { font: 500 0.8rem var(--sans); margin-right: 10px; }
+.sheet .said { color: var(--fg); background: linear-gradient(var(--hl), var(--hl)) no-repeat 0 88% / 100% 40%; }
+.sheet .note { display: grid; gap: 4px; align-content: start; padding: 20px 28px 16px; }
+.sheet .note em { font-style: normal; }
+.sheet .note small { font-size: 0.8rem; line-height: 1.45; color: var(--muted); }
+.sheet figcaption { padding: 12px 32px 14px; border-top: 1px solid var(--line); font-size: 0.78rem; color: var(--muted); }
+/* When the sheet comes into view, each claim is marked and then gets its status, in order: the
+   sequence is the pitch. */
+.js .sheet.reveal { opacity: 1; transform: none; }
+.js .sheet .said { background-size: 0% 40%; transition: background-size 0.7s var(--ease); }
+.js .sheet .note { opacity: 0; transform: translateY(4px); transition: opacity 0.45s var(--ease), transform 0.45s var(--ease); }
+.js .sheet.in .said { background-size: 100% 40%; }
+.js .sheet.in .note { opacity: 1; transform: none; }
+.js .sheet .para:nth-child(1) .said { transition-delay: 0.2s; }
+.js .sheet .note:nth-child(2) { transition-delay: 0.7s; }
+.js .sheet .para:nth-child(3) .said { transition-delay: 0.9s; }
+.js .sheet .note:nth-child(4) { transition-delay: 1.4s; }
+.js .sheet .para:nth-child(5) .said { transition-delay: 1.6s; }
+.js .sheet .note:nth-child(6) { transition-delay: 2.1s; }
+.js .sheet .para:nth-child(7) .said { transition-delay: 2.3s; }
+.js .sheet .note:nth-child(8) { transition-delay: 2.8s; }
 
 /* Sections */
 section[id] { scroll-margin-top: 96px; }
@@ -157,7 +289,7 @@ section[id] { scroll-margin-top: 96px; }
 .walk-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .panel-caption { display: grid; gap: 4px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: var(--card); }
-.panel-caption h3 { font: 400 1.3rem/1.2 var(--serif); color: var(--fg); }
+.panel-caption h3 { font: 600 1.1rem/1.3 var(--sans); color: var(--fg); }
 .panel-caption p { font-size: 0.9rem; color: var(--muted); max-width: 48em; }
 
 .panel-body { display: grid; gap: 22px; padding: 22px 22px 26px; min-height: 360px; align-content: start; }
@@ -177,9 +309,11 @@ section[id] { scroll-margin-top: 96px; }
 .tag.unp { background: var(--unp-bg); color: var(--unp); }
 .tag.you { background: var(--accent); color: var(--accent-fg); }
 .verdict { display: flex; justify-content: flex-end; }
-.status { display: inline-block; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.01em; padding: 5px 12px; border-radius: 6px; border: 1.5px solid currentColor; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 0.86rem; font-weight: 600; }
+.status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .status.sup { color: var(--sup); } .status.con { color: var(--con); } .status.unp { color: var(--unp); }
-.status.wait { color: var(--accent); border-style: dashed; }
+.status.wait { color: var(--accent); }
+.status.wait::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 
 /* Blinking caret the first time the claim types itself out. */
 .walk-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
@@ -320,15 +454,18 @@ section[id] { scroll-margin-top: 96px; }
 /* Prose pages */
 .prose .wrap { padding-block: 72px 96px; }
 .prose article { max-width: var(--measure); display: grid; gap: 18px; }
-.prose h1 { font-size: clamp(2.4rem, 5.4vw, 3.6rem); }
-.prose h2 { font-size: 1.7rem; margin-top: 20px; }
+.prose h1 { font-size: clamp(2.1rem, 4.4vw, 3rem); }
+.prose h2 { font-size: 1.4rem; margin-top: 20px; }
 .prose ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; }
 .prose li, .prose p { color: var(--muted); }
 
 @media (max-width: 960px) {
-  .hero > .wrap { grid-template-columns: minmax(0, 1fr); gap: 48px; padding-block: 64px 80px; }
+  .hero > .wrap { gap: 48px; padding-block: 72px 0; }
+  .hero + .band { padding-top: calc(160px + 56px); }
+  .app-body { grid-template-columns: 15rem minmax(0, 1fr); }
+  .app-props { display: none; }
   .panel-body { padding: 20px; gap: 16px; min-height: 320px; }
-  .split > .wrap { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .split > .wrap, #affidavit > .wrap { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .cols.three, .proofs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .band { padding-block: 72px; }
   .band.cta { padding-block: 80px 88px; }
@@ -340,19 +477,30 @@ section[id] { scroll-margin-top: 96px; }
 @media (max-width: 620px) {
   section[id] { scroll-margin-top: 128px; }
   .site-nav .hide-sm { display: none; }
-  .hero > .wrap { padding-block: 48px 64px; }
+  .hero > .wrap { padding-block: 56px 0; }
+  .app-win { margin-bottom: -120px; }
+  .app-body { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .app-list { display: none; }
+  .app-main { padding: 18px 18px 22px; }
+  .app-claim { font-size: 1.12rem; }
+  .app-bar span:last-child { display: none; }
+  .hero + .band { padding-top: calc(120px + 48px); }
+  .formats ul { gap: 8px 28px; font-size: 1rem; }
   .stepper button { flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; }
   .stepper .n { font-size: 0.85rem; min-width: 0; }
   .stepper .label { font-size: 0.72rem; line-height: 1.15; letter-spacing: 0.01em; text-align: center; white-space: normal; overflow: visible; text-overflow: clip; max-width: 100%; }
   .panel-caption { padding: 14px 16px; }
   .panel-caption h3 { font-size: 1.18rem; }
-  .ledger ol { padding: 4px 16px; }
   .flow-diagram text { font-size: 23px; }
   .flow-diagram text.gate-label { font-size: 21px; }
   .flow-diagram .box-sub { display: none; }
   .flow-diagram svg text:not(.sub) { transform: translateY(10px); }
-  .ledger li { grid-template-columns: 2.4em minmax(0, 1fr); }
-  .ledger em { grid-column: 2; justify-self: start; }
+  .sheet-head { padding: 12px 18px; }
+  .sheet-body, #affidavit .sheet-body { grid-template-columns: minmax(0, 1fr); padding: 4px 0 8px; }
+  .sheet .para { border-right: 0; padding: 14px 18px 4px; font-size: 1.08rem; }
+  .sheet .note { padding: 4px 18px 14px; border-bottom: 1px solid var(--line); }
+  .sheet .note:last-child { border-bottom: 0; }
+  .sheet figcaption { padding: 10px 18px 12px; }
   .cols.three, .cols.two { grid-template-columns: minmax(0, 1fr); }
   .facts { grid-template-columns: minmax(0, 1fr); }
   .facts dt { border-bottom: 0; padding-bottom: 0; }
@@ -372,11 +520,11 @@ section[id] { scroll-margin-top: 96px; }
 /* Book a demo */
 .demo > .wrap { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 72px; align-items: start; padding-block: 88px 104px; }
 .demo-copy { display: grid; gap: 22px; align-content: start; padding-top: 12px; }
-.demo-copy h1 { font-size: clamp(2.4rem, 5vw, 3.8rem); }
+.demo-copy h1 { font-size: clamp(2.1rem, 4.2vw, 3.1rem); }
 .demo-points { margin: 0; padding: 18px 0 0 1.1em; display: grid; gap: 10px; border-top: 1px solid var(--line); color: var(--muted); }
 .fine { font-size: 0.88rem; color: var(--muted); }
 .demo-form { background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; padding: 34px 34px 30px; display: grid; gap: 24px; min-width: 0; }
-.demo-form h2 { font-size: clamp(1.8rem, 3vw, 2.3rem); }
+.demo-form h2 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); }
 .demo-form .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field span { font-size: 0.86rem; font-weight: 500; color: var(--muted); }

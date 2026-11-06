@@ -315,7 +315,32 @@ def plain_locator(source_id: str, locator: str) -> str:
     return f"{source_id} · {where}"
 
 
-def _bubble(unit: Unit, row: Row, marks: list[Mark], plain: bool = False) -> str:
+def sender_words(sender: str, shown_as: str | None, app: str | None = None) -> str:
+    """A message's sender for the screen, as HTML: the app name left off when the conversation
+    header already gives it, and the name the source printed first. "Telegram 7001001 (this
+    phone)" in a Telegram conversation reads "7001001 (this phone)"; with a printed name "Dan
+    P" it reads "Dan P (5551234)". The account itself is never dropped."""
+    own = sender.endswith(" (this phone)")
+    who = sender.removesuffix(" (this phone)")
+    if app and who.startswith(app + " "):
+        who = who[len(app) + 1 :]
+    if shown_as:
+        return f"{q(shown_as)} ({q(who)}{', this phone' if own else ''})"
+    return q(who) + (" (this phone)" if own else "")
+
+
+def _bubble(
+    unit: Unit,
+    row: Row,
+    marks: list[Mark],
+    plain: bool = False,
+    app: str | None = None,
+    same_sender: bool = False,
+) -> str:
+    """plain (the screen): the sender in words, named again only when the account on that side
+    of the conversation changes (same_sender hides it), with the direction and tier in its
+    hover title: the bubble's side shows the direction, and the conversation header gives the
+    app and the tier."""
     ln = row.line
     assert ln is not None  # noqa: S101 - count rows are drawn as dividers
     tags: list[tuple[str, str]] = []
@@ -342,10 +367,12 @@ def _bubble(unit: Unit, row: Row, marks: list[Mark], plain: bool = False) -> str
     shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
     files = "".join(f"<div class='att'>Attachment: {q(a)}</div>" for a in row.attachments)
     chips = "".join(f"<span class='tag {c}'>{t}</span>" for c, t in tags)
+    if plain and same_sender:
+        cls.append("cont")
     return (
         f"<div class='{' '.join(cls)}'>"
-        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)} · observed</div>"
-        f"<div class='body'>{body}</div>{files}"
+        + _who(ln.sender, shown, ln.direction, ln.shown_as, plain, app, same_sender)
+        + f"<div class='body'>{body}</div>{files}"
         f"<div class='t'>{chips}<span>{e(ln.local)}</span>"
         + (
             f"<span title='{e(ln.source_id)} {e(ln.locator)}'>"
@@ -355,6 +382,37 @@ def _bubble(unit: Unit, row: Row, marks: list[Mark], plain: bool = False) -> str
         )
         + "</div></div>"
     )
+
+
+def _who(
+    sender: str,
+    shown: str,
+    direction: str,
+    shown_as: str | None,
+    plain: bool,
+    app: str | None,
+    same_sender: bool,
+) -> str:
+    if not plain:
+        return f"<div class='who2'>{q(sender)}{shown} · {e(direction)} · observed</div>"
+    if same_sender:
+        return ""
+    return (
+        f"<div class='who2' title='{e(direction)} · observed'>"
+        f"{sender_words(sender, shown_as, app)}{direction_words(direction)}</div>"
+    )
+
+
+def direction_words(direction: str) -> str:
+    """The direction in words when the bubble's side cannot show it: an unknown direction is
+    drawn on the left with incoming messages, so it says so on the screen."""
+    return "" if direction in ("incoming", "outgoing") else f" · direction {e(direction)}"
+
+
+def shows_side(direction: str) -> bool:
+    """The bubble's side gives this direction, so a run from one sender can leave the name off;
+    a message of unknown direction always keeps its sender line and its direction."""
+    return direction in ("incoming", "outgoing")
 
 
 _MORE = {
@@ -369,6 +427,9 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = F
     where the exchange starts and ends, and runs of messages not shown."""
     out = ["<div class='sel-convo'>"]
     was_inside: bool | None = None
+    # the sender last named on each side: a bubble from the same account on its side leaves
+    # the name off, as a chat app does; a run of messages not shown names them again
+    last_sender: dict[str, tuple[str, str | None, str]] = {}
     for row in p.rows:
         inside = row.role not in ("earlier", "later")
         notes = []
@@ -385,8 +446,17 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = F
         if row.line is None:
             more = _MORE.get(row.role, "{n} not shown").format(n=_n(row.more, "message"))
             out.append(f"<div class='divider'>{more}</div>")
+            last_sender.clear()
             continue
-        out.append(_bubble(unit, row, marks.get(row.line.record_id, []), plain))
+        ln = row.line
+        side = "out" if ln.direction == "outgoing" else "in"  # as _bubble draws it
+        same = (
+            plain
+            and shows_side(ln.direction)
+            and last_sender.get(side) == (ln.sender, ln.shown_as, ln.direction)
+        )
+        out.append(_bubble(unit, row, marks.get(ln.record_id, []), plain, p.thread.app, same))
+        last_sender[side] = (ln.sender, ln.shown_as, ln.direction)
     out.append("</div>")
     return "".join(out)
 
@@ -399,7 +469,7 @@ def _where(p: Passage, plain: bool = False) -> str:
     return (
         f"{q(t.app)} conversation {q(t.title or '(untitled)')} · {q(t.device)} · "
         f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · "
-        + ("Tier: derived" if plain else "tier derived")
+        + ("Tier: derived; each message observed" if plain else "tier derived")
     )
 
 
