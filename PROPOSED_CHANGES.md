@@ -1809,3 +1809,16 @@ Diff (on top of the entry above):
      )
 ```
 The docstring for rule 3c and the 3c blocker reason say the same thing.
+
+## 2026-11-06 claude/project-thread-jvh1pc: allow the license check outside core/ (for when sign-in is turned on)
+File: CLAUDE.md
+Why: sign-in (account/, off by default) adds one network call outside core/: the license check
+to account.getmabillon.com. CLAUDE.md limits network calls only inside core/, but its "No
+telemetry" line and the privacy promise should name this call before it is ever turned on.
+Wording drafted in plans/desktop-sign-in.md (section E) for Arsh's signature. Not needed while
+account.SIGNIN_ON is False.
+Diff (Data safety, after the line "- No network calls in `core/` except ..."):
++- Outside `core/`, the app's only network call is the license check in `account/client.py`, to
++  account.getmabillon.com: the email at sign-in, then the license id, sign-in token and app
++  version. Never case data. It stays off until sign-in is turned on, and a missing or expired
++  license never blocks opening, reviewing or exporting a case.
