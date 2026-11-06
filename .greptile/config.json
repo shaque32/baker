@@ -8,7 +8,7 @@
   "shouldUpdateDescription": false,
   "disabledLabels": ["skip-greptile"],
   "fileChangeLimit": 150,
-  "ignorePatterns": "eval/synthetic/case02*\neval/synthetic/case02*/**\neval/gold/case02/**\neval/out/**\n**/*case02*\n*.db\n*.sqlite\n*.gguf\n**/*.png\n**/*.jpg\n**/*.svg\n**/*.pdf\n**/*.xlsx\nsite/**\n.impeccable/**\ndocs/CHANGELOG_AI.md",
+  "ignorePatterns": "eval/synthetic/case02*\neval/synthetic/case02*/**\neval/gold/case02/**\neval/out/**\n**/*case02*\n*.db\n*.sqlite\n*.gguf\n**/*.png\n**/*.jpg\n**/*.svg\n**/*.pdf\n**/*.xlsx\nsite/fonts/**\n.impeccable/**\ndocs/CHANGELOG_AI.md",
   "instructions": "Mabillon audits government claims about phone evidence for criminal defense experts. Correctness is the product: one wrong SUPPORTED verdict in front of an expert destroys trust. Comment only on findings that would change what gets merged: a concrete bug with the input that triggers it, a break of a rule in CLAUDE.md, or a privacy or data-safety risk. Per finding: the failure, the line, the fix, in at most four sentences. No praise, no restating the diff, no style or formatting comments (ruff gates style), no speed or ranking-order suggestions unless they cause a wrong result. If nothing meets the bar, leave no inline comments. Never quote or describe the contents of any case02 file.",
   "rules": [
     {
