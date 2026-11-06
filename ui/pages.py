@@ -70,7 +70,7 @@ from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
-from core.report.selection import claim_note
+from core.report.selection import claim_note, direction_words, sender_words, shows_side
 from core.report.timeline import CSS as TIMELINE_CSS
 from core.review import activity, device_names
 from core.review import flags as F
@@ -1127,7 +1127,7 @@ def _conversation(
     lines = build_context(conn, item.record_id, around, threads=threads) if around else []
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
         return quote, ""
-    thread = f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
+    thread = f"<div class='thread mini'>{_msgs(lines)}</div>"
     whole = any(ln.is_target and ln.body.strip() == item.quote.strip() for ln in lines)
     # the quote is the whole highlighted message: the bubble already shows it, word for word
     quoted = (
@@ -1142,17 +1142,43 @@ def _conversation(
     return thread + quoted, ""
 
 
-def _msg(ln: ContextLine) -> str:
-    """One message as a chat bubble; the record under review is highlighted."""
-    shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
+def _msgs(lines: list[ContextLine]) -> str:
+    """Messages as chat bubbles. As a chat app does, a sender is named again only when the
+    account on that side of the conversation changes, and always on the record under review;
+    the bubble's side gives the direction, which also sits in the sender's hover title."""
+    others = {ln.sender for ln in lines if ln.direction != "outgoing"}
+    out: list[str] = []
+    last: dict[str, tuple[str, str | None, str, str]] = {}
+    for ln in lines:
+        # an outgoing message to the one account seen answering here needs no "to"
+        to = "" if others == {ln.to} else ln.to
+        key = (ln.sender, ln.shown_as, to, ln.direction)
+        side = "out" if ln.direction == "outgoing" else "in"  # as _msg draws it
+        same = last.get(side) == key and shows_side(ln.direction) and not ln.is_target
+        out.append(_msg(ln, to, same=same))
+        last[side] = key
+    return "".join(out)
+
+
+def _msg(ln: ContextLine, to: str, same: bool = False) -> str:
+    """One message as a chat bubble; the record under review is highlighted. same: the last
+    bubble on this side has the same sender, so this one leaves the sender line off. to: the
+    recipients, when the conversation shown does not already make them plain."""
     side = " out" if ln.direction == "outgoing" else ""
     tag = "<span class='cited'>This record</span>" if ln.is_target else ""
-    return (
-        f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
-        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}"
-        + (f" · to {q(ln.to)}" if ln.to else "")
+    who = (
+        ""
+        if same
+        else f"<div class='who2' title='{e(ln.direction)}'>"
+        + sender_words(ln.sender, ln.shown_as)
+        + (f" to {q(to)}" if to else "")
+        + direction_words(ln.direction)
         + "</div>"
-        f"<div class='body'>{q(ln.body)}</div>"
+    )
+    return (
+        f"<div class='msg{side}{' target' if ln.is_target else ''}{' cont' if same else ''}'>"
+        + who
+        + f"<div class='body'>{q(ln.body)}</div>"
         f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
     )
 
@@ -2044,7 +2070,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:
         out.append("<div class='thread'>")
-        out.extend(_msg(ln) for ln in lines)
+        out.append(_msgs(lines))
         out.append("</div>")
     else:
         out.append("<p class='muted'>No surrounding messages for this kind of record.</p>")
