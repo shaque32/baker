@@ -84,7 +84,7 @@ def _usable(row: dict[str, Any]) -> bool:
 
 
 def _entry(models: Path, name: str | None) -> dict[str, Any]:
-    from eval.bench.fair_steps import pick_entry
+    from eval.probe.model_entry import pick_entry
 
     return pick_entry(json.loads(models.read_text(encoding="utf-8")), name)
 
