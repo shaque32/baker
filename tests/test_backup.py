@@ -184,3 +184,55 @@ def test_the_screen_backs_up_the_open_case(tmp_path, inputs):
     made = list((tmp_path / "chosen").iterdir())
     assert len(made) == 1 and (made[0] / cases.DB_NAME).is_file()
     assert "Backed up Synthetic screen backup" in get(app, "/setup").text
+
+
+def test_a_backup_never_removes_a_folder_another_backup_made(tmp_path, inputs, monkeypatch):
+    """Two backups in the same second pick the same name: the second refuses, and the first
+    one's folder stays as it is (Greptile on #230)."""
+    case = _case(tmp_path / "cases", inputs, None)
+    root = tmp_path / "backups"
+    taken = root / f"{case.folder.name}-backup-20261106T120000Z"
+    real = audit_log.require_intact
+
+    def other_backup_wins(conn, anchors):  # noqa: ANN001, ANN202 - after the exists() check
+        real(conn, anchors)
+        taken.mkdir(parents=True)
+        (taken / "theirs.txt").write_text("the other backup", encoding="utf-8")
+
+    monkeypatch.setattr(backup.audit_log, "require_intact", other_backup_wins)
+    with pytest.raises(ReviewError, match="already exists"):
+        backup.back_up(case, EXPERT, root=root, clock=lambda: NOW)
+    assert (taken / "theirs.txt").read_text(encoding="utf-8") == "the other backup"
+
+
+def test_a_backup_missing_a_file_copy_is_not_kept(tmp_path, inputs, monkeypatch):
+    """A file copy the snapshot names but the backup lacks (say, removed on the screen during
+    the backup) fails the check, and the backup is deleted (Greptile on #230)."""
+    case = _case(tmp_path / "cases", inputs, PASS)
+    real = backup._skip
+
+    def lose_one(rel: Path, c: cases.Case) -> bool:
+        return real(rel, c) or (rel.parts[0] == "inputs" and rel.name == sorted(
+            p.name for p in c.inputs.iterdir())[0])  # fmt: skip
+
+    monkeypatch.setattr(backup, "_skip", lose_one)
+    with pytest.raises(ReviewError, match="missing 1 of the case's file copies"):
+        backup.back_up(case, EXPERT, root=tmp_path / "backups", clock=lambda: NOW)
+    assert list((tmp_path / "backups").iterdir()) == []
+
+
+def test_removing_a_file_finds_a_renamed_copy_its_log_does_not_name(tmp_path, inputs):
+    """An import that stopped after an encrypted copy was renamed but before its log entry was
+    written leaves the log naming another path; removal still finds the copy, by hash."""
+    from core.casework import remove
+
+    case = cases.create_case(tmp_path / "cases", "Synthetic removal", EXPERT, passphrase=PASS)
+    got = _import(case, inputs["item1"], "report")
+    moved = got.path.with_name(f"{cases.HIDDEN_PREFIX}{'0' * 24}")
+    got.path.rename(moved)  # the log now names a path that is not there
+    conn = connect(case.db)
+    try:
+        remove.remove_file(case, conn, got.source_id, EXPERT, "Wrong phone.", clock=lambda: LATER)
+    finally:
+        conn.close()
+    assert not moved.exists() and list(case.inputs.iterdir()) == []

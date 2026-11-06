@@ -22,7 +22,10 @@
 - Where: PR #230
 - Verified: `make check` on Linux (see the PR). New `tests/test_backup.py` restores plain and
   encrypted backups (rows, files, audit chain and anchors match; the same passphrase opens it),
-  and checks the refusals and that a backup failing verification is deleted. Updated tests in
+  and checks the refusals and that a backup failing verification is deleted. After Greptile's
+  review: a backup never deletes a folder another backup made in the same second; the check
+  also requires every file copy the snapshot names (by plain hash); removing a file finds an
+  encrypted copy by hash when its log entry names a path that is not there. Updated tests in
   `tests/test_encryption.py`, `tests/test_axiom.py`, `tests/test_ufdr.py` (hidden names) and
   `tests/test_start_case.py` (claim moves logged). pip-audit on 2026-11-06 (Linux, Python 3.12):
   no known vulnerabilities in the 29 packages resolved.

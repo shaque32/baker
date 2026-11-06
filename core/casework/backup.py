@@ -23,6 +23,7 @@ the folder it went to). Nothing here makes a network call.
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sqlite3
 import stat
@@ -123,8 +124,12 @@ def back_up(
                 f"this case's audit log does not verify ({err}), so it is not backed up; a "
                 "backup of a blocked case would be blocked too"
             ) from err
+        root.mkdir(parents=True, exist_ok=True)
         try:
-            dest.mkdir(parents=True)
+            dest.mkdir()  # fails if another backup took the same name: never remove its folder
+        except FileExistsError as err:
+            raise ReviewError(f"{dest} already exists; wait a second and back up again") from err
+        try:
             result = _copy(case, conn, dest)
             _verify(case, dest)
         except BaseException:
@@ -191,12 +196,35 @@ def _copy(case: Case, conn: sqlite3.Connection, dest: Path) -> BackedUp:
 
 
 def _verify(case: Case, dest: Path) -> None:
-    """The backup opens, and its audit log verifies against its own anchor file."""
+    """The backup opens, its audit log verifies against its own anchor file, and every file the
+    snapshot says was copied into the case has its copy in the backup, by plain-bytes hash (a
+    file removed on the screen between the database snapshot and the file copy would otherwise
+    leave a backup whose database names a file it does not hold)."""
     copy = dest / DB_NAME
     conn = casedb.connect(copy)
     try:
         audit_log.require_intact(conn, audit_log.anchors_path(copy))
+        logged = set()
+        for (payload,) in conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = 'case.import'"
+        ):
+            p = json.loads(payload)
+            if isinstance(p.get("copied_to"), str) and isinstance(p.get("sha256"), str):
+                logged.add(p["sha256"])
+        need = {sha for (sha,) in conn.execute("SELECT sha256 FROM sources")} & logged
     except audit_log.ChainBroken as err:
         raise ReviewError(f"the backup did not verify ({err}); nothing was kept") from err
     finally:
         conn.close()
+    inputs = dest / case.inputs.relative_to(case.folder)
+    have = (
+        {encryption.plain_sha256(p) for p in inputs.rglob("*") if p.is_file()}
+        if inputs.is_dir()
+        else set()
+    )
+    missing = need - have
+    if missing:
+        raise ReviewError(
+            f"the backup is missing {len(missing)} of the case's file copies (a file may have "
+            "been removed while it ran); nothing was kept, so back up again"
+        )
