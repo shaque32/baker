@@ -305,6 +305,80 @@ def test_plain_locator_reads_a_sheet_row_and_leaves_other_shapes():
     assert plain_locator("item3", "chat[2]/message[5]") == "item3 · chat[2]/message[5]"
 
 
+def test_screen_names_a_sender_once_per_side(root):
+    """On the screen a conversation names a sender again only when the account on that side
+    changes, without the app the header already gives, and the header carries the messages'
+    tier; the record under review is always named. The exported report keeps every line."""
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    selection = app.handle(Request("GET", "/selection", {}, dict(HOST))).body.decode()
+    assert "Tier: derived; each message observed" in selection
+    assert " · observed</div>" not in selection
+    convo = selection.split("<div class='sel-convo'>", 1)[1].split("</div></div></div>", 1)[0]
+    # the first conversation: two messages from 5551234, then this phone's reply
+    named = re.findall(r"<div class='who2' title='([a-z]+) · observed'>(.*?)</div>", convo)
+    assert named[0] == ("incoming", '<span class="q">5551234</span>')
+    assert named[1] == ("outgoing", '<span class="q">7001001</span> (this phone)')
+    assert "<div class='bub dim cont'>" in convo  # "new handle. same me", same sender
+    claim = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    mini = claim.split("<div class='thread mini'>", 1)[1]
+    target = mini.split("<div class='msg out target'>", 1)[1].split("</div>", 1)[0]
+    assert "Telegram 7001001</span> (this phone)" in target  # the record is always named
+    assert " to <span" not in mini.split("<p class=", 1)[0]  # a one-to-one thread needs no "to"
+    report = render_report(connect(case.db))
+    assert "Telegram 5551234</span> · incoming · observed" in report
+
+
+def test_claim_page_keeps_recipients_when_more_than_one_account_answers():
+    from core.audit.context import ContextLine
+    from ui.pages import _msgs
+
+    def line(n: int, sender: str, direction: str, to: str = "") -> ContextLine:
+        return ContextLine(f"m{n}", f"Chats!{n}", sender, None, direction, "t", "x", False, to)
+
+    group = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "incoming"),
+            line(3, "Telegram 9 (this phone)", "outgoing", "Telegram 1"),
+            line(4, "Telegram 9 (this phone)", "outgoing", "Telegram 2"),
+        ]
+    )
+    assert ' to <span class="q">Telegram 1</span>' in group
+    assert ' to <span class="q">Telegram 2</span>' in group  # a new recipient is named again
+    pair = _msgs(
+        [line(1, "Telegram 1", "incoming"), line(2, "Telegram 9", "outgoing", "Telegram 1")]
+    )
+    assert " to <span" not in pair
+    # an unknown direction draws on the left with incoming messages, so it shares their side
+    mixed = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "unknown"),
+            line(3, "Telegram 1", "incoming"),
+        ]
+    )
+    assert mixed.count("<div class='who2'") == 3
+    # an unknown direction keeps its sender line and says so, even after the same sender
+    same = _msgs([line(1, "Telegram 1", "incoming"), line(2, "Telegram 1", "unknown")])
+    assert same.count("<div class='who2'") == 2 and same.count(" · direction unknown") == 1
+    twice = _msgs([line(1, "Telegram 1", "unknown"), line(2, "Telegram 1", "unknown")])
+    assert twice.count(" · direction unknown") == 2
+
+
+def test_sender_words_puts_the_printed_name_first_and_keeps_the_account():
+    from core.report.selection import sender_words
+
+    assert sender_words("Telegram 7001001 (this phone)", None, "Telegram") == (
+        '<span class="q">7001001</span> (this phone)'
+    )
+    assert sender_words("SMS +1212", "Dan P", "Telegram") == (
+        '<span class="q">Dan P</span> (<span class="q">SMS +1212</span>)'
+    )
+    assert sender_words("unknown", None, "SMS") == '<span class="q">unknown</span>'
+
+
 def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(root):
     """The claims overview puts what waits on the expert first, then the findings, and gives each
     unproven claim a plain gap line read from the stored coverage. The report prints the same
