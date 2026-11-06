@@ -1,5 +1,6 @@
-// Drives the home page: fades sections in on first sight, and runs the one-claim walk as a
-// stepper. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
+// Drives the home page: fades sections in on first sight, runs the one-claim walk as a
+// stepper, lights one heading word by word on scroll, lets "Book a demo" lean toward the
+// pointer, and lays the hero window flat as the page scrolls. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
 // is unchanged, only what moves the dial. Autoplay suggests the rhythm; focus, the pause
 // button, keys, or a tab click take it over at any moment. A mouse resting on the panel does not
 // pause it.
@@ -227,4 +228,77 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
   requestAnimationFrame(tick);
+})();
+
+// A heading that lights up word by word as it moves up through the screen: a word is lit once
+// the heading has travelled far enough. Reduced motion shows it fully lit.
+(function () {
+  const heads = Array.from(document.querySelectorAll(".scrub"));
+  if (!heads.length) return;
+  const sets = heads.map((h) => Array.from(h.querySelectorAll(".w")));
+  if (still) {
+    sets.flat().forEach((w) => w.classList.add("lit"));
+    return;
+  }
+  let queued = false;
+  const paint = () => {
+    queued = false;
+    const vh = window.innerHeight;
+    heads.forEach((h, i) => {
+      const r = h.getBoundingClientRect();
+      // 0 when the heading's top is at 90% of the screen, 1 when it reaches 45%.
+      const p = Math.min(1, Math.max(0, (vh * 0.9 - r.top) / (vh * 0.45)));
+      const n = Math.round(p * sets[i].length);
+      sets[i].forEach((w, j) => w.classList.toggle("lit", j < n));
+    });
+  };
+  const ask = () => {
+    if (!queued) { queued = true; requestAnimationFrame(paint); }
+  };
+  window.addEventListener("scroll", ask, { passive: true });
+  window.addEventListener("resize", ask);
+  paint();
+})();
+
+// "Book a demo" leans a little toward a mouse pointer near it, and settles back when it leaves.
+(function () {
+  if (still || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+  document.querySelectorAll(".magnet").forEach((el) => {
+    const pull = 0.3;
+    const max = 10;
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      const dx = (e.clientX - (r.left + r.width / 2)) * pull;
+      const dy = (e.clientY - (r.top + r.height / 2)) * pull;
+      const clamp = (v) => Math.max(-max, Math.min(max, v));
+      el.style.transform = `translate(${clamp(dx)}px, ${clamp(dy)}px)`;
+    });
+    el.addEventListener("pointerleave", () => { el.style.transform = ""; });
+  });
+})();
+
+// The hero window starts tilted back and lies flat as the page scrolls, so the review screen
+// settles into view under the headline. Wide screens only; reduced motion keeps it flat.
+(function () {
+  const win = document.querySelector(".hero .app-win");
+  if (!win || still) return;
+  const wide = window.matchMedia("(min-width: 961px)");
+  let queued = false;
+  const paint = () => {
+    queued = false;
+    if (!wide.matches) { win.style.transform = ""; return; }
+    const vh = window.innerHeight;
+    const top = win.getBoundingClientRect().top;
+    // 0 while the window's top sits low on the screen, 1 once it has risen to a quarter of it.
+    const p = Math.min(1, Math.max(0, (vh * 0.8 - top) / (vh * 0.55)));
+    const tilt = 16 * (1 - p);
+    const scale = 0.94 + 0.06 * p;
+    win.style.transform = `rotateX(${tilt.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
+  };
+  const ask = () => {
+    if (!queued) { queued = true; requestAnimationFrame(paint); }
+  };
+  window.addEventListener("scroll", ask, { passive: true });
+  window.addEventListener("resize", ask);
+  paint();
 })();
