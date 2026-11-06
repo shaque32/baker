@@ -33,6 +33,7 @@ def _links() -> Links:
         context=lambda rid: link("/selection/context", id=rid),
         claim=lambda cid: link("/claim", id=cid),
         gaps="/gaps",
+        plain=True,
     )
 
 

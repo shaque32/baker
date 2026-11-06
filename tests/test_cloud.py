@@ -640,7 +640,7 @@ def test_the_setup_page_attests_per_case_and_keeps_the_key_local(tmp_path, monke
     post("/cloud/key", api_key=KEY)
     assert cloud.load_config(tmp_path / "cloud.json").api_key == KEY
     page = get("/setup").text
-    assert KEY not in page and "An Anthropic key is set up" in page
+    assert KEY not in page and "An Anthropic key is saved on this computer" in page
 
     post("/cloud/case", allowed="1")
     assert "cloud" not in app.case.settings  # kept in the case database, not case.json

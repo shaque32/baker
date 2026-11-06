@@ -17,7 +17,7 @@ CSS = """
    encryption), and its action at the right. Still a <table>; the header row stays for screen
    readers and is hidden on screen, since each fact already says what it is. */
 .pg-cases table.caselist, .pg-cases .caselist tbody { display: block; }
-.pg-cases table.caselist { margin: 0 0 12px; border-radius: 12px; overflow: hidden; }
+.pg-cases table.caselist { margin: 0 0 12px; border-radius: var(--radius); overflow: hidden; }
 .pg-cases .caselist thead { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip-path: inset(50%); }
 .pg-cases .caselist tbody tr { display: grid; align-items: center; gap: 4px 16px;
@@ -48,7 +48,7 @@ CSS = """
   font-size: 13px; }
 .pg-cases .unlock button { margin: 0; }
 .pg-cases p.empty { margin: 0 0 12px; padding: 20px; color: var(--muted);
-  background: var(--card); border: 1px dashed var(--line-strong); border-radius: 12px; }
+  background: var(--card); border: 1px dashed var(--line-strong); border-radius: var(--radius); }
 .pg-cases p.where { font-size: 12.5px; color: var(--muted); max-width: 78ch; margin: 0; }
 .pg-cases p.where .mono { font-size: 12px; word-break: normal; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .pg-cases .caselist tbody tr, .pg-cases .pass {
@@ -57,7 +57,7 @@ CSS = """
 /* Cases: making a new case, one card with the page's one primary button */
 .pg-cases section.newcase { margin-top: 44px; }
 .pg-cases section.newcase h2 { margin: 0 0 12px; }
-.pg-cases section.newcase form.box { padding: 22px 24px; margin: 0; border-radius: 12px; }
+.pg-cases section.newcase form.box { padding: 22px 24px; margin: 0; border-radius: var(--radius); }
 .pg-cases section.newcase label:has(> input.wide) { max-width: 520px; }
 .pg-cases section.newcase p { margin: 0 0 16px; }
 .pg-cases section.newcase label:has(> input[type=checkbox]) { margin: 0; }
@@ -73,7 +73,7 @@ CSS = """
 
 /* The enter-your-name form, here and on the set-up page */
 form.nameform { display: grid; gap: 12px; max-width: 640px; padding: 18px 20px;
-  border-radius: 12px; margin: 0 0 28px; }
+  border-radius: var(--radius); margin: 0 0 28px; }
 form.nameform p { margin: 0; color: var(--muted); max-width: 66ch; }
 form.nameform p strong { display: block; margin-bottom: 2px; font-size: 14.5px;
   color: var(--fg); }
@@ -86,7 +86,7 @@ form.nameform .row button { margin: 0; }
 .pg-error { max-width: 560px; padding-top: 56px; }
 .pg-error h1 { font: 500 13px/1.4 var(--sans); color: var(--muted); margin: 0 0 6px;
   font-variant-numeric: tabular-nums; }
-.pg-error p.lede { font: 600 22px/1.35 var(--sans); color: var(--fg); letter-spacing: -0.01em;
+.pg-error p.lede { font: 600 22px/1.35 var(--sans); color: var(--fg); letter-spacing: 0;
   margin: 0 0 24px; }
 .pg-error p.lede::first-letter { text-transform: uppercase; }
 .pg-error .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;

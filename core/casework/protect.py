@@ -35,7 +35,15 @@ from pathlib import Path
 
 from core import db as casedb
 from core import encryption
-from core.casework.cases import UPLOAD_PREFIX, Case, _logged, _make_writable, _now, discard
+from core.casework.cases import (
+    RECOVERY_UNCONFIRMED,
+    UPLOAD_PREFIX,
+    Case,
+    _logged,
+    _make_writable,
+    _now,
+    discard,
+)
 from core.encryption import Kdf
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
@@ -234,6 +242,7 @@ def encrypt_case(
             recovery = encryption.new_recovery(dbp, kdf)
         else:
             recovery = encryption.create_key(dbp, passphrase, kdf, _now(clock))
+        recovery_pending(case, True)  # stays until the key is shown and written down
         key_id, dek = encryption.case_key(dbp)
 
         tmp_db = dbp.with_name(f".{dbp.name}{TMP_SUFFIX}")
@@ -315,6 +324,39 @@ def change_passphrase(
         _logged(conn, _now(clock), actor, "case.passphrase", {"changed": "passphrase"})
     finally:
         conn.close()
+
+
+def recovery_pending(case: Case, pending: bool) -> None:
+    """Mark that the case's recovery key has not yet been confirmed as written down (True), or
+    that it has (False)."""
+    case.save_settings(**{RECOVERY_UNCONFIRMED: bool(pending)})
+
+
+def recovery_unconfirmed(case: Case) -> bool:
+    return bool(case.settings.get(RECOVERY_UNCONFIRMED)) and state(case) != "plain"
+
+
+def new_recovery_key(
+    case: Case, secret: str, actor: str, clock: Clock | None = None, kdf: Kdf | None = None
+) -> str:
+    """Replace an encrypted case's recovery key, after checking its passphrase (or the current
+    recovery key). Returns the new key, to show once; the old one stops working."""
+    _expert(actor)
+    if state(case) != "encrypted":
+        raise ReviewError("only a fully encrypted case has a recovery key to replace")
+    try:
+        encryption.unlock(case.db, secret)
+    except encryption.WrongSecret as err:
+        raise ReviewError(str(err)) from err
+    _require_intact(casedb.connect(case.db), case.db)
+    recovery = encryption.new_recovery(case.db, kdf)
+    recovery_pending(case, True)
+    conn = casedb.connect(case.db)
+    try:
+        _logged(conn, _now(clock), actor, "case.recovery_key", {"changed": "recovery key"})
+    finally:
+        conn.close()
+    return recovery
 
 
 def _require_intact(conn: sqlite3.Connection, dbp: Path) -> None:

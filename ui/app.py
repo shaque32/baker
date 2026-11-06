@@ -38,6 +38,7 @@ from __future__ import annotations
 import functools
 import hmac
 import html
+import json
 import re
 import secrets
 import shutil
@@ -66,13 +67,15 @@ from core.db import CaseLocked, connect
 from core.encryption import EncryptionError
 from core.identity.links import propose_links
 from core.llm import cloud as cloud_llm
+from core.report.html import Header as ReportHeader
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
 from core.review import actions, activity, audit_log, flags, withheld
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from core.review.status import claim_state
+from core.review.status import claim_names, claim_state
+from core.review.status import claim_states as claim_states_now
 from core.support import bug_report
 from core.timeline import settings as timeline_settings
 from ui import (
@@ -101,6 +104,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claim/edit": ("audit",),
     "/claim/add": ("audit", "propose"),
     "/claims/move": ("audit",),
+    "/claims/accept_all": ("audit", "propose"),
     "/stipulate": ("audit",),
     "/stipulation/withdraw": ("audit",),
     "/device/names": ("audit",),
@@ -122,7 +126,9 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/audit/start": ("audit", "propose", "model_check"),
     "/cloud/case": ("audit",),
     "/cloud/key": ("audit",),
+    "/cloud/key/remove": ("audit",),
     "/case/import": ("audit", "propose", "model_check"),
+    "/case/remove_file": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
     "/case/encrypt": ("audit", "propose", "model_check"),
@@ -218,6 +224,7 @@ class App:
         extractor_for: jobs.ExtractorFor | None = None,
         model_check: jobs.ModelCheckFn | None = check_model,
         cloud_config: Path | None = None,
+        name_file: Path | None = None,
     ) -> None:
         if db_path is None and home is None:
             raise ValueError("give a case database or a cases folder")
@@ -234,6 +241,8 @@ class App:
         self.path = ""  # the request being answered, so a page can mark its tab
         self._added: str | None = None
         self.jobs = jobs.Jobs()
+        self._reported: jobs.Job | None = None  # the finished job whose result Set up showed
+        self._claim_draft: dict[str, str] | None = None  # a refused Add a claim, to refill
         self.components_for = components_for or _real_components
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
@@ -245,8 +254,19 @@ class App:
         self.cloud_config = (
             cloud_config  # None: $MABILLON_CLOUD_CONFIG, else ~/.mabillon/cloud.json
         )
+        # The examiner's name is remembered on this computer (the server passes the settings
+        # file; tests and one-off screens do not), so a restart does not ask for it again.
+        self.name_file = name_file
+        if not expert and name_file is not None:
+            try:
+                expert = json.loads(name_file.read_text(encoding="utf-8")).get("name")
+            except (OSError, ValueError, AttributeError):
+                expert = None
         if expert:
-            self.set_expert(expert)
+            try:
+                self.set_expert(expert)
+            except ReviewError:
+                self.expert = None
         if self.single is not None and not protect.is_locked(self.single):
             try:
                 self.open_case(self.single)
@@ -330,11 +350,10 @@ class App:
             return self._plain(405, "method not allowed")
         if req.method == "GET" and req.path.startswith(FONT_PREFIX):
             return self._font(req.path[len(FONT_PREFIX) :])
-        if req.method == "POST" and (
-            not self._origin_ok(req)
-            or not hmac.compare_digest(req.form.get("token", ""), self.token)
-        ):
+        if req.method == "POST" and not self._origin_ok(req):
             return self._plain(403, "This form did not come from this review screen.")
+        if req.method == "POST" and not hmac.compare_digest(req.form.get("token", ""), self.token):
+            return self._stale_page()
         if req.method == "POST":
             self._last_view = None  # whatever the post did, the next page is a new view
         if req.method == "GET" and req.path in HELP_GET:
@@ -354,6 +373,11 @@ class App:
             self.case = None
             self.flash = ("The case is locked. Open it with its passphrase.", True)
             return self._redirect("/cases")
+        if req.method == "POST" and req.path not in NO_CASE_POST:  # opening a case is fine
+            stale = self._stale_case(req.form)
+            if stale is not None:
+                self.flash = (stale, True)
+                return self._redirect("/")
         if req.method == "POST" and req.path in OWN_DB_POST:
             return self._post(None, req)
         try:
@@ -384,6 +408,38 @@ class App:
             return self._post(conn, req)
         finally:
             conn.close()
+
+    def _stale_page(self) -> Response:
+        """A post whose token this screen never issued: almost always a tab left open from
+        before Mabillon was restarted (each start makes a new token). Nothing was saved."""
+        page = self._page()
+        return self._html(
+            pages.error_page(
+                page,
+                403,
+                "This page is out of date: Mabillon was restarted after it opened, so nothing "
+                "was saved. Open the case again and make the change there.",
+            ),
+            403,
+        )
+
+    def _stale_case(self, form: dict[str, str]) -> str | None:
+        """Why a post must be refused because its page was drawn for another case (a second tab
+        opened a different case since), or None. A form names its case in for_case; a post
+        that does not (an older test client) is taken as meant for the open case."""
+        sent = form.get("for_case", "")
+        if not sent or self.case is None or sent == _case_key(self.case):
+            return None
+        meant = sent
+        if self.home is not None:
+            meant = next(
+                (c.name for c in cases.list_cases(self.home) if _case_key(c) == sent), sent
+            )
+        return (
+            f"Nothing was saved: that page was for the case {meant}, but {self.case.name} is "
+            "open now (it was opened in another tab or window). Open the right case from Cases "
+            "and make the change there."
+        )
 
     def _note_view(self, conn: sqlite3.Connection, req: Request, resp: Response | None) -> None:
         """Record the page the examiner just opened in the case's audit log (core/review/
@@ -472,8 +528,8 @@ class App:
         if job is not None and job.running:
             busy = job.kind == "audit"
             what = {
-                "audit": f"The audit is running: {job.done} of {job.total} claims finished. "
-                "<a href='/run'>See its progress</a>.",
+                "audit": f"The audit is running: {job.done} of {job.total} claims finished."
+                + ("" if self.path == "/run" else " <a href='/run'>See its progress</a>."),
                 "propose": f"The local model is proposing claims: {job.done} of {job.total} "
                 "paragraphs. <a href='/setup'>See the claims</a>.",
                 "model_check": "Checking the model. <a href='/setup'>See the result</a>.",
@@ -489,6 +545,7 @@ class App:
             many_cases=self.home is not None,
             path=self.path,
             cloud=self._case_uses_cloud(),
+            case_key="" if self.case is None else _case_key(self.case),
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -503,12 +560,13 @@ class App:
         if p == "/":
             return self._html(pages.overview(conn, page))
         if p == "/claims":
-            return self._html(pages.claims_queue(conn, page))
+            return self._html(pages.claims_queue(conn, page, self._next_step(conn)))
         if p == "/claim":
             body = pages.claim_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such claim")
         if p == "/claim/new":
-            return self._html(pages.new_claim_page(conn, page))
+            draft, self._claim_draft = self._claim_draft, None
+            return self._html(pages.new_claim_page(conn, page, draft))
         if p == "/evidence":
             body = pages.evidence_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such evidence item")
@@ -575,15 +633,24 @@ class App:
                 self._close_broken(case)
                 self.flash = (f"No report: {err}", True)
                 return self._redirect("/cases")
-            body = render_report(conn, timeline=self._timeline())
+            made = self.clock()
+            header = ReportHeader(case.name, self.expert, made)
+            body = render_report(conn, timeline=self._timeline(), header=header)
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+                # On screen only: a way back into the app and a way to save it.
+                body = body.replace(
+                    "<h1>Mabillon claims report</h1>",
+                    "<p class='screen-only' style='margin:0 0 12px'><a href='/'>Back to the "
+                    "case</a> · <a href='/report?download=1'>Save this report (HTML)</a></p>"
+                    "<h1>Mabillon claims report</h1>",
+                    1,
+                )
             resp = self._html(body)
             if download:
-                resp.headers.append(
-                    ("Content-Disposition", 'attachment; filename="mabillon-report.html"')
-                )
+                name = _report_file_name(case.name, made)
+                resp.headers.append(("Content-Disposition", f'attachment; filename="{name}"'))
             return resp
         return self._not_found(page, "no such page")
 
@@ -595,18 +662,21 @@ class App:
         if not back.startswith("/") or back.startswith("//"):
             back = "/"
         handlers: dict[str, Callable[[], str]] = {
-            "/expert": lambda: self._set_expert(f),
+            "/expert": lambda: self._set_expert(conn, f),
             "/case/new": lambda: self._new_case(f),
             "/case/open": lambda: self._open_case(f),
             "/case/encrypt": lambda: self._encrypt(f),
             "/case/lock": lambda: self._lock(),
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
+            "/case/recovery/new": lambda: self._new_recovery(f),
+            "/case/remove_file": lambda: self._remove_file(conn, f),  # type: ignore[arg-type]
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
             "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
             "/rationale/acknowledge": lambda: self._acknowledge(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
+            "/claims/accept_all": lambda: self._accept_all(conn, f),  # type: ignore[arg-type]
             "/claim/add": lambda: self._add_claim(conn, f),  # type: ignore[arg-type]
             "/claims/move": lambda: self._move_claim(conn, f),  # type: ignore[arg-type]
             "/claims/propose": lambda: self._propose(),
@@ -630,6 +700,7 @@ class App:
             "/audit/stop": lambda: self._stop_audit(),
             "/cloud/case": lambda: self._cloud_case(conn, f),  # type: ignore[arg-type]
             "/cloud/key": lambda: self._cloud_key(f),
+            "/cloud/key/remove": lambda: self._cloud_key_remove(),
             "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
@@ -648,7 +719,7 @@ class App:
             if req.path == "/claim/add":
                 back = pages.link("/claim", id=f.get("id", ""))
             if req.path in ("/case/new", "/case/open"):
-                back = "/setup#recovery" if self._recovery_for_open() else "/setup"
+                back = "/setup#recovery" if self._recovery_for_open() else self._landing()
             if req.path == "/case/encrypt":
                 back = "/setup#recovery"
             if req.path == "/case/lock":
@@ -724,8 +795,29 @@ class App:
             return "The report now includes examiner activity, with time on page, for this case."
         return "The report now leaves out examiner activity for this case."
 
-    def _set_expert(self, f: dict[str, str]) -> str:
+    def _set_expert(self, conn: sqlite3.Connection | None, f: dict[str, str]) -> str:
+        before = self.expert
         self.set_expert(f.get("name", ""))
+        if self.name_file is not None:
+            try:
+                self.name_file.parent.mkdir(parents=True, exist_ok=True)
+                self.name_file.write_text(json.dumps({"name": self.expert}), encoding="utf-8")
+            except OSError:
+                pass  # remembered for this launch only
+        if before is not None and before != self.expert and conn is not None:
+            # A change of name mid-case is on the record: decisions before and after it carry
+            # different names, and the log says they came from one screen.
+            cases._logged(
+                conn,
+                self.clock(),
+                self.actor,
+                "reviewer.rename",
+                {"from": f"expert:{before}", "to": self.actor, "session": self.session},
+            )
+            return (
+                f"Reviewing as {self.expert} (was {before}). The change is in the audit log; "
+                "decisions from now on carry the new name."
+            )
         return f"Reviewing as {self.expert}. Your name is recorded with every decision."
 
     def _decide(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -824,10 +916,10 @@ class App:
         claim = f.get("claim", "")
         if f.get("action") == "confirm":
             actions.confirm_verdict(conn, claim, self.actor, f.get("note", ""))
-            return f"Verdict on {claim} confirmed."
+            return f"Verdict on {_named(conn, claim)} confirmed."
         verdict = Verdict(f.get("verdict", ""))
         actions.override_verdict(conn, claim, verdict, self.actor, f.get("note", ""))
-        return f"Verdict on {claim} overridden: {verdict.value}."
+        return f"Verdict on {_named(conn, claim)} overridden: {verdict.value}."
 
     def _acknowledge(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         """The expert has seen that an item's rationale is withheld (core/review/withheld.py)."""
@@ -844,9 +936,32 @@ class App:
             if not text:
                 raise ReviewError("the claim text is empty")
         actions.set_claim_status(conn, f.get("claim", ""), status, self.actor, text)
-        return f"Claim {f.get('claim', '')} is {status.value}."
+        return f"Claim {_named(conn, f.get('claim', ''))} is {status.value}."
+
+    def _accept_all(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """Accept, as written, the proposed claims the page listed (only those: a claim
+        proposed after the page was drawn was not read, so it waits)."""
+        shown = [c for c in f.get("claims", "").split(",") if c]
+        still = {
+            r[0]
+            for r in conn.execute("SELECT id FROM claims WHERE status = 'proposed'")
+            if r[0] in shown
+        }
+        if not still:
+            raise ReviewError("no proposed claim from that list is still waiting")
+        for cid in shown:
+            if cid in still:
+                actions.set_claim_status(conn, cid, ClaimStatus.ACCEPTED, self.actor)
+        left = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
+        return f"Accepted {len(still)} claim{'s' if len(still) != 1 else ''} as written." + (
+            f" {left} more proposed since that page was drawn; decide on them below."
+            if left
+            else ""
+        )
 
     def _add_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        # What the expert typed is kept for the form if anything below refuses it.
+        self._claim_draft = {k: f.get(k, "") for k in ("paragraph", "text", "id", "type")}
         cid = f.get("id", "").strip()
         text = f.get("text", "").strip()
         if not cid or not text:
@@ -854,20 +969,28 @@ class App:
         para = f.get("paragraph", "")
         if conn.execute("SELECT 1 FROM govdoc_paragraphs WHERE id = ?", (para,)).fetchone() is None:
             raise ReviewError("pick the paragraph the claim comes from")
+        if conn.execute("SELECT 1 FROM claims WHERE id = ?", (cid,)).fetchone() is not None:
+            raise ReviewError(
+                f"the case already has a claim called {cid} (removed claims keep their id). "
+                "Give this one another id; your text is still in the form"
+            )
         actions.add_claim(conn, cid, para, text, ClaimType(f.get("type", "")), self.actor)
-        return f"Added {cid}. It needs a full audit before it has a verdict."
+        self._claim_draft = None
+        return f"Added {_named(conn, cid)}. It needs a full audit before it has a verdict."
 
     def _name_device(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         names = [n for n in f.get("names", "").split(",") if n.strip()]
         kept = actions.name_device(conn, f.get("device", ""), names, self.actor)
         if not kept:
-            return "Names cleared. Run the audit again to apply it."
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that name it are tested."
+            return "Names cleared." + _applies(conn, " Run the audit again to apply it.")
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that name it are tested."
+        )
 
     def _stipulate(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.stipulate_device_owner(conn, f.get("device", ""), f.get("person", ""), self.actor)
         propose_links(conn)  # a renamed owner may carry other names now
-        return "Stipulation recorded. Re-run the verdicts to apply it."
+        return "Stipulation recorded." + _applies(conn, " Re-run the verdicts to apply it.")
 
     # -- identities
 
@@ -888,8 +1011,10 @@ class App:
         names = [n for n in f.get("aliases", "").split(",") if n.strip()]
         kept = actions.set_aliases(conn, f.get("id", ""), names, self.actor)
         if not kept:
-            return "Other names cleared. It applies on the next audit run."
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+            return "Other names cleared." + _applies(conn, " It applies on the next audit run.")
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that use them are tested."
+        )
 
     def _add_alias(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         from core.identity import aliases
@@ -897,7 +1022,9 @@ class App:
         pid = f.get("id", "")
         have = [a.alias for a in aliases.stored(conn) if a.person_id == pid]
         kept = actions.set_aliases(conn, pid, [*have, f.get("alias", "")], self.actor)
-        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+        return f"Saved {', '.join(kept)}." + _applies(
+            conn, " Run the audit again so claims that use them are tested."
+        )
 
     def _add_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         first = f.get("first_day", "")
@@ -910,7 +1037,9 @@ class App:
             f.get("defined_as", ""),
             self.actor,
         )
-        return f"Saved the event {name}. Run the audit again so claims dated by it are tested."
+        return f"Saved the event {name}." + _applies(
+            conn, " Run the audit again so claims dated by it are tested."
+        )
 
     def _remove_event(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.remove_event(conn, f.get("name", ""), self.actor)
@@ -957,7 +1086,7 @@ class App:
 
     def _withdraw(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.withdraw_stipulation(conn, f.get("id", ""), self.actor)
-        return "Stipulation withdrawn. Re-run the verdicts to apply it."
+        return "Stipulation withdrawn." + _applies(conn, " Re-run the verdicts to apply it.")
 
     # -- cases
 
@@ -976,14 +1105,14 @@ class App:
         for c in cases.list_cases(self.home):
             try:
                 lock = _lock_state(c)
-                if lock == "locked":
+                if lock in ("locked", "partial-locked"):
                     state = "locked"
                 else:
                     conn = connect(c.db)
                     try:
                         try:
                             audit_log.require_intact(conn, audit_log.anchors_path(c.db))
-                            state = cases.last_audit_line(conn)
+                            state = _stage(c, conn)
                         except audit_log.ChainBroken as err:
                             state = f"Review blocked: {err.problem}"
                     finally:
@@ -1013,8 +1142,29 @@ class App:
         key = cases.recovery_key_for(case)
         if key is not None:
             self.recovery = (case.db, key)
-            return f"Made the encrypted case {case.name}. Write down its recovery key below."
+            return (
+                f"Made the encrypted case {case.name}. Write down its recovery key, shown at the "
+                "top of this page."
+            )
         return f"Made the case {case.name}. Import its files below."
+
+    def _next_step(self, conn: sqlite3.Connection) -> str | None:
+        """Before the first audit, the setup step that comes next, in its own words."""
+        if self.case is None or pipeline.view_run(conn) is not None:
+            return None
+        todo = [r for r in cases.readiness(self.case, conn) if not r.ok]
+        return todo[0].text if todo else "start the audit."
+
+    def _landing(self) -> str:
+        """Where opening a case lands: an audited case on its Case page, with what waits on the
+        expert; a case still being set up on Set up and run."""
+        if self.case is None:
+            return "/setup"
+        conn = connect(self.case.db)
+        try:
+            return "/" if pipeline.view_run(conn) is not None else "/setup"
+        finally:
+            conn.close()
 
     def _open_case(self, f: dict[str, str]) -> str:
         if self.home is None:
@@ -1061,13 +1211,18 @@ class App:
         self.recovery = (case.db, done.recovery_key)
         return (
             f"Encrypted {case.name}: the database and {done.files} copied file(s). Write down "
-            "its recovery key below."
+            "its recovery key, shown at the top of this page."
         )
 
     def _lock(self) -> str:
         case = self._open()
         if protect.state(case) == "plain":
             raise ReviewError("this case is not encrypted, so there is nothing to lock")
+        if self._recovery_for_open() is not None:
+            raise ReviewError(
+                'write down the recovery key at the top of this page and press "I have written '
+                'it down" first. Locking now would lose the only copy of it'
+            )
         protect.lock(case)
         self.case = None
         self.recovery = None
@@ -1081,8 +1236,25 @@ class App:
         return "Passphrase changed. The recovery key is the same as before."
 
     def _recovery_done(self) -> str:
+        if self.case is not None and self.recovery is not None and self.recovery[0] == self.case.db:
+            protect.recovery_pending(self.case, False)
         self.recovery = None
         return "Recovery key hidden. Mabillon keeps no copy of it."
+
+    def _remove_file(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        from core.casework.remove import remove_file
+
+        name = remove_file(self._open(), conn, f.get("source", ""), self.actor, f.get("reason", ""))
+        return f"Removed {name} from the case. Your original file is not touched."
+
+    def _new_recovery(self, f: dict[str, str]) -> str:
+        case = self._open()
+        key = protect.new_recovery_key(case, f.get("passphrase", ""), self.actor)
+        self.recovery = (case.db, key)
+        return (
+            "Made a new recovery key. Write it down now: it is shown at the top of this page, "
+            "and the old one no longer opens the case."
+        )
 
     # -- set up and run
 
@@ -1097,11 +1269,20 @@ class App:
             check = job.check
         if check is not None:
             model_lines = check.lines
-            note = f"Checked {check.checked_at_utc}."
+            when = _when(check.checked_at_utc)
+            note = (
+                f"The model passed its check {when}."
+                if check.ok
+                else f"The model failed its check {when}. The audit cannot run until it passes."
+            )
         elif self.model_check is None:
             model_lines, note = None, "The model check is off for this screen."
         else:
-            model_lines, note = None, "Not checked yet. The audit checks the model first."
+            model_lines, note = (
+                None,
+                "Not checked yet. The audit checks the model before it starts, or check it now "
+                "(the first check reads the whole 9 GB file, a minute or two).",
+            )
         if job is not None and job.kind == "model_check" and job.running and job.hashed:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
@@ -1129,9 +1310,17 @@ class App:
                 f"{len(attempt['claim_order'] or ())} claims ({attempt['note'] or 'no reason'})."
                 " Resume it: finished claims reuse their stored model outputs."
             )
-        if job is not None and not job.running and job.kind in ("propose", "model_check"):
-            if page.flash is None:
+        # A finished propose or model check reports once, even over the "updates itself" note
+        # from starting it (a fast failure ends before the page that started it is shown).
+        if (
+            job is not None
+            and not job.running
+            and job.kind in ("propose", "model_check")
+            and self._reported is not job
+        ):
+            if page.flash is None or page.flash[0].endswith(UPDATES):
                 page.flash = (job.message, job.state != "done")
+            self._reported = job
         return pages.setup_page(
             conn,
             page,
@@ -1146,16 +1335,22 @@ class App:
             resumable=resumable,
             protection=protect.state(case),
             recovery_key=self._recovery_for_open(),
+            recovery_unconfirmed=protect.recovery_unconfirmed(case),
             cloud=self._cloud_choice(conn),
             cloud_case=cloud_policy.case_cloud(conn),
             cloud_key=self._cloud_key_state(),
+            cloud_key_from=self._cloud_key_source(),
+            audited=_audited(conn),
+            model_ok=None
+            if check is None or (job is not None and job.running and job.kind == "model_check")
+            else check.ok,
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         delta = -1 if f.get("delta") == "-1" else 1
         order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta)
         cid = f.get("claim", "")
-        return f"{cid} now runs at position {order.index(cid) + 1}."
+        return f"{_named(conn, cid)} now runs at position {order.index(cid) + 1}."
 
     def _propose(self) -> str:
         _ = self.actor  # a named expert starts model work on the case
@@ -1163,7 +1358,7 @@ class App:
             jobs.Job("propose", self._open().db),
             jobs.propose_job(extractor_for=self.extractor_for),
         )
-        return "The local model is proposing claims in the background. This page updates itself."
+        return "The local model is proposing claims in the background. " + UPDATES
 
     def _check_model(self) -> str:
         if self.model_check is None:
@@ -1175,7 +1370,7 @@ class App:
             self.last_check = job.check
 
         self.jobs.start(jobs.Job("model_check", self._open().db), run)
-        return "Checking the model in the background. This page updates itself."
+        return "Checking the model in the background. " + UPDATES
 
     # -- cloud
 
@@ -1234,11 +1429,30 @@ class App:
             )
         return "Saved: this case runs on the local model only."
 
+    def _cloud_key_remove(self) -> str:
+        _ = self.actor
+        case_db = self.case.db if self.case is not None else None
+        where = cloud_llm.remove_key(self.cloud_config, case_db=case_db)
+        if where == "case":
+            return "Removed the Anthropic key saved in this case."
+        if where == "file":
+            return "Removed the Anthropic key saved on this computer."
+        raise ReviewError("no saved Anthropic key to remove")
+
+    def _cloud_key_source(self) -> str | None:
+        case_db = self.case.db if self.case is not None else None
+        try:
+            return cloud_llm.key_source(self.cloud_config, case_db=case_db)
+        except OSError:
+            return None
+
     def _cloud_key(self, f: dict[str, str]) -> str:
         _ = self.actor  # a named expert sets the key
         key = f.get("api_key", "").strip()
-        if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
+        if not key.startswith("sk-ant-"):
             raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
+        if len(key) < 20 or any(c.isspace() for c in key):
+            raise ReviewError("that key is too short or has a space in it: paste the whole key")
         case_db = self.case.db if self.case is not None else None
         try:
             where = cloud_llm.save_key(key, self.cloud_config, case_db=case_db)
@@ -1298,9 +1512,22 @@ class App:
             if choice.use and choice.config is not None
             else ""
         )
+        attempt = pipeline.latest_attempt(conn)
+        reused = len(attempt["manifest"]) if attempt is not None else 0
+        what = f"{len(order)} claims"
+        if reused:
+            # A resume reuses finished claims' stored outputs; the estimate is for the rest.
+            left = max(len(order) - reused, 0)
+            job.estimate_seconds = jobs.estimate_seconds(left, spc, cloud_spc)
+            what = f"the {left} claims left ({reused} already finished are reused)"
+        first = (
+            f"Checking the model first; if it passes, the audit runs on {what}"
+            if check is not None
+            else f"The audit started on {what}"
+        )
         return (
-            f"The audit started on {len(order)} claims, {jobs.duration(job.estimate_seconds)} by "
-            f"a rough estimate.{where} Each claim appears for review as soon as it is labeled."
+            f"{first}, {jobs.duration(job.estimate_seconds)} by a rough estimate.{where} Each "
+            "claim appears for review as soon as it is labeled."
         )
 
     def _stop_audit(self) -> str:
@@ -1385,6 +1612,9 @@ class App:
         def before_file(fields: dict[str, str]) -> None:
             if not hmac.compare_digest(fields.get("token", ""), self.token):
                 raise _Refused
+            stale = self._stale_case(fields)
+            if stale is not None:
+                raise ReviewError(stale.removeprefix("Nothing was saved: "))
             self._last_view = None  # an accepted post: the page it returns to is a new view
             self._guard("/case/import")
             _ = self.actor
@@ -1408,7 +1638,8 @@ class App:
         except _Refused:
             for p in written:
                 cases.discard(p)
-            return self._plain(403, "This form did not come from this review screen.")
+            _drain(stream, length - counted.read_bytes)  # else the browser shows a reset
+            return self._stale_page()
         except (upload.UploadError, ReviewError, OSError) as err:
             for p in written:
                 cases.discard(p)
@@ -1484,8 +1715,20 @@ class App:
     def _redecide(self, conn: sqlite3.Connection) -> str:
         result = redecide(conn, self.actor)
         msg = f"Verdicts re-run with the rules ({len(result.decisions)} claims)."
+        if result.carried:
+            n = len(result.carried)
+            msg += f" Your verdict decision{'s' if n > 1 else ''} on {n} unchanged claim" + (
+                "s carry over." if n > 1 else " carries over."
+            )
+        if result.lapsed:
+            msg += (
+                " The verdict changed on "
+                + ", ".join(claim_names(conn, result.lapsed))
+                + ", so your earlier confirmation or override no longer applies: confirm "
+                "again."
+            )
         if result.skipped:
-            msg += " Needs a full audit: " + ", ".join(sorted(result.skipped)) + "."
+            msg += " Needs a full audit: " + ", ".join(claim_names(conn, result.skipped)) + "."
         return msg
 
     # -- help and the bug report
@@ -1619,10 +1862,75 @@ def _chain_problem(case: cases.Case) -> str | None:
     return None
 
 
+UPDATES = "This page updates itself."
+
+
+def _named(conn: sqlite3.Connection, claim_id: str) -> str:
+    """A claim as messages name it ("¶6.2", as on screen), not by its internal id."""
+    return (claim_names(conn, [claim_id]) or [claim_id])[0]
+
+
+def _when(iso_utc: str) -> str:
+    """A check's time in words on this computer's clock: "today at 14:05", "on 3 Nov at 09:12"."""
+    try:
+        at = datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return f"at {iso_utc}"
+    now = datetime.now(at.tzinfo)
+    clock = at.strftime("%H:%M")
+    if at.date() == now.date():
+        return f"today at {clock}"
+    return f"on {at.day} {at.strftime('%b')} at {clock}"
+
+
+def _audited(conn: sqlite3.Connection) -> str | None:
+    """The date of the last finished audit, or None."""
+    run = pipeline.last_run(conn)
+    if run is None or run.get("partial") or run.get("status") not in (None, "completed"):
+        return None
+    return cases.audited_on(conn, run)
+
+
+def _applies(conn: sqlite3.Connection, after_a_run: str) -> str:
+    """The second half of a setup change's message: before any audit it simply applies when
+    the audit runs; after one, what to run again."""
+    if conn.execute("SELECT 1 FROM pipeline_runs LIMIT 1").fetchone() is None:
+        return " It applies when you run the audit."
+    return after_a_run
+
+
+def _report_file_name(case_name: str, made: datetime) -> str:
+    """A saved report's file name, so two cases' reports never share one:
+    mabillon-report-us-v-alvarez-2026-11-05.html (letters, digits and dashes only)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", case_name.lower()).strip("-")[:60].strip("-") or "case"
+    return f"mabillon-report-{slug}-{made.strftime('%Y-%m-%d')}.html"
+
+
+def _stage(case: cases.Case, conn: sqlite3.Connection) -> str:
+    """The Cases list's line for a case: its stage, what waits on the expert, what is next."""
+    if pipeline.view_run(conn) is None:
+        return cases.stage_line(case, conn)
+    states = claim_states_now(conn)
+    waiting = sum(1 for st in states if pages.needs_you(st))
+    stale = any(st.decision is not None and st.stale for st in states)
+    return cases.stage_line(case, conn, needs_you=waiting, stale=stale)
+
+
+def _case_key(case: cases.Case) -> str:
+    """Names a case in its forms: its folder in a cases folder, else its database file."""
+    return case.folder.name if case.db.name == cases.DB_NAME else case.db.name
+
+
 def _lock_state(case: cases.Case) -> str:
-    if protect.state(case) == "plain":
+    """plain, locked, open, or for an encryption that did not finish (part of the case still
+    readable on disk) partial-locked or partial."""
+    st = protect.state(case)
+    if st == "plain":
         return "plain"
-    return "locked" if protect.is_locked(case) else "open"
+    locked = protect.is_locked(case)
+    if st == "partial":
+        return "partial-locked" if locked else "partial"
+    return "locked" if locked else "open"
 
 
 def _drain(stream: BinaryIO, n: int) -> None:
