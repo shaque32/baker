@@ -3069,7 +3069,8 @@ def backup_section(page: Page, busy: bool, root: str, protection: str) -> str:
         "<h2 id='backup'>Backup</h2>"
         "<p>Makes a new folder with a verified copy of this case: its database, audit log, "
         f"settings and file copies. {e(kept)} Copy that folder to a drive kept off this "
-        "computer. To restore, open the backup folder as a case, or copy it back whole.</p>"
+        "computer. To restore, copy the backup folder whole into the cases folder; it opens as a "
+        "case.</p>"
         + wait
         + page.form(
             "/case/backup",

@@ -22,8 +22,9 @@ one comment on the PR, and go on to the next PR.
 2. **CI green on the latest commit.** Every check run on the PR's current head commit has
    finished and passed. Required: the `checks` workflow (`make check` on Linux and Windows:
    lint, tests and the eval gate, which needs case01 accuracy of at least 0.80 and zero false
-   supported). `clean-install` and `windows-installer` run only when the PR touches the paths
-   in their workflow files' `paths:` filters; when GitHub scheduled one on the head commit, it
+   supported). `clean-install`, `windows-installer` and `dependency-audit` (pip-audit on the
+   installed packages) run only when the PR touches the paths in their workflow files'
+   `paths:` filters; when GitHub scheduled one on the head commit, it
    must pass, and when it did not, do not wait for it. Pending checks mean wait, not merge. A
    `make-check` run from the `pull_request` event shows as skipped on purpose (a branch of this
    repository is checked by its `push` run); it is the `push` run on the same commit that must
