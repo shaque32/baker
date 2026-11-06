@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "description": "The house rules every change must follow: evidence rules, data safety, network and privacy limits, frozen signed files, and the changelog rule. The source of truth for what counts as a rule violation."
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "description": "How the pipeline fits together (import, extraction, stance labelling, verdict rules, review screen, report). Read before judging whether a change breaks a data flow."
+    },
+    {
+      "path": "docs/MERGING.md",
+      "description": "The merge rulebook: the Merge order section every PR description needs, the list of signed files, and when a changelog entry is required."
+    },
+    {
+      "path": "docs/changelog/README.md",
+      "description": "The format a docs/changelog/ entry must follow."
+    }
+  ]
+}

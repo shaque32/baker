@@ -34,11 +34,15 @@ one comment on the PR, and go on to the next PR.
    the PRs merged since; skip it until its thread merges `main` into the branch and the new
    `push` run passes. Never resolve a conflict yourself: the PR's own thread does it
    (section 5).
-4. **Every review finding answered.** Each Codex comment and each Grok comment on the PR has
-   either a fix pushed and a reply saying what changed, or a reply explaining why not. A Grok
-   point the author disagreed with is settled only when the reply says the tie-break is done;
-   until then the PR says so under Hold. No review on the PR is still "Changes requested";
-   that clears only when the review is followed by an approval or is dismissed.
+4. **Every review finding answered.** Each Greptile, Codex and Grok comment on the PR has
+   either a fix pushed and a reply saying what changed, or a reply explaining why not.
+   Greptile has the final say (line 8): its suggestions are applied by default, and a
+   Greptile finding stays unfixed only when the fix would break a rule in `CLAUDE.md`, a
+   test or the eval gate, or change a signed file; then the reply gives that reason and the
+   PR's thread tells Arsh. Where Codex or Grok disagrees with Greptile, Greptile's call stands.
+   A Grok point the author disagreed with is settled only when the reply says the tie-break
+   is done; until then the PR says so under Hold. No review on the PR is still "Changes
+   requested"; that clears only when the review is followed by an approval or is dismissed.
 5. **Merge order allows it.** Every PR under "Merge after" is merged, and "Hold" says `none`.
 6. **Signed files approved.** If the PR changes an Arsh-signed file (section 4), its Merge
    order section has a `Signed:` line naming each signed file and saying Arsh approved it in
@@ -54,12 +58,18 @@ one comment on the PR, and go on to the next PR.
    any file, docs included), carries a changelog entry (section 6), or its description says
    why the change is not meaningful (a refactor, a test-only fix or a wording change that
    changes no recorded fact).
-8. **Clean Codex pass.** Codex has reviewed the PR's latest change to its own files (a later
-   commit that only merges `main` needs no new pass) and found nothing: Codex reacted 👍, or
-   its review summary comment shows the review completed on that commit with no findings.
-   A pass with findings is not clean; after the fixes, a new Codex review must come back clean.
-   While Codex is out of usage, Grok audits instead and its findings get fixed as usual, but
-   a Grok audit never replaces the Codex pass: wait for Codex, do not merge.
+8. **Clean Greptile pass.** Greptile (the `greptile-apps[bot]` account) is the final review
+   before merge. It has reviewed the PR's latest change to its own files, and every inline
+   comment from that review is fixed and replied to, or replied to under line 4's
+   exceptions. Greptile reviews once when a PR opens. After a fix to the PR's own files, the
+   PR's thread comments `@greptileai` to ask for a new review, and the pass is clean when
+   that latest review has no unanswered inline comment. A Greptile check run on the head
+   commit, when there is one, must not be failing. A later commit that only merges `main`
+   needs no new pass. While Greptile is down, wait for it; a Codex or Grok review does not
+   replace it.
+   - Codex and Grok may still review any PR, and their findings are handled under line 4,
+     but the merge does not wait for either one.
+   - A clean Greptile pass never replaces Arsh's approval of a signed file (line 6).
 
 ### Urgent Grok findings
 
