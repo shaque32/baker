@@ -1792,6 +1792,8 @@ index 8f4f6a9..2b2bf40 100644
 
 ## 2026-11-06 claude/project-thread-qw0rxu: amend rules 0.5.0, exact counts never rest on checks alone
 File: core/audit/rules.py (0.5.0, before it merges)
+SIGNED by Arsh on 2026-11-06 (23:46Z, he picked "Rule skips exact counts" on the decision card in
+the "Research the AI-native forensic analyst pivot" thread). APPLIED on PR #228.
 Why: the precondition in the entry above (count check 1.3.0, "exactly" passes only on a full
 extraction) would turn the signed assumption sheets of case01 (C03), case03, case04, case05 and
 case06 wrong: they expect the count check to pass on those curated reports. Instead of changing
