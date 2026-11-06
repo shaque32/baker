@@ -199,6 +199,7 @@ CSS = """
 .pg-claim .msg .t, .pg-evidence .msg .t { grid-column: 2; grid-row: 1; margin: 0;
   font-size: 12px; white-space: nowrap; }
 .pg-claim .msg .body, .pg-evidence .msg .body { grid-column: 1 / -1; }
+.pg-claim .msg.cont .body, .pg-evidence .msg.cont .body { grid-column: 1; grid-row: 1; }
 .pg-claim .msg.target, .pg-evidence .msg.target { border: 0; box-shadow: none;
   outline: 1.5px solid var(--accent); outline-offset: 0; }
 .pg-claim .msg .cited, .pg-evidence .msg .cited { font-size: 12px; }
