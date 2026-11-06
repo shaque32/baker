@@ -108,11 +108,13 @@ def test_with_no_console_the_output_goes_to_a_log_file(tmp_path, monkeypatch):
     # pythonw (the Windows shortcuts) leaves sys.stdout and sys.stderr as None; the screen's
     # request log writes to sys.stderr, so the first request would fail without a stream.
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(cli, "_NO_CONSOLE", False)  # restored after: other tests have a console
     monkeypatch.setattr(cli.sys, "stdout", None)
     monkeypatch.setattr(cli.sys, "stderr", None)
     cli._log_when_no_console()
     log = cli.sys.stderr
     try:
+        assert cli._NO_CONSOLE
         assert log is cli.sys.stdout and log is not None
         log.write("mabillon serve: GET /open\n")
         assert (
@@ -157,6 +159,7 @@ def test_with_no_window_serve_opens_the_browser(home, tmp_path, monkeypatch):
     opened: list[str] = []
     served: list[object] = []
     monkeypatch.setattr(window, "show", lambda link, audit_running: False)
+    monkeypatch.setattr(cli, "_no_console_on_windows", lambda: False)  # run from a console
     monkeypatch.setattr(cli, "_open_in_browser", opened.append)
 
     def until_stopped(server, key) -> None:  # noqa: ANN001
@@ -227,10 +230,11 @@ def test_attachment_names_are_safe_file_names():
 
 def test_downloads_go_where_the_account_keeps_them(tmp_path, monkeypatch):
     assert downloads.downloads_folder(tmp_path) == tmp_path / "Downloads"
-    if sys.platform == "win32":  # the Windows runner asks Windows itself
+    if sys.platform == "win32":  # the Windows runner asks Windows itself (its service account
+        # may have no Downloads known folder, and then the home folder's is used)
         found = downloads.windows_downloads()
-        assert found is not None and found.is_absolute()
-        assert downloads.downloads_folder() == found
+        assert found is None or found.is_absolute()
+        assert downloads.downloads_folder() == (found or Path.home() / "Downloads")
     moved = tmp_path / "D" / "My downloads"
     monkeypatch.setattr(downloads.sys, "platform", "win32")
     monkeypatch.setattr(downloads, "windows_downloads", lambda: moved)

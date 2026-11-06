@@ -37,7 +37,8 @@ _FOLDERID_DOWNLOADS = uuid.UUID("374DE290-123F-4565-9164-39C4925E467B")
 
 
 def windows_downloads() -> Path | None:
-    """Where Windows keeps this account's Downloads folder, or None when it cannot say."""
+    """Where Windows keeps this account's Downloads folder, or None when it cannot say (an
+    account with no loaded profile, such as a service, may have none)."""
     import ctypes
     from ctypes import wintypes
 
@@ -53,8 +54,15 @@ def windows_downloads() -> Path | None:
     folder_id = GUID(u.fields[0], u.fields[1], u.fields[2], (ctypes.c_ubyte * 8)(*u.bytes[8:]))
     found = ctypes.c_wchar_p()
     try:
-        shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
-        result = shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(found))
+        get = ctypes.windll.shell32.SHGetKnownFolderPath  # type: ignore[attr-defined]
+        get.argtypes = [
+            ctypes.POINTER(GUID),
+            wintypes.DWORD,
+            wintypes.HANDLE,
+            ctypes.POINTER(ctypes.c_wchar_p),
+        ]
+        get.restype = ctypes.c_long  # an HRESULT: 0 when found
+        result = get(ctypes.byref(folder_id), 0, None, ctypes.byref(found))
     except (AttributeError, OSError):
         return None
     try:
