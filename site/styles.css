@@ -159,11 +159,23 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
    through the screen. Reduced motion turns all of it off and shows the finished state. */
 .blur-in .w { display: inline-block; animation: blur-in 0.9s var(--ease) both; }
 @keyframes blur-in { from { opacity: 0; filter: blur(12px); transform: translateY(-0.16em); } }
-.blur-in .w:nth-child(2) { animation-delay: 0.07s; } .blur-in .w:nth-child(3) { animation-delay: 0.14s; }
-.blur-in .w:nth-child(4) { animation-delay: 0.21s; } .blur-in .w:nth-child(5) { animation-delay: 0.28s; }
-.blur-in .w:nth-child(6) { animation-delay: 0.35s; } .blur-in .w:nth-child(7) { animation-delay: 0.42s; }
-.blur-in .w:nth-child(8) { animation-delay: 0.49s; } .blur-in .w:nth-child(9) { animation-delay: 0.56s; }
-.blur-in .w:nth-child(10) { animation-delay: 0.63s; }
+.blur-in .ph .w:nth-child(1) { animation-delay: 0.07s; } .blur-in .ph .w:nth-child(2) { animation-delay: 0.14s; }
+.blur-in > .w:nth-child(3) { animation-delay: 0.21s; }
+.blur-in > .w:nth-child(4) { animation-delay: 0.28s; }
+.blur-in > .w:nth-child(5) { animation-delay: 0.35s; }
+.blur-in > .w:nth-child(6) { animation-delay: 0.42s; }
+.blur-in > .w:nth-child(7) { animation-delay: 0.49s; }
+.blur-in > .w:nth-child(8) { animation-delay: 0.56s; }
+.blur-in > .w:nth-child(9) { animation-delay: 0.63s; }
+/* "every claim" then gets a frame drawn around it, with a small pointer at its corner
+   (from Aceternity's pointer highlight) */
+.ph { position: relative; display: inline-block; }
+.ph::before { content: ""; position: absolute; inset: 0.04em -0.14em -0.02em; border: 1.5px solid var(--ink-muted); border-radius: 3px;
+  animation: ph-draw 0.9s var(--ease) 1.05s both; }
+.ph::after { content: ""; position: absolute; right: -0.42em; bottom: -0.3em; width: 0.32em; height: 0.36em; background: var(--ink-fg);
+  clip-path: polygon(0 0, 100% 62%, 52% 64%, 34% 100%); animation: ph-point 0.5s var(--ease) 1.8s both; }
+@keyframes ph-draw { from { clip-path: inset(0 100% 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes ph-point { from { opacity: 0; transform: translate(-0.3em, -0.3em); } }
 .hero .lede, .hero .actions, .hero .audience-note { animation: rise-in 0.9s var(--ease) 0.55s both; }
 .hero .actions { animation-delay: 0.7s; } .hero .audience-note { animation-delay: 0.8s; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } }
@@ -173,6 +185,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .js .app-win.in .app-list p:nth-child(4) { transition-delay: 0.18s; } .js .app-win.in .app-list p:nth-child(5) { transition-delay: 0.24s; }
 .js .app-win.in .app-list p:nth-child(6) { transition-delay: 0.3s; } .js .app-win.in .app-list p:nth-child(7) { transition-delay: 0.36s; }
 .js .app-win.in .app-list p:nth-child(8) { transition-delay: 0.42s; }
+/* The hero window's tilt, set from main.js as the page scrolls (from Aceternity's container scroll) */
+.hero > .wrap { perspective: 1400px; }
+.hero .app-win { transform-origin: 50% 0; will-change: transform; }
 .magnet { transition: transform 0.4s var(--ease), opacity 0.2s; will-change: transform; }
 .js .scrub .w { opacity: 0.2; transition: opacity 0.35s linear; }
 .js .scrub .w.lit { opacity: 1; }

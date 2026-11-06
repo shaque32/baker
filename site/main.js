@@ -1,6 +1,6 @@
 // Drives the home page: fades sections in on first sight, runs the one-claim walk as a
-// stepper, lights one heading word by word on scroll, and lets "Book a demo" lean toward
-// the pointer. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
+// stepper, lights one heading word by word on scroll, lets "Book a demo" lean toward the
+// pointer, and lays the hero window flat as the page scrolls. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
 // is unchanged, only what moves the dial. Autoplay suggests the rhythm; focus, the pause
 // button, keys, or a tab click take it over at any moment. A mouse resting on the panel does not
 // pause it.
@@ -275,4 +275,30 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     });
     el.addEventListener("pointerleave", () => { el.style.transform = ""; });
   });
+})();
+
+// The hero window starts tilted back and lies flat as the page scrolls, so the review screen
+// settles into view under the headline. Wide screens only; reduced motion keeps it flat.
+(function () {
+  const win = document.querySelector(".hero .app-win");
+  if (!win || still) return;
+  const wide = window.matchMedia("(min-width: 961px)");
+  let queued = false;
+  const paint = () => {
+    queued = false;
+    if (!wide.matches) { win.style.transform = ""; return; }
+    const vh = window.innerHeight;
+    const top = win.getBoundingClientRect().top;
+    // 0 while the window's top sits low on the screen, 1 once it has risen to a quarter of it.
+    const p = Math.min(1, Math.max(0, (vh * 0.8 - top) / (vh * 0.55)));
+    const tilt = 16 * (1 - p);
+    const scale = 0.94 + 0.06 * p;
+    win.style.transform = `rotateX(${tilt.toFixed(2)}deg) scale(${scale.toFixed(3)})`;
+  };
+  const ask = () => {
+    if (!queued) { queued = true; requestAnimationFrame(paint); }
+  };
+  window.addEventListener("scroll", ask, { passive: true });
+  window.addEventListener("resize", ask);
+  paint();
 })();
