@@ -1811,6 +1811,9 @@ Diff (on top of the entry above):
 The docstring for rule 3c and the 3c blocker reason say the same thing.
 
 ## 2026-11-06 claude/project-thread-jvh1pc: allow the license check outside core/ (for when sign-in is turned on)
+SIGNED by Arsh on 2026-11-06 22:29Z ("approve" in the "Make Mabillon a desktop app with sign-in"
+thread), with the rest of the sign-in privacy wording (plans/desktop-sign-in.md, sections A to D).
+To apply on main by a human; CLAUDE.md stays human-edited.
 File: CLAUDE.md
 Why: sign-in (account/, off by default) adds one network call outside core/: the license check
 to account.getmabillon.com. CLAUDE.md limits network calls only inside core/, but its "No
