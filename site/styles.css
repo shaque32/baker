@@ -153,6 +153,30 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 #affidavit > .wrap { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); }
 #affidavit .sheet-body { grid-template-columns: minmax(0, 1fr) 14rem; }
 
+/* Motion borrowed from React Bits patterns, written as plain CSS and script for this static page.
+   The hero headline comes into focus word by word; the claim list in the hero window arrives in
+   order; "Book a demo" leans toward the pointer; one heading lights up word by word as it scrolls
+   through the screen. Reduced motion turns all of it off and shows the finished state. */
+.blur-in .w { display: inline-block; animation: blur-in 0.9s var(--ease) both; }
+@keyframes blur-in { from { opacity: 0; filter: blur(12px); transform: translateY(-0.16em); } }
+.blur-in .w:nth-child(2) { animation-delay: 0.07s; } .blur-in .w:nth-child(3) { animation-delay: 0.14s; }
+.blur-in .w:nth-child(4) { animation-delay: 0.21s; } .blur-in .w:nth-child(5) { animation-delay: 0.28s; }
+.blur-in .w:nth-child(6) { animation-delay: 0.35s; } .blur-in .w:nth-child(7) { animation-delay: 0.42s; }
+.blur-in .w:nth-child(8) { animation-delay: 0.49s; } .blur-in .w:nth-child(9) { animation-delay: 0.56s; }
+.blur-in .w:nth-child(10) { animation-delay: 0.63s; }
+.hero .lede, .hero .actions, .hero .audience-note { animation: rise-in 0.9s var(--ease) 0.55s both; }
+.hero .actions { animation-delay: 0.7s; } .hero .audience-note { animation-delay: 0.8s; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } }
+.js .app-win .app-list p { opacity: 0; transform: translateY(8px) scale(0.98); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
+.js .app-win.in .app-list p { opacity: 1; transform: none; }
+.js .app-win.in .app-list p:nth-child(2) { transition-delay: 0.06s; } .js .app-win.in .app-list p:nth-child(3) { transition-delay: 0.12s; }
+.js .app-win.in .app-list p:nth-child(4) { transition-delay: 0.18s; } .js .app-win.in .app-list p:nth-child(5) { transition-delay: 0.24s; }
+.js .app-win.in .app-list p:nth-child(6) { transition-delay: 0.3s; } .js .app-win.in .app-list p:nth-child(7) { transition-delay: 0.36s; }
+.js .app-win.in .app-list p:nth-child(8) { transition-delay: 0.42s; }
+.magnet { transition: transform 0.4s var(--ease), opacity 0.2s; will-change: transform; }
+.js .scrub .w { opacity: 0.2; transition: opacity 0.35s linear; }
+.js .scrub .w.lit { opacity: 1; }
+
 /* The file formats Mabillon reads, as plain names under the hero window */
 .band.formats { padding-bottom: 8px; }
 .band.formats + .band { border-top: 0; }
