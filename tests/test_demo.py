@@ -75,16 +75,26 @@ def test_demo_matches_the_answer_key_except_the_claim_left_for_the_demo(root):
     assert (got["D02"], got["D03"]) == ("supported", "unproven")
     for claim_id in extra:
         del got[claim_id]
-    for claim_id in demo.LEFT_OPEN:
-        assert got[claim_id] == "unproven"
+    for claim_id in demo.LEFT_OPEN:  # rules 0.5.0: its code checks carry it until you accept
+        assert got[claim_id] == "supported"
+        basis = conn.execute(
+            "SELECT supported_basis FROM verdicts WHERE claim_id = ? AND pipeline_run_id = ?",
+            (claim_id, pipeline.last_run(conn)["run_id"]),
+        ).fetchone()[0]
+        assert basis == "checked", claim_id
     assert {c: v for c, v in got.items() if c not in demo.LEFT_OPEN} == {
         c: v for c, v in gold.items() if c not in demo.LEFT_OPEN
     }
 
 
-def test_the_live_step_makes_c05_supported_only_after_the_expert_accepts(root):
+def test_the_live_step_makes_c05_expert_confirmed_only_after_the_expert_accepts(root):
     conn = connect(_case(root).db)
     run = pipeline.last_run(conn)
+    before = conn.execute(
+        "SELECT supported_basis FROM verdicts WHERE claim_id = 'C05' AND pipeline_run_id = ?",
+        (run["run_id"],),
+    ).fetchone()[0]
+    assert before == "checked"  # rule 3c': supported by the records, no reviewer yet
     items = [
         e
         for e in pipeline.load_evidence(conn, run["manifest"]["C05"]["evidence"])
@@ -318,7 +328,9 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
     assert sections == ["next", "you", "con", "unp", "sup"]  # C16's open doubt waits on you
     you = page.split("<section class='group' id='you'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C16" in you and "id=C05" in you
+    assert "id=C16" in you and "id=C05" not in you  # C05 is supported by its code checks
+    sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C05" in sup
     unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
     assert "id=C06" in unp and GAP_TOPICS[K.MEANING] in unp  # the topic; the claim page says it
     # Next up: D03, the agent's proposal waiting for the person giving the demo.
@@ -515,7 +527,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     for cid in ("C01", "C02"):
         row = sup.split(f"id={cid}'", 1)[1].split("</li>", 1)[0]
         assert "<span class='gap you'>Needs you</span>" in row, cid
-    assert "5 claims need you</h1>" in page  # C05, C16, D03 and these two
+    assert "4 claims need you</h1>" in page  # C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):

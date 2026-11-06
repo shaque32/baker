@@ -32,14 +32,15 @@ from core.report.fmt import e, q
 from core.report.names import Names
 from core.review import device_names
 
-_RULE = re.compile(r"^Rule (\w+): ")
+_RULE = re.compile(r"^Rule (\w+'?): ")
 _RECORD = re.compile(r"^Rule \w+: (\S+) (contradicts|complicates) ")
 _COUNTED = re.compile(r"Counted (\d+) (\w+); the claim says ([^.]+)")
-_WAITING = re.compile(r"; (\d+) AI-accepted item\(s\) await an expert")
+_WAITING = re.compile(r"; (\d+) AI-accepted item\(s\) await (?:an expert|review)")
 _COVERED_AT = re.compile(r"covered at tier (\w+) by ")
 _IGNORED = re.compile(r"^Ignored (\d+) evidence items")
 _HOW = re.compile(
-    r"\((accepted by an expert|accepted by the AI reviewer|model label on an? \w+ record, "
+    r"\((accepted by an expert|accepted by counsel, not an expert|accepted by the AI reviewer|"
+    r"model label on an? \w+ record, "
     r"not reviewed)\)"
 )
 
@@ -63,6 +64,7 @@ _TIERS = {
     "observed": "the phone records",
     "confirmed": "evidence an expert accepted",
     "ai_reviewed": "the AI reviewer's acceptance, not an expert's",
+    "counsel_reviewed": "counsel's acceptance, not an expert's",
     "inferred": "an inference",
 }
 _NEEDS = {
@@ -442,6 +444,18 @@ class _Writer:
                 "Every part of the claim that has to be true is backed, and an expert accepted "
                 "the supporting evidence."
             )
+        if rule == "3c'":
+            return None, e(
+                "Every part of the claim that has to be true passed Mabillon's checks against the "
+                "phone records. No model label and no reviewer was used, and no expert has "
+                "confirmed it. You can confirm or override it."
+            )
+        if rule == "3" and "reviewed by counsel" in reason:
+            return None, e(
+                "Every part of the claim that has to be true is backed, and some of the support "
+                "was accepted by counsel, not an expert. This is work product; an expert can "
+                "confirm or override it."
+            )
         if rule == "3" and "AI-reviewed" in reason:
             return None, e(
                 "Every part of the claim that has to be true is backed, but the support rests on "
@@ -452,8 +466,8 @@ class _Writer:
         if rule == "3c":
             waiting = _WAITING.search(reason)
             line = (
-                "No expert has accepted supporting evidence on an observed phone record yet. "
-                "AI review sorts evidence but cannot make a claim supported."
+                "No expert or counsel has accepted supporting evidence on an observed phone "
+                "record yet. AI review sorts evidence but cannot make a claim supported."
                 if "by an expert" in reason
                 else "Neither an expert nor the AI reviewer has accepted supporting evidence on an "
                 "observed phone record yet."
@@ -485,6 +499,8 @@ class _Writer:
         out = f"{e(who)} {e(verb_s)} {e(where)}: {self.said(a)}."
         if how == "accepted by an expert":
             out += " An expert accepted " + ("each." if many else "it.")
+        elif how == "accepted by counsel, not an expert":
+            out += " Counsel accepted " + ("each" if many else "it") + ", not an expert."
         elif how == "accepted by the AI reviewer":
             out += " The AI reviewer accepted " + ("each" if many else "it") + ", not an expert."
         elif how:

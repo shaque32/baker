@@ -409,6 +409,7 @@ body .verdict::before { content: none; }
 .v-await { color: var(--accent); background: var(--accent-bg); }
 .v-confirm { color: var(--con); background: var(--con-bg); }
 .v-supai { color: var(--supai); background: var(--sup-bg); }
+.v-supchk, .v-supcou { color: var(--supai); background: var(--sup-bg); }
 body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 
 /* claims ledger: the queue, and the column beside a claim */

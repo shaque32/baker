@@ -1789,3 +1789,21 @@ index 8f4f6a9..2b2bf40 100644
      if decision.supported_basis != basis:
          raise InvariantViolation(
 ```
+
+## 2026-11-06 claude/project-thread-qw0rxu: amend rules 0.5.0, exact counts never rest on checks alone
+File: core/audit/rules.py (0.5.0, before it merges)
+Why: the precondition in the entry above (count check 1.3.0, "exactly" passes only on a full
+extraction) would turn the signed assumption sheets of case01 (C03), case03, case04, case05 and
+case06 wrong: they expect the count check to pass on those curated reports. Instead of changing
+the check and re-signing gold, rule 3c' skips any claim with an "exactly N" core count. The count
+check stays 1.2.0. "At most" already passes only on a full extraction, and "at least" holds on
+any report. Measured on case01 it gives the same result as the check change: unreviewed accuracy
+0.70, 0 false supported, and C03 waits for the expert.
+Diff (on top of the entry above):
+```diff
+         and any(c.record_ids for c in code_checks)
++        # an "exactly N" count can pass on a curated report that leaves records out
++        and not any(f.assumption.params.count_op == "eq" for f in core)
+     )
+```
+The docstring for rule 3c and the 3c blocker reason say the same thing.

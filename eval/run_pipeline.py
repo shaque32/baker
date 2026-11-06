@@ -976,7 +976,10 @@ def print_hidden_summary(s: dict) -> None:
     print(f"pipeline: {s['case']} {s['mode']} (hidden case, aggregate only): {s['claims']} claims")
     print(f"pipeline: gold {s['gold']['status']}")
     print(f"pipeline: assumption sheet {s['assumption_sheet']['status']}")
-    print(f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} (0 supported by design)")
+    print(
+        f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} "
+        "(supported only by code checks, rule 3c')"
+    )
     print(
         f"pipeline: key evidence {r['key_evidence']} records; retrieved "
         f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "
@@ -1008,7 +1011,10 @@ def print_summary(s: dict) -> None:
         f"stored, {s['dropped_labels']} labels dropped"
     )
     print(f"pipeline: assumption sheet {s['assumption_sheet']['status']}")
-    print(f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} (0 supported by design)")
+    print(
+        f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} "
+        "(supported only by code checks, rule 3c')"
+    )
     print(
         f"pipeline: key evidence {r['key_evidence']} records; retrieved "
         f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "
