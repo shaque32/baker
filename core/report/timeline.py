@@ -24,6 +24,7 @@ from core.timeline.check import (
     fmt_delta,
     timeline,
     window_utc,
+    zoneless_note,
 )
 from core.timeline.gaps import MIN_EXPECTED, Gap, Strip, find_gaps, strips
 from core.timeline.records import CaseRecords
@@ -202,6 +203,8 @@ def timeline_rows(rows: list[TimelineRow], data: CaseRecords) -> str:
                 "</ul></details>"
             )
         notes = "".join(f"<li>{e(n)}</li>" for n in row.notes)
+        if row.zoneless:  # each phone label is source text: cited, never the tool's own words
+            notes += f"<li>{zoneless_note(row.zoneless, q)}</li>"
         flag = " class='flag'" if row.status in FLAGGED else ""
         out.append(
             f"<li{flag} id='{e(st.id)}'><div><div class='meta'>{e(st.location)} · document"

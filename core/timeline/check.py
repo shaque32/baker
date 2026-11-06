@@ -24,6 +24,7 @@ says a record is or is not the one the document means; the expert decides that.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -84,6 +85,19 @@ class TimelineRow:
     nearby_total: int = 0
     counts: tuple[tuple[str, str, int], ...] = ()  # days and ranges: (phone, app, records)
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # phones whose own zone is missing or unusable, by label: source text, so the renderer cites
+    # each one (zoneless_note) rather than printing it inside a note in the tool's own words
+    zoneless: tuple[str, ...] = ()
+
+
+def zoneless_note(labels: tuple[str, ...], cite: Callable[[str], str]) -> str:
+    """The note for phones that state no usable zone, each label passed through `cite`."""
+    one = len(labels) == 1
+    return (
+        f"{', '.join(cite(x) for x in labels)} {'does' if one else 'do'} not state "
+        f"{'its' if one else 'their'} time zone, so {'its' if one else 'their'} records are not "
+        "compared here."
+    )
 
 
 # ---------------------------------------------------------------- arithmetic
@@ -363,13 +377,9 @@ def _row(st: StatedTime, data: CaseRecords, links: list[Link], s: Settings) -> T
         notes.append("One end of this range is open; only the stated end is compared.")
     # a phone whose own zone is missing or unusable: name it (comparing the number of distinct
     # zones with the number of phones said this of two phones that share one zone)
-    zoneless = [p.label for p in data.phones.values() if not p.tz or zone(p.tz) is None]
-    if st.zone is None and zoneless:
-        notes.append(
-            f"{', '.join(zoneless)} {'does' if len(zoneless) == 1 else 'do'} not state "
-            f"{'its' if len(zoneless) == 1 else 'their'} time zone, so "
-            f"{'its' if len(zoneless) == 1 else 'their'} records are not compared here."
-        )
+    zoneless = tuple(p.label for p in data.phones.values() if not p.tz or zone(p.tz) is None)
+    if st.zone is not None:  # the stated zone is used; the phones' own zones do not matter
+        zoneless = ()
 
     key = _sort_key(st, data)
     tol = f"{s.tolerance_min} min"
@@ -438,7 +448,7 @@ def _row(st: StatedTime, data: CaseRecords, links: list[Link], s: Settings) -> T
                 notes.append(c.printed_note)
     return TimelineRow(
         st, status, summary, zone_label, key, tuple(links), tuple(nearby), nearby_total,
-        tuple(counts), tuple(notes),
+        tuple(counts), tuple(notes), zoneless,
     )  # fmt: skip
 
 

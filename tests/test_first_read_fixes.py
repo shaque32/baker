@@ -162,3 +162,19 @@ def test_the_report_reads_plainly_and_keeps_every_id_in_its_appendix(app):
     appendix = body.split("<h2 id='appendix'>", 1)[1]
     assert "Rule 3:" in appendix and "How this verdict was reached" in appendix
     assert "<div class='claim-ids' id='ids-C01'>" in appendix
+
+
+def test_a_zoneless_phone_label_prints_as_cited_text(app):
+    # a phone label is source text: one holding a word the tool never says (Codex on #216)
+    # must print cited, so the report's word check passes
+    import dataclasses
+
+    from core.audit.invariants import check_report_text
+    from core.report import timeline as timeline_html
+
+    conn = connect(app.case_db)  # type: ignore[attr-defined]
+    views = timeline_html.compute(conn, timeline_html.Settings())
+    row = dataclasses.replace(views.rows[0], zoneless=("Deleted records",))
+    out = timeline_html.timeline_rows([row], views.data)
+    assert "does not state its time zone" in out
+    check_report_text(out)

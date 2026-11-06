@@ -15,9 +15,9 @@
   and each source's coverage in the verdict box; a bug in the Timeline note "A phone in this case
   does not state its time zone" (it compared the number of distinct zones with the number of
   phones, so it printed on every row when two phones share a zone) is fixed, and the note now
-  names the phone; Gaps says the pace is a rate, not a count of missing records, gives times
-  beside record ids, and the strip gives each app the same pace as the cards (records after the
-  first over the time from first to last; it was records per strip day, so 8.6 a day on the
+  names the phone (each label cited, as source text); Gaps says the pace is a rate, not a count
+  of missing records, gives times beside record ids, and the strip gives each app the same pace
+  as the cards (records after the first over the time from first to last; it was records per strip day, so 8.6 a day on the
   strip read against 8.7 on the card); Selection says each quote not placed is listed with its
   paragraph and counts the ones listed above the table, so "5 not looked up" no longer reads
   against a table of 4; purpose lines on Selection, Exhibits, Audit log, Activity and Flags; a
