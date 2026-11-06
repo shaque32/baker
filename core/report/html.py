@@ -118,6 +118,7 @@ from core.review.status import (
     ClaimState,
     case_holdings,
     claim_states,
+    signoff,
 )
 from core.review.status import verdict_label as _verdict_label
 from core.review.withheld import Withheld
@@ -215,7 +216,10 @@ from core.review.withheld import summary as withheld_summary
 # so a claim that quotes "It's been deleted." no longer stops the report (validation run 3).
 # 0.34.0: those words are cited only as whole words, and a claim's own lines cite only that
 # claim's quotes (a word another claim quotes is still checked as the tool's own).
-REPORT_VERSION = "0.34.0"
+# 0.35.0: a claim's verdict sign-off reads "Verdict confirmed by <name>, <time> UTC" (or
+# overridden, or kept from the earlier run), apart from "expert-confirmed" evidence; a report
+# made on the screen opens with the case, the examiner and when it was made (`header`).
+REPORT_VERSION = "0.35.0"
 
 
 @dataclass(frozen=True)
@@ -997,9 +1001,10 @@ def _claim_block(
             f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
             f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
         )
-        if decision.confirmed_by:
+        signed = signoff(conn, decision)
+        if signed:
             note = f" Note: {said(decision.override_note)}" if decision.override_note else ""
-            out.append(f"<p>Verdict reviewed by {e(decision.confirmed_by)}.{note}</p>")
+            out.append(f"<p class='signoff'><strong>{e(signed)}</strong>{note}</p>")
     coverage = {cv.assumption_id: cv for cv in (decision.coverage if decision else ())}
 
     if st.assumptions:
@@ -1263,13 +1268,26 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     return "".join(out)
 
 
+@dataclass(frozen=True)
+class Header:
+    """Who made a report, for which case and when: printed under the title of a report made on
+    the screen, so two cases' reports can be told apart. A bundle's report leaves it out (its
+    report must re-render from the tables alone)."""
+
+    case_name: str
+    examiner: str | None
+    made_at_utc: datetime
+
+
 def render_report(
     conn: sqlite3.Connection,
     timeline: timeline_html.Settings | None = None,
     scope: BundleScope | None = None,
+    header: Header | None = None,
 ) -> str:
     """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None.
-    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py)."""
+    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py).
+    header: the case, examiner and time, for a report made on the screen."""
     srcs = sources(conn)
     run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
@@ -1285,6 +1303,13 @@ def render_report(
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Mabillon claims report</h1>",
+        (
+            ""
+            if header is None
+            else f"<p class='made'>Case {q(header.case_name)} · "
+            + (f"prepared by {said(header.examiner)}" if header.examiner else "examiner not named")
+            + f" · made {e(header.made_at_utc.strftime('%Y-%m-%d %H:%M'))} UTC</p>"
+        ),
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"

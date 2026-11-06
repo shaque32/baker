@@ -272,6 +272,7 @@ def test_an_encrypted_broken_case_is_locked_again_after_the_refused_open(tmp_pat
     log_three(conn)
     tamper(conn, 3)
     conn.close()
+    app.recovery = None  # the key was written down (pressing the button needs an intact log)
     post(app, "/case/lock")
     assert protect.is_locked(case)
 

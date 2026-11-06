@@ -50,6 +50,9 @@ class ContextLine:
     local_time: str
     body: str
     is_target: bool
+    # Who an outgoing message went to, for the screen only: render_context (the stance prompt)
+    # does not print it, so a prompt's text is the same with or without it.
+    to: str = ""
 
 
 def _natural(locator: str) -> tuple[object, ...]:
@@ -219,8 +222,23 @@ def build_context(
     by_id = {r[0]: r for r in rows}
     zones: dict[str | None, object] = {}
     lines = []
+    sender_of = _named_sender(names)
     for rid in ids:
         _, locator, sender_id, shown, direction, ts_utc, ts_raw, body, device_id = by_id[rid]
+        to = ""
+        if direction == "outgoing":
+            to = ", ".join(
+                sorted(
+                    {
+                        sender_of(conn, r[0])
+                        for r in conn.execute(
+                            "SELECT account_id FROM message_recipients WHERE message_id = ?",
+                            (rid,),
+                        )
+                        if r[0] is not None
+                    }
+                )
+            )
         if device_id not in zones:
             zones[device_id] = device_zone(conn, device_id)
         lines.append(
@@ -233,6 +251,7 @@ def build_context(
                 local_time=format_local(parse_utc(ts_utc), zones[device_id], ts_raw),  # type: ignore[arg-type]
                 body=body,
                 is_target=rid == target,
+                to=to,
             )
         )
     if record_id.startswith("call:"):

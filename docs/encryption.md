@@ -30,6 +30,13 @@ shows **once**, when the case is encrypted. Either opens the case.
 - Write the recovery key down and keep it away from the computer (paper, or a password manager).
 - Changing the passphrase re-wraps the key; nothing is re-encrypted, and the recovery key stays
   the same.
+- The key stays at the top of Set up and run until the expert presses "I have written it
+  down", and the case cannot be locked from the screen before then. If Mabillon stops first,
+  the case is marked (`recovery_unconfirmed` in `case.json`, no secret in it) and Set up and
+  run says the case may have no usable recovery key.
+- "Make a new recovery key" (Set up and run, Encryption) or `mabillon recovery-key --db
+  CASE/case.db --by "expert:Your Name"` replaces it after the passphrase is entered; the old
+  recovery key stops opening the case.
 - If both the passphrase and the recovery key are lost, nobody can open the case, Mabillon
   included. The original evidence is untouched; the expert's review work in that case is lost.
 

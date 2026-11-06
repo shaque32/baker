@@ -35,6 +35,7 @@ Which run: pipeline.view_run(), the same run for the screen and the report.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -436,6 +437,52 @@ def claim_name(conn: sqlite3.Connection, claim_id: str, paragraph_id: str) -> st
     return f"\u00b6{r[1] if r[1] else '#' + str(r[0])}.{claim_id[len(prefix) :]}"
 
 
+def claim_names(conn: sqlite3.Connection, claim_ids: list[str] | set[str]) -> list[str]:
+    """claim_name for each id, in document order (page, paragraph, number), for messages."""
+    named: list[tuple[tuple, str]] = []
+    for cid in claim_ids:
+        r = conn.execute("SELECT paragraph_id FROM claims WHERE id = ?", (cid,)).fetchone()
+        name = claim_name(conn, cid, r[0]) if r else cid
+        named.append((claim_sort_key(cid), name))
+    return [n for _k, n in sorted(named)]
+
+
+def signoff(conn: sqlite3.Connection, decision: VerdictDecision) -> str | None:
+    """The expert's sign-off on this verdict, in words, with its time from the audit log:
+    "Verdict confirmed by Dana Reyes, 2026-11-04 01:20 UTC". None when nobody signed it off.
+    Distinct from "expert-confirmed", which says the expert accepted its supporting evidence."""
+    if not decision.confirmed_by:
+        return None
+    at, how = "", "confirmed"
+    for action, at_utc, payload in conn.execute(
+        "SELECT action, at_utc, payload_json FROM audit_log WHERE action IN"
+        " ('verdict.confirm', 'verdict.override', 'verdict.carry') ORDER BY seq"
+    ):
+        p = json.loads(payload)
+        if p.get("verdict_id") != decision.id:
+            continue
+        at = str(at_utc)
+        how = {"verdict.override": "overridden", "verdict.carry": "carried forward"}.get(
+            action, "confirmed"
+        )
+        if action == "verdict.carry":
+            how = "overridden" if decision.override_note is not None else "confirmed"
+            how += " (kept from the earlier run: nothing it rests on changed)"
+    who = decision.confirmed_by.removeprefix("expert:")
+    when = f", {at[:16].replace('T', ' ')} UTC" if at else ""
+    return f"Verdict {how} by {who}{when}."
+
+
+def claim_sort_key(claim_id: str) -> tuple:
+    """Document order for claim ids: numbers inside an id compare as numbers, so a claim in
+    paragraph 10 comes after one in paragraph 7 ('claim:para:<hash>:1:7:2' and 'C7' alike)."""
+    return tuple(
+        (0, int(part), "") if part.isdigit() else (1, 0, part)
+        for part in re.split(r"(\d+)", claim_id)
+        if part
+    )
+
+
 def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
     out: set[str] = set()
     for (payload,) in conn.execute(
@@ -654,4 +701,4 @@ def _state(
 
 def queue(conn: sqlite3.Connection) -> list[ClaimState]:
     """Claims sorted by what needs the expert most, then by claim id."""
-    return sorted(claim_states(conn), key=lambda s: (s.priority, s.claim.id))
+    return sorted(claim_states(conn), key=lambda s: (s.priority, claim_sort_key(s.claim.id)))
