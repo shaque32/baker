@@ -23,17 +23,19 @@
   overwriting, back to the page asked from); `make check` on Linux. Windows staging resolved
   pywebview, pythonnet and a built proxy_tools wheel for win_amd64 on Linux. A real window was
   not drawn here: the clean-install CI job opens the Mabillon Demo app on a macOS runner (report
-  only). Windows window, Dock icon and menu name unverified until seen on a real Mac and PC.
-- Open: the Mac app is a script that runs Mabillon's Python, so the Dock and menu bar may show
-  Python's name or icon in places (the code sets the name and icon at start; unverified). Edge
-  WebView2 may run Microsoft's SmartScreen check on navigations, as the Edge browser does
-  (unverified for 127.0.0.1). Printing from the window is not wired; the downloaded report prints
-  from a browser.
+  only). On a real Mac (Arsh's MacBook Air M4, macOS 15.6.1, 2026-11-06): `mabillon demo --window`
+  opened the window with Mabillon's Dock icon, and the installed Mabillon Demo app shows
+  "Mabillon" in the menu bar. Windows window unverified until seen on a real PC.
+- Open: run from Terminal (`mabillon demo --window`), the menu bar says "Python", because macOS
+  names it after the program that started; the installed apps say "Mabillon". Edge WebView2 may
+  run Microsoft's SmartScreen check on navigations, as the Edge browser does (unverified for
+  127.0.0.1). Printing from the window is not wired; the downloaded report prints from a
+  browser.
 - Affects: capabilities (desktop app); customer-facing claims (Mabillon can be described as a
   desktop app on Mac and Windows once seen working); privacy: none (same local server and key;
   pywebview and the web view load only 127.0.0.1).
 - Status doc: pending: in the section that says experts work in the browser on their own
   computer (`mabillon serve`, http://127.0.0.1:8765), add "Mabillon also opens in its own window
   (`mabillon serve --window`; the Mac apps in ~/Applications and the Windows Start-menu
-  shortcuts), WebKit on a Mac and Edge WebView2 on Windows; unverified on real hardware as of
-  2026-11-03."
+  shortcuts), WebKit on a Mac and Edge WebView2 on Windows; seen working on a Mac 2026-11-06, unverified on
+  a Windows PC."

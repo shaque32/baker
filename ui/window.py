@@ -65,8 +65,9 @@ def _name_the_mac_app() -> None:
     try:
         foundation = importlib.import_module("Foundation")
         bundle = foundation.NSBundle.mainBundle()
-        # Both: Python.app has a localized dictionary too, and the menu bar read the plain one
-        # when only the localized one was set (seen on a Mac, 2026-11-06).
+        # The installed app (packaging/mac/install.sh) shows "Mabillon" in the menu bar (seen on
+        # a Mac, 2026-11-06). Run from Terminal, macOS names the menu after Python at start, and
+        # this cannot change it; it still names pywebview's own menus.
         for info in (bundle.infoDictionary(), bundle.localizedInfoDictionary()):
             if info is not None:
                 info["CFBundleName"] = TITLE
