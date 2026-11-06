@@ -40,8 +40,12 @@ CSS = """
   width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
 .pg-claim #verdict .gap { margin: 8px 0; padding: 0; border: 0; border-radius: 0;
   background: none; font-size: 13px; }
+.pg-claim #verdict .gap-detail { margin: 4px 0 8px; font-size: 13px; color: var(--ink-2);
+  overflow-wrap: anywhere; }
 .pg-claim #verdict p.format-notice { margin: 8px 0; }
 .pg-claim #verdict p.format-notice strong { font-weight: 500; }
+.pg-claim ul.cited { margin: 4px 0 16px; padding-left: 18px; font-size: 13px; }
+.pg-claim ul.cited li { margin: 4px 0; }
 .pg-claim #verdict details.fmt > summary { color: var(--ink-2); }
 .pg-claim #verdict details.fmt > summary strong { font-weight: 500; }
 .pg-claim #verdict details.fmt p.format-notice { margin-left: 18px; }
@@ -117,6 +121,7 @@ CSS = """
 .pg-claim p.ev-rec, .pg-evidence p.ev-rec,
 .pg-claim p.ev-src, .pg-evidence p.ev-src { margin: 2px 0 0; font-size: 12.5px;
   color: var(--muted); overflow-wrap: anywhere; }
+.pg-claim p.ev-rec .ev-asx, .pg-evidence p.ev-rec .ev-asx { font-weight: 500; }
 .pg-claim p.ev-review, .pg-evidence p.ev-review { margin: 12px 0 0; padding-top: 12px;
   border-top: 1px solid var(--line); font-size: 13px; max-width: none; }
 .pg-claim p.ev-review strong, .pg-evidence p.ev-review strong { font-weight: 600; }

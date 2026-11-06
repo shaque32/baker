@@ -220,11 +220,29 @@ def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     assert run["fake"] and pipeline.scripted_demo(run)
     agent = "The testability agent's answers were scripted from the demo's own claims"
     report = render_report(conn)
-    assert "Demo case: synthetic data, scripted labels." in report and agent in report
+    head = "most expert decisions are scripted, not made by a person"
+    assert head in report and agent in report
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels</strong>" in page and agent in page
+    assert head in page and agent in page
+    # every page of the case says so, not only the review pages (first-time-user review)
+    for path in (
+        "/",
+        "/identities",
+        "/exhibits",
+        "/selection",
+        "/timeline",
+        "/gaps",
+        "/log",
+        "/activity",
+        "/setup",
+        "/run",
+        "/claim/new",
+        "/request-letter",
+    ):
+        body = app.handle(Request("GET", path, {}, dict(HOST))).body.decode()
+        assert body.count(head) == 1, path
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
     assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
     purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))
@@ -553,8 +571,10 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C01" not in sup and "id=C02" not in sup
-    assert html.escape(SUPPORTED_AI) not in sup
+    # both are counted and listed under their verdict too, tagged as waiting on the expert
+    for cid in ("C01", "C02"):
+        row = sup.split(f"id={cid}'", 1)[1].split("</li>", 1)[0]
+        assert "<span class='gap you'>Needs you</span>" in row, cid
     assert "5 claims need you</h1>" in page  # C05, C16, D03 and these two
 
 
@@ -723,8 +743,10 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     from core.review.status import claim_states
 
     status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]
-    groups = Counter(pages._group(st) for st in claim_states(connect(case.db)))
-    assert f"{groups['you']} claims need you</a>" in status  # the Claims screen's own grouping
+    states = claim_states(connect(case.db))
+    groups = Counter(pages._verdict_group(st) for st in states)  # every claim under its verdict
+    you = sum(1 for st in states if pages.needs_you(st))
+    assert f"{you} claims need you</a>" in status  # the Claims screen's own count
     for g, name in pages.GROUPS:
         if g != "you" and groups[g]:
             link = f"<a href='/claims#{g}'><span class='name t-{g}'>{name}</span> "

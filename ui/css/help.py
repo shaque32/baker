@@ -17,6 +17,11 @@ CSS = """
 .pg-help section.hs ul { margin: 0 0 12px; padding-left: 20px; }
 .pg-help section.hs li { margin: 0 0 6px; line-height: 1.55; }
 .pg-help section.hs li::marker { color: var(--muted); }
+.pg-help section.words dl { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: 6px 20px; margin: 0 0 12px; }
+.pg-help section.words dt { font-weight: 500; }
+.pg-help section.words dd { margin: 0; max-width: 60ch; color: var(--ink-2); }
+@media (max-width: 600px) { .pg-help section.words dl { grid-template-columns: minmax(0, 1fr); } }
 .pg-help code { font: 400 12.5px var(--mono); color: var(--ink-2); background: var(--panel);
   border-radius: 4px; padding: 1px 5px; }
 

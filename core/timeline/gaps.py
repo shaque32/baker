@@ -127,7 +127,7 @@ def find_gaps(data: CaseRecords, stated: list[StatedTime], s: Settings) -> list[
         span = (_ts(t[-1]) - _ts(t[0])).total_seconds()
         if span <= 0:
             continue
-        per_s = (len(t) - 1) / span
+        per_s = (len(t) - 1) / span  # pace_per_day / 86400, the strip's rate
         for a, b in zip(t, t[1:], strict=False):
             a_t, b_t = _ts(a), _ts(b)
             gap_s = (b_t - a_t).total_seconds()
@@ -177,6 +177,19 @@ class Strip:
     labels: tuple[date, ...]  # first day of each bucket
     rows: tuple[tuple[str, tuple[int, ...]], ...]  # (app, counts)
     tz: str | None
+    # each app's pace a day, worked out as a quiet stretch's card works it out (records after the
+    # first, over the time from the first to the last), so the strip and the cards agree;
+    # None for an app with fewer than two timed records or all at one instant
+    pace: tuple[float | None, ...] = ()
+
+
+def pace_per_day(timed: list[datetime]) -> float | None:
+    """Records a day between a series' first and last record: (n - 1) over the span, as
+    find_gaps works it out."""
+    if len(timed) < 2:
+        return None
+    span = (max(timed) - min(timed)).total_seconds()
+    return (len(timed) - 1) / span * 86400 if span > 0 else None
 
 
 def strips(data: CaseRecords) -> list[Strip]:
@@ -193,16 +206,20 @@ def strips(data: CaseRecords) -> list[Strip]:
         n = (n_days + step - 1) // step
         labels = tuple(lo + timedelta(days=i * step) for i in range(n))
         counts: dict[str, list[int]] = {}
+        times: dict[str, list[datetime]] = {}
         for r, d in zip(recs, days, strict=True):
             row = counts.setdefault(_app_of(r), [0] * n)
             row[(d - lo).days // step] += 1
+            times.setdefault(_app_of(r), []).append(_ts(r))
+        apps = sorted(counts)
         out.append(
             Strip(
                 sid,
                 unit,
                 labels,
-                tuple((app, tuple(c)) for app, c in sorted(counts.items())),
+                tuple((app, tuple(counts[app])) for app in apps),
                 phone.tz,
+                tuple(pace_per_day(times[app]) for app in apps),
             )  # fmt: skip
         )
     return out
