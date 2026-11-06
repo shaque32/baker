@@ -12,12 +12,12 @@ or changes a verdict.
 
 from __future__ import annotations
 
-import html
 import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.report.fmt import e
 from core.report.letter import letter_body
 from core.report.paired import paired_html
 from core.report.restore import METHOD_WORDS, context_table, highlighted, q
@@ -89,10 +89,6 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 """
 
 
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
-
-
 GAP_WORDS = (
     "an hour"
     if EXCHANGE_GAP.total_seconds() == 3600
@@ -115,6 +111,7 @@ class Links:
     context: Callable[[str], str] | None = None  # message id -> its whole conversation
     claim: Callable[[str], str] | None = None  # claim id -> the claim page
     gaps: str | None = None  # the Gaps page, which shows each quiet stretch in full
+    plain: bool = False  # the screen writes sources and the tier in words; the report keeps ids
 
 
 def anchor(unit_id: str) -> str:
@@ -193,7 +190,10 @@ def _document_glance(audit: SelectionAudit, doc_id: str, title: str) -> list[str
     rest = [f"{missing:,} not found"] if missing else []
     rest += [f"{unplaced:,} found but not placed"] if unplaced else []
     rest += [f"{skipped:,} not looked up (names, single words, redactions)"] if skipped else []
-    out = [line + (f"; {', '.join(rest)}." if rest else ".")]
+    # every quote not placed is listed once: with its paragraph when that paragraph has a placed
+    # quote, otherwise in the table of paragraphs with none, so neither list alone holds them all
+    where = " Each quote not placed is listed with its paragraph below." if rest else ""
+    out = [line + (f"; {', '.join(rest)}." if rest else ".") + where]
     t = totals(units, audit.same)
     if t.exchanges:
         out.append(
@@ -304,7 +304,18 @@ _PICK = {"document": "Quoted in {label}", "exhibit": "In this exhibit", "tags": 
 _LEFT = {"document": "Not quoted", "exhibit": "Not in this exhibit", "tags": "Not tagged"}
 
 
-def _bubble(unit: Unit, row: Row, marks: list[Mark]) -> str:
+_SHEET_ROW = re.compile(r"^(?P<sheet>[^!]+)!(?P<row>\d+)$")
+
+
+def plain_locator(source_id: str, locator: str) -> str:
+    """A record's place in its file, in words: "item1 Chats!948" becomes "item1 · Chats, row
+    948". A locator of any other shape (a UFDR path, an AXIOM id) is shown as it is."""
+    m = _SHEET_ROW.match(locator)
+    where = f"{m['sheet']}, row {m['row']}" if m else locator
+    return f"{source_id} · {where}"
+
+
+def _bubble(unit: Unit, row: Row, marks: list[Mark], plain: bool = False) -> str:
     ln = row.line
     assert ln is not None  # noqa: S101 - count rows are drawn as dividers
     tags: list[tuple[str, str]] = []
@@ -336,7 +347,13 @@ def _bubble(unit: Unit, row: Row, marks: list[Mark]) -> str:
         f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)} · observed</div>"
         f"<div class='body'>{body}</div>{files}"
         f"<div class='t'>{chips}<span>{e(ln.local)}</span>"
-        f"<span>{e(ln.source_id)} {e(ln.locator)}</span></div></div>"
+        + (
+            f"<span title='{e(ln.source_id)} {e(ln.locator)}'>"
+            f"{e(plain_locator(ln.source_id, ln.locator))}</span>"
+            if plain
+            else f"<span>{e(ln.source_id)} {e(ln.locator)}</span>"
+        )
+        + "</div></div>"
     )
 
 
@@ -347,7 +364,7 @@ _MORE = {
 }
 
 
-def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
+def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = False) -> str:
     """The passage as a conversation. Dividers mark a pause longer than an exchange allows,
     where the exchange starts and ends, and runs of messages not shown."""
     out = ["<div class='sel-convo'>"]
@@ -369,7 +386,7 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
             more = _MORE.get(row.role, "{n} not shown").format(n=_n(row.more, "message"))
             out.append(f"<div class='divider'>{more}</div>")
             continue
-        out.append(_bubble(unit, row, marks.get(row.line.record_id, [])))
+        out.append(_bubble(unit, row, marks.get(row.line.record_id, []), plain))
     out.append("</div>")
     return "".join(out)
 
@@ -377,11 +394,12 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
 # ---------------------------------------------------------------- a passage
 
 
-def _where(p: Passage) -> str:
+def _where(p: Passage, plain: bool = False) -> str:
     t = p.thread
     return (
         f"{q(t.app)} conversation {q(t.title or '(untitled)')} · {q(t.device)} · "
-        f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · tier derived"
+        f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · "
+        + ("Tier: derived" if plain else "tier derived")
     )
 
 
@@ -409,8 +427,10 @@ def _passage_html(
             f"is not the same there: it holds {_n(p.only_here, 'message')} that the exchange "
             f"there does not, and lacks {p.only_there:,} that it holds.</p>"
         )
-    out.append(f"<div class='where'>{_where(p)}</div><ul class='sum'>{items}</ul></div>")
-    out.append(_convo(unit, p, marks))
+    out.append(
+        f"<div class='where'>{_where(p, links.plain)}</div><ul class='sum'>{items}</ul></div>"
+    )
+    out.append(_convo(unit, p, marks, links.plain))
     foot: list[str] = []
     if p.nearby:
         total = len(p.nearby) + p.nearby_more
@@ -550,7 +570,9 @@ def _tags_html(
     )
 
 
-def _unplaced_html(units: list[Unit]) -> str:
+def _unplaced_html(units: list[Unit], elsewhere: int = 0) -> str:
+    """The paragraphs with no quote placed on a message. `elsewhere`: quotes not placed that
+    are listed with their paragraph above, since that paragraph has a placed quote."""
     rows = [
         f"<tr><td>{paragraph_name(u)}</td><td>{q(lk.text)}</td><td>{e(lookup_note(lk))}</td></tr>"
         for u in units
@@ -558,9 +580,20 @@ def _unplaced_html(units: list[Unit]) -> str:
     ]
     if not rows:
         return ""
+    more = (
+        f"<p class='muted'>{_n(elsewhere, 'more quote')} not placed "
+        f"{'is' if elsewhere == 1 else 'are'} listed above, with "
+        f"{'its paragraph' if elsewhere == 1 else 'their paragraphs'}, which also "
+        f"{'has' if elsewhere == 1 else 'have'} a placed quote.</p>"
+        if elsewhere
+        else ""
+    )
     return (
-        "<h4>Quotes not placed on a message</h4><table><thead><tr><th>Paragraph</th>"
-        "<th>Quoted words</th><th>Why</th></tr></thead>" + "".join(rows) + "</table>"
+        "<h4>Paragraphs with no quote placed on a message</h4><table><thead><tr>"
+        "<th>Paragraph</th><th>Quoted words</th><th>Why</th></tr></thead>"
+        + "".join(rows)
+        + "</table>"
+        + more
     )
 
 
@@ -606,7 +639,8 @@ def selection_html(
         heading = "Government document" if len(audit.docs) <= 1 else "Government documents"
         out.append(f"<h3 class='eyebrow'>{heading}</h3>")
         out += [_paragraph_html(u, marks, links, claims_of(u), audit.same) for u in shown]
-        out.append(_unplaced_html([u for u in docs if not u.passages]))
+        elsewhere = sum(1 for u in shown for lk in u.lookups if not lk.places)
+        out.append(_unplaced_html([u for u in docs if not u.passages], elsewhere))
     exhibits = [u for u in audit.of("exhibit") if u.passages or u.lookups]
     if exhibits:
         out.append("<h3 class='eyebrow'>Exhibits</h3>")

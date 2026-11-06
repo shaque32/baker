@@ -12,8 +12,10 @@ import json
 
 import pytest
 
+from core.audit._llm_json import prompt_body
 from core.contracts import Prediction
 from core.llm.runtime import FakeModel as RuntimeFake
+from eval import run_eval
 from eval import run_pipeline as rp
 from tests.test_testability import ROOT, _eval_answers
 
@@ -215,6 +217,25 @@ def test_a_run_and_its_repeat_give_a_go_with_the_hardware_recorded(tmp_path, mon
     assert "pipeline: testability go/no-go: GO\n" in printed
     assert f"(code version {assumption_filler.FILLER_VERSION})" in printed
     assert "pipeline: testability go/no-go: pass: 0 false supported" in printed
+    # for information, not bars (Grok on #210): changed claims on the key's verdict, and tries
+    # refused for words the claim does not write, first tries and retries apart
+    changed = record["false_supported"]["claims_the_agent_changed"]
+    assert 0 <= record["changed_claims_on_the_keys_verdict"] <= changed
+    assert f"{record['changed_claims_on_the_keys_verdict']} of the {changed} claims" in printed
+    unwritten = record["testability"]["refused_for_words_not_in_the_claim"]
+    assert unwritten["of_first_tries"] + unwritten["of_retries"] == record["testability"]["tries"]
+    assert "refused for words the claim does not write (for information)" in printed
+
+
+def test_a_try_refused_for_unwritten_words_is_counted_as_such():
+    from core.audit.testability import Attempt
+
+    unwritten = Attempt(
+        2, None, [], [], "refused", ["'BIG T' is not written in the claim or its paragraph"]
+    )
+    other = Attempt(2, None, [], [], "refused", ["phone 'Item 9' matches 0 devices"])
+    sheet = Attempt(1, None, [], [], "mismatch", ["is not written in the claim"])
+    assert [rp._unwritten(a) for a in (unwritten, other, sheet)] == [True, False, False]
 
 
 def test_a_repeat_whose_step_answers_differ_is_a_no_go(tmp_path, monkeypatch, capsys):
@@ -281,3 +302,62 @@ def test_no_claim_the_agent_changed_never_passes_the_false_supported_bar(tmp_pat
         "no claim the agent changed, so the bar has nothing to score; 0 in the whole run, "
         "for information"
     )
+
+
+def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(
+    tmp_path, monkeypatch, capsys
+):
+    """--no-stance: no stance model runs (a stand-in labels every candidate irrelevant), the
+    step's measures are recorded as usual, and the go/no-go is none given, even on a held-out
+    case with every other condition met. Its verdicts are never read as eval numbers: the
+    summary says so first, and the scorer refuses them (Baker Eval on #210)."""
+    monkeypatch.setattr(rp, "TESTABILITY_GO_NO_GO_CASES", frozenset({"case01"}))
+    monkeypatch.setattr(rp, "TESTABILITY_X_PERCENT", 40.0)
+    monkeypatch.setattr(rp, "TESTABILITY_Y_BUDGET", {"calls": 1, "seconds": 600})
+    monkeypatch.setattr(rp, "TESTABILITY_CAP", 1)
+    monkeypatch.setattr(rp, "TESTABILITY_MIN_TESTABLE", 1)
+    calls: list[str] = []
+
+    def answers(prompt: str) -> str:
+        calls.append(prompt)
+        return _eval_answers(prompt)
+
+    model = RuntimeFake(respond=answers)
+    runs = []
+    for out in (tmp_path, tmp_path / "repeat"):
+        runs.append(
+            rp.run_once(
+                "case01",
+                "real",
+                "accept",
+                out,
+                None,
+                "rubber-stamp",
+                claim_ids=["C01"],
+                filler_model=model,
+                testability_cap=1,
+                testability_model=model,
+                stance=False,
+            )
+        )
+    # every prompt sent is the filler's or the step's, and none is the stance prompt
+    stance_prompt = prompt_body((ROOT / "core/audit/prompts/stance.md").read_text("utf-8"))
+    assert calls and all("Templates you may use for this claim" in p for p in calls)
+    assert not any(stance_prompt[:120] in p for p in calls)
+    assert rp.NO_STANCE_NOTE in capsys.readouterr().out
+    gold = ["--case", str(ROOT / "eval/gold/case01"), "--predictions"]
+    assert run_eval.main([*gold, str(tmp_path / "predictions.jsonl")]) == 1
+    assert "not scored" in capsys.readouterr().out
+    t = json.loads((tmp_path / "run.json").read_text("utf-8"))["testability"]
+    assert t["stance"] == "skipped" and t["tries"] >= 1
+    r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", runs[0], runs[1])
+    assert r["decision"] == "none given"
+    assert r["why"] == ["stance was skipped (--no-stance, a dev check)"]
+
+
+def test_spent_cases_give_no_go_no_go_and_no_stance_needs_the_step():
+    # case04 (2026-10-30) and case05 (2026-11-03) each had their go/no-go of record
+    assert not {"case04", "case05"} & rp.TESTABILITY_GO_NO_GO_CASES
+    assert rp.TESTABILITY_GO_NO_GO_CASES == {"case06"}  # the next held-out case
+    with pytest.raises(SystemExit):
+        rp.main(["--case", "case01", "--mode", "real", "--no-stance"])

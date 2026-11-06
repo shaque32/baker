@@ -13,8 +13,8 @@ shows as confirmed.
 
 from __future__ import annotations
 
-import html
 import json
+import re
 import sqlite3
 from collections import Counter
 from collections.abc import Iterable
@@ -24,6 +24,7 @@ from core import pipeline
 from core.audit import challenge, testability
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
+    AssumptionKind,
     CheckOutcome,
     ClaimType,
     EvidenceItem,
@@ -32,13 +33,18 @@ from core.contracts import (
     Stance,
     StipulationStatus,
     Verdict,
+    VerdictDecision,
     display_tier,
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
-from core.report.html import CSS as REPORT_CSS
+from core.report import why
+from core.report.fmt import e, q
 from core.report.html import (
+    COVERAGE,
+    EXTRACTION,
+    SOURCE_KIND,
     STANCE_LABEL,
     audit_log_summary,
     build_label,
@@ -55,9 +61,10 @@ from core.report.html import (
     sources,
     stand_in_banner,
 )
+from core.report.html import CSS as REPORT_CSS
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
-from core.report.names import plain_ids
+from core.report.names import Names, plain_ids
 from core.report.paired import CSS as PAIRED_CSS
 from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
@@ -71,9 +78,9 @@ from core.review import withheld as W
 from core.review.activity import VIEW
 from core.review.status import (
     AGAINST,
+    AGENT_STEP,
     CONTRADICTION_FOUND,
     GAP_TOPICS,
-    HOLDINGS,
     STALE,
     ClaimState,
     _agent,
@@ -83,6 +90,7 @@ from core.review.status import (
     claim_state,
     claim_states,
     queue,
+    signoff,
 )
 from core.selection.audit import selection_audit
 from core.selection.paired import paired_check
@@ -95,15 +103,6 @@ UI_CSS = """
 tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; }
 """
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
-
-
-def q(text: object) -> str:
-    """Cited text, never the tool's own words."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
 
 
 def link(path: str, **params: str) -> str:
@@ -127,8 +126,12 @@ class Page:
         many_cases: bool = False,
         path: str = "",
         cloud: bool = False,
+        case_key: str = "",
+        stand_in: str = "",
     ):
         self.token = token
+        self.case_key = case_key  # names the open case in every form, so a stale tab's post
+        # for another case is refused (ui/app.py, App._stale_case)
         self.expert = expert
         self.flash = flash
         self.case_name = case_name
@@ -137,6 +140,8 @@ class Page:
         self.many_cases = many_cases  # the screen was started on a cases folder
         self.path = path  # the page's own path, to mark its tab
         self.cloud = cloud  # the open case sends stance questions to the cloud model
+        # the folded demo or test-run banner (stand_in_note), on every page of the case
+        self.stand_in = stand_in
 
     def form(
         self, action: str, body: str, cls: str = "box", back: str = "", anchor: str = ""
@@ -148,10 +153,17 @@ class Page:
         return (
             f'<form method="post" action="{e(action)}" class="{cls}">'
             f'<input type="hidden" name="token" value="{e(self.token)}">'
+            + self.case_field()
             + (f'<input type="hidden" name="next" value="{e(back)}">' if back else "")
             + body
             + "</form>"
         )
+
+    def case_field(self) -> str:
+        """The hidden field naming the case this page was drawn for, or nothing with no case."""
+        if not self.case_key:
+            return ""
+        return f'<input type="hidden" name="for_case" value="{e(self.case_key)}">'
 
     def wrap(
         self,
@@ -162,9 +174,9 @@ class Page:
         wide: bool = False,
     ) -> str:
         who = (
-            f"Reviewing as <strong>{e(self.expert)}</strong>"
+            f"<span class='who' title='Your name goes with every decision'>{e(self.expert)}</span>"
             if self.expert
-            else "<strong>Enter your name on the case page before reviewing.</strong>"
+            else "<a class='who' href='/'>Enter your name</a>"
         )
         flash = ""
         if self.flash:
@@ -172,10 +184,9 @@ class Page:
             # A toast: the page may open part-way down, at the item acted on.
             flash = f'<div class="flash toast{" err" if err else ""}" role="status">{e(msg)}</div>'
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
-        groups = [[("/cases", "Cases")]] if self.many_cases else []
-        if self.case_name is not None:
-            groups += TAB_GROUPS
-        groups.append([("/help", "Help")])
+        groups = TAB_GROUPS if self.case_name is not None else []
+        if self.many_cases and self.case_name is None:
+            groups = [[("/cases", "Cases")]]
         links = "<span class='sep' aria-hidden='true'></span>".join(
             "".join(
                 f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
@@ -183,12 +194,13 @@ class Page:
             )
             for group in groups
         )
-        case = (
-            f"<div class='casename'>{q(self.case_name)}<small>case open on this computer</small>"
-            "</div>"
-            if self.case_name is not None
-            else ""
-        )
+        case = ""
+        if self.case_name is not None:  # the case's name; with a cases folder, a way back to it
+            tag, href = (
+                ("a", " href='/cases' title='All cases'") if self.many_cases else ("div", "")
+            )
+            on = " on" if self.path == "/cases" else ""
+            case = f"<{tag} class='casename{on}'{href}>{q(self.case_name)}</{tag}>"
         notice = f"<div class='flash'>{self.notice}</div>" if self.notice else ""
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
@@ -200,14 +212,15 @@ class Page:
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
             f"{MARK}<span>Mabillon</span></a>{case}<div class='right'>"
             + (
-                "<a class='pill' href='/setup#cloud'>Cloud labels on · one question at a time "
-                "goes to Anthropic</a>"
+                "<a class='pill' href='/setup#cloud' title='One question at a time goes to "
+                "Anthropic'>Cloud labels on</a>"
                 if self.cloud
-                else "<span class='pill'>Offline · nothing leaves this computer</span>"
+                else "<span class='pill' title='Nothing leaves this computer'>Offline</span>"
             )
-            + f"<span class='who'>{who}</span></div></div>"
+            + f"{who}<a href='/help' class='help'>Help</a></div></div>"
             f"<nav class='tabs'>{links}</nav></header>"
-            f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
+            f"<main{' class=wide' if wide else ''}>"
+            f"{notice}{flash}{self.stand_in}{banner}{body}</main>"
             "</body></html>"
         )
 
@@ -221,21 +234,22 @@ TAB_GROUPS = [
         ("/selection", "Selection"),
         ("/timeline", "Timeline"),
         ("/gaps", "Gaps"),
+        ("/request-letter", "Request letter"),
     ],
     [
-        ("/claim/new", "Add a claim"),
         ("/setup", "Set up and run"),
         ("/log", "Audit log"),
         ("/activity", "Activity"),
     ],
+    [("/cases", "All cases")],  # switching case is the most common move between sessions
 ]
 
 
 def _tab(path: str) -> str:
     """The tab a page sits under: a claim and its evidence under the queue."""
-    if path in ("/claim", "/evidence"):
+    if path in ("/claim", "/evidence", "/claim/new"):
         return "/claims"
-    if path in ("/exhibit", "/exhibit/match", "/request-letter"):
+    if path in ("/exhibit", "/exhibit/match"):
         return "/exhibits"
     if path == "/selection/context":
         return "/selection"
@@ -257,8 +271,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     out = []
     if run.get("partial"):
         out.append(partial_banner(conn, run))
-    if run.get("fake"):
-        out.append(_folded(stand_in_banner(run)))  # every word stays, under its first sentence
+    # a stand-in run's banner (demo or test run) is on every page: Page.stand_in
     later = conn.execute(
         "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         " AND decided_at_utc > ?",
@@ -293,11 +306,20 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     return "".join(out)
 
 
+def stand_in_note(conn: sqlite3.Connection) -> str:
+    """The demo's or a test run's banner, folded to its first sentence, for every page of the
+    case (Page.stand_in), so no page shows scripted decisions without saying so."""
+    run = pipeline.view_run(conn)
+    if run is None or not run.get("fake"):
+        return ""
+    return _folded(stand_in_banner(run))  # every word stays, under its first sentence
+
+
 def _folded(banner: str) -> str:
     """A notice banner folded to its bold first sentence; the rest opens under it. Every word
-    stays on the page."""
+    stays on the page. The first sentence reads as the fold's title, so it drops its period."""
     head, rest = banner.split("</strong>", 1)
-    head = head.replace("<div class='banner'>", "", 1)
+    head = head.replace("<div class='banner'>", "", 1).removesuffix(".")
     rest = rest.removesuffix("</div>")
     return (
         f"<div class='banner'><details><summary>{head}</strong></summary>"
@@ -348,8 +370,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         out.append(
             page.form(
                 "/expert",
-                "<p><strong>Who is reviewing?</strong> Your name is recorded with every "
-                "decision in the audit log.</p><input type='text' name='name' required "
+                "<p><strong>Your name</strong></p><input type='text' name='name' required "
                 "maxlength='60' placeholder='Your name'> <button type='submit' class='primary'>"
                 "Start reviewing</button>",
             )
@@ -376,8 +397,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
 def _case_status(states: list[ClaimState]) -> str:
     """One action (the claims waiting on the expert), then the counts grouped as the Claims
     screen groups them, each linking to its section there."""
-    by = Counter(_group(st) for st in states)
-    waiting = by["you"]
+    by = Counter(_verdict_group(st) for st in states)
+    waiting = sum(1 for st in states if needs_you(st))
     action = (
         f"{waiting} {'claim needs' if waiting == 1 else 'claims need'} you"
         if waiting
@@ -386,7 +407,7 @@ def _case_status(states: list[ClaimState]) -> str:
     counts = "".join(
         f"<li><a href='/claims#{g}'><span class='name t-{g}'>{e(name)}</span> "
         f"<b>{by[g]}</b></a></li>"
-        for g, name, _sub in GROUPS
+        for g, name in GROUPS
         if g != "you" and (by[g] or g != "not")
     )
     return (
@@ -405,8 +426,10 @@ def _case_setup(conn: sqlite3.Connection) -> str:
     rows = []
     for dev_id, label, _model, source_id in devices:
         st = stips.get(dev_id)
+        # the stipulation in words: the device's id is in its name's hover title, not the text
         who = (
-            f"Stipulated: {q(st.statement)}"
+            f"<span title='{e(dev_id)}'>Stipulated: "
+            f"{q(st.statement.replace(f' ({dev_id})', ''))}</span>"
             if st is not None and st.status == StipulationStatus.CONFIRMED
             else "<span class='ov-none'>no stipulated user</span>"
         )
@@ -415,7 +438,7 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         # the device on the left, with its source id under it; who used it on the right
         rows.append(
             f"<li id='dev-{e(dev_id)}'><span class='ov-dev'><b>{q(label)}</b> "
-            f"<span class='mono'>{e(source_id)}</span></span>"
+            f"<span class='src'>From {e(source_id)}</span></span>"
             f"<span class='ov-who'>{who}{called}</span></li>"
         )
     if not rows:
@@ -427,13 +450,11 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         else "<span class='muted'>none imported</span>"
     )
     return (
-        "<h2 id='setup'>Case setup</h2><ul class='setuplist'>"
+        "<div class='ov-head'><h2 id='setup'>Case setup</h2><a href='/setup'>Change</a></div>"
+        "<ul class='setuplist'>"
         + "".join(rows)
         + "<li><span class='ov-dev'>Government documents</span>"
         f"<span class='ov-who'>{docs}</span></li></ul>"
-        "<p class='muted ov-note'>Who used each phone is a stipulation you make, not a finding. "
-        "Every report lists it as a limitation. <a href='/setup'>Change devices and stipulations "
-        "on Set up and run</a>.</p>"
     )
 
 
@@ -450,7 +471,11 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
             else "full audit"
         )
         rows += [
-            ("Latest run", f"<span class='mono'>{e(run['run_id'])}</span> ({mode})"),
+            (
+                "Latest run",
+                f"<span class='mono'>{e(run['run_id'])}</span> ({mode}) · "
+                "<a href='/run'>its claims, one by one</a>",
+            ),
             ("Started (UTC)", e(run["started_at_utc"])),
             (
                 "Versions",
@@ -461,27 +486,12 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
     rows.append(
         (
             "Audit log",
-            f"{summary['entries']} entries. Hash chain "
-            f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}. "
-            "<a href='/log'>Open the log</a>.",
+            f"<a href='/log'>{summary['entries']} entries</a>, hash chain "
+            f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}",
         )
     )
     active = F.active_flags(conn)
-    rows.append(
-        (
-            "Flags",
-            f"{len(active)} flag{'' if len(active) == 1 else 's'} for Mabillon's error log. "
-            "Flag from any claim page; <a href='/log#flags'>the redacted summary</a> is on the "
-            "Audit log page.",
-        )
-    )
-    rows.append(
-        (
-            "Full audit",
-            "New evidence search and model labels run from <a href='/setup'>Set up and run</a>, "
-            "in the background.",
-        )
-    )
+    rows.append(("Flags", f"<a href='/log#flags'>{len(active)}</a>"))
     out = [
         "<section class='ov-record'><h2 id='record'>Record</h2><dl class='record'>"
         + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
@@ -523,10 +533,10 @@ def _format_notices(conn: sqlite3.Connection) -> str:
     untested = sum(1 for c in checks if not c.tested)
     n = len(checks)
     head = (
-        f"{untested} of {n} file{'' if n == 1 else 's'} come from an export version not tested "
-        "with Mabillon. Check results against the source tool."
+        f"{untested} of {n} file{'' if n == 1 else 's'} come from an untested export format. "
+        "Check results against the source tool."
         if untested
-        else f"Format notices for {n} file{'' if n == 1 else 's'}."
+        else f"Format notices for {n} file{'' if n == 1 else 's'}"
     )
     notices = "".join(format_notice(c) for c in checks)
     return (
@@ -566,12 +576,9 @@ def _identities_step(conn: sqlite3.Connection) -> str:
     ).fetchone()[0]
     by = dict(conn.execute("SELECT status, COUNT(*) FROM identity_links GROUP BY status"))
     return (
-        "<p><strong>Other people the document names.</strong> A claim about someone with no "
-        "account in the case (a surname the document prints in capitals, or a contact name) "
-        "cannot be tested "
-        f"until you add the name and decide who is behind it. {added} added; "
+        f"<p><strong>Other people the document names:</strong> {added} added; "
         f"{by.get('confirmed', 0)} link(s) confirmed, {by.get('proposed', 0)} proposed. "
-        "<a href='/identities'>Open Identities</a>.</p>"
+        "<a href='/identities'>Open Identities</a></p>"
     )
 
 
@@ -581,11 +588,8 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
     named = device_names.logged_names(conn)
     out = [
         ("<h2>Devices and stipulations</h2>" if heading else "")
-        + "<p>Who used each phone is a stipulation you make, not "
-        "a finding. Every report lists it as a limitation.</p>"
-        "<p>If the document calls a phone something else, such as TARGET PHONE or Item 1, "
-        "give that name here, as the document writes it, so the audit knows which phone a "
-        "claim means. Separate names with commas. Every report lists the names you gave.</p>"
+        + "<p class='muted'>A stipulation you make, not a finding. Every report lists it as a "
+        "limitation.</p>"
         "<table class='tidy'><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
         "<th>Change</th><th>Document names</th></tr></thead>"
     ]
@@ -646,7 +650,54 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
     out.append("</table>")
     if not devices:
         out.append("<p class='muted'>No devices imported.</p>")
+    out.append(_device_notes(conn))
     return "".join(out)
+
+
+def _digits(number: str) -> str:
+    """A phone number compared by its last ten digits (+1 212 555 0111 and 2125550111 match)."""
+    d = re.sub(r"\D", "", number)
+    return d[-10:] if len(d) >= 10 else ""
+
+
+def _device_notes(conn: sqlite3.Connection) -> str:
+    """Two cheap checks on the phones, as notes, never merges: two reports that list the same
+    number as the phone's own (the same handset in two formats, or two handsets that shared a
+    SIM), and a document whose phone numbers match none of the phones' own numbers."""
+    own: dict[str, set[str]] = {}
+    files = dict(
+        conn.execute("SELECT d.id, s.file_name FROM devices d JOIN sources s ON s.id = d.source_id")
+    )
+    for dev, ident in conn.execute(
+        "SELECT device_id, identifier FROM accounts WHERE device_id IS NOT NULL"
+    ):
+        d = _digits(ident or "")
+        if d:
+            own.setdefault(dev, set()).add(d)
+    notes = []
+    devs = sorted(own)
+    for i, a in enumerate(devs):
+        for b in devs[i + 1 :]:
+            if own[a] & own[b]:
+                notes.append(
+                    f"The phones in {q(files.get(a, a))} and {q(files.get(b, b))} list the same "
+                    "number as their own. They may be one handset in two report formats (or two "
+                    "handsets that shared a SIM). Mabillon keeps them apart: stipulate each, "
+                    "the same way if they are one phone."
+                )
+    numbers = {
+        _digits(m)
+        for (text,) in conn.execute("SELECT text FROM govdoc_paragraphs")
+        for m in re.findall(r"\+?\(?\d[\d\s().-]{8,}\d", text or "")
+    } - {""}
+    mine = set().union(*own.values()) if own else set()
+    if numbers and mine and not numbers & mine:
+        notes.append(
+            "The government document gives phone numbers, and none of them is a number these "
+            "phones list as their own. Check that the reports belong to this case (a number "
+            "can also be missing from a report's own accounts)."
+        )
+    return "".join(f"<p class='note device-note'>{n}</p>" for n in notes)
 
 
 # ---------------------------------------------------------------- queue
@@ -657,48 +708,34 @@ def _vcls(st: ClaimState) -> str:
     return f"{st.css} v-nt" if st.untested else st.css
 
 
-def _tally(states: list[ClaimState]) -> str:
-    """A bar split by finding, then one chip per finding with its count."""
-    if not states:
-        return ""
-    known = {"v-sup", "v-con", "v-unp", "v-await", "v-confirm"}
-    by_label = Counter((st.label, _vcls(st)) for st in states)
-    bar = "".join(
-        f"<span class='{css if css in known else 'other'}' "
-        f"style='width:{100 * n / len(states):.2f}%'></span>"
-        for (_, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
-    )
-    chips = "".join(
-        f"<span class='verdict {css}'>{e(label)} <b>{n}</b></span>"
-        for (label, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
-    )
-    return f"<div class='tally'>{bar}</div><div class='counts'>{chips}</div>"
+def _ledger_anchor(claim_id: str) -> str:
+    """The id of a claim's row in the side ledger. A ledger link lands on it, so the browser
+    scrolls the ledger to the claim just opened instead of back to the first claim."""
+    return "lg-" + urlquote(claim_id, safe="")
 
 
-def _ledger(states: list[ClaimState], current: str | None = None, compact: bool = False) -> str:
+def _ledger(states: list[ClaimState], current: str | None = None) -> str:
+    """The claims beside a claim page: each claim's name and status, then its text."""
     rows = []
     for st in states:
-        needs = "" if compact else " ".join(t for _, t in st.needs())
+        anchor = _ledger_anchor(st.claim.id)
         rows.append(
-            f"<li{' class=on' if st.claim.id == current else ''}>"
+            f"<li id='{e(anchor)}'{' class=on' if st.claim.id == current else ''}>"
             "<div class='row'><div class='head'><span class='meta'>"
-            f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-            f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
+            f"<a href='{e(link('/claim', id=st.claim.id))}#{e(anchor)}'>{e(st.name)}</a></span>"
             f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
-            f"<div class='text'>{q(st.claim.text)}</div>"
-            + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
-            + "</div></li>"
+            f"<div class='text'>{q(st.claim.text)}</div></div></li>"
         )
     return f"<ul class='ledger'>{''.join(rows)}</ul>"
 
 
 # where a claim sits on the overview: what waits on the expert first, then the findings
 GROUPS = (
-    ("you", "Needs you", "Waiting on your review"),
-    ("con", "Contradicted", "The verdict rules or an expert decided it"),
-    ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "An expert accepted its key evidence or overrode the verdict"),
-    ("not", "Not audited", "No verdict yet"),
+    ("you", "Needs you"),
+    ("con", "Contradicted"),
+    ("unp", "Unproven"),
+    ("sup", "Supported"),
+    ("not", "Not audited"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
 
@@ -719,10 +756,17 @@ def needs_you(st: ClaimState) -> bool:
 
 
 def _group(st: ClaimState) -> str:
-    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
-        return "not"  # no verdict was decided: not a gap in the data
+    """Where the claim's row sits: waiting on the expert first, else under its verdict."""
     if needs_you(st):
         return "you"
+    return _verdict_group(st)
+
+
+def _verdict_group(st: ClaimState) -> str:
+    """The claim's verdict group, whether or not it waits on the expert. The counts use this,
+    so the verdict counts add up to every claim and "Needs you" is a count across them."""
+    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
+        return "not"  # no verdict was decided: not a gap in the data
     if st.css == "v-con":
         return "con"
     if st.css in ("v-sup", "v-supai"):
@@ -732,24 +776,28 @@ def _group(st: ClaimState) -> str:
 
 def _claim_row(st: ClaimState, group: str) -> str:
     """One claim on the overview, laid out like the site's ledger: its name, the claim, its status
-    at the right, then small lines saying where it is, what it needs from the expert and why it
-    is unproven. Every row shows its status in words; a status that repeats its group's heading
-    word for word is marked `same` and shows as plain text rather than a pill. The standing
-    "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
+    at the right, then small lines saying where it is, the one thing it needs from the expert and
+    the topics that leave it unproven. A status that repeats its group's heading word for word is
+    left to the heading. The standing "verdict not yet confirmed" reminder is left out here; the
+    claim page shows it."""
     note = ""
-    if group == "you":
+    if group == "you":  # why it waits on the expert: the most urgent need, in its words
         lines = _you_lines(st)
-        note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
-    if group in ("you", "unp"):
-        note += _gap_lines(st)
-    heading = {g: name for g, name, _ in GROUPS}[group]
-    same = " class='same'" if group != "you" and st.label == heading else ""
+        note = f"<div class='needs'>{e(lines[0])}</div>" if lines else ""
+    elif needs_you(st):  # listed under its verdict too: say it is also in the to-do above
+        note = "<span class='gap you'>Needs you</span>"
+    if group in ("you", "unp"):  # why it is unproven: the topics; the claim page says the rest
+        note += "".join(f"<span class='gap'>{e(topic)}</span>" for topic, _ in st.explain_lines())
+    # a status that repeats its group's heading word for word is left to the heading
+    same = group != "you" and st.label == dict(GROUPS)[group]
+    pill = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
     return (
-        f"<li{same}><div class='row'><span class='cid'>"
+        "<li><div class='row'><span class='cid'>"
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></span>"
         f"<div class='text'>{q(st.claim.text)}</div>"
-        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
-        f"<div class='sub'><span class='meta'>{e(st.where)} · "
+        # the heading says it on screen; the words stay for a screen reader and for tools
+        + (f"<span class='vh'>{pill}</span>" if same else pill)
+        + f"<div class='sub'><span class='meta'>{e(st.where)} · "
         f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>{note}</div></div></li>"
     )
 
@@ -770,12 +818,9 @@ def _you_lines(st: ClaimState) -> list[str]:
     return lines
 
 
-def _tile(group: str, name: str, sub: str, n: int) -> str:
+def _tile(group: str, name: str, n: int) -> str:
     """A count; it links to its section when there is one (Needs you starts at the next-up card)."""
-    inner = (
-        f"<span class='name'>{e(name)}</span><span class='n'>{n}</span>"
-        f"<span class='sub'>{e(sub)}</span>"
-    )
+    inner = f"<span class='name'>{e(name)}</span><span class='n'>{n}</span>"
     if not n:
         return f"<div class='tile t-{group} empty'>{inner}</div>"
     href = "#next" if group == "you" else f"#{group}"
@@ -806,68 +851,61 @@ def _group_rows(rows: list[ClaimState], g: str, folded: bool) -> str:
     return f"<details class='fold'><summary>{show}</summary>{ul}</details>"
 
 
-def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
+def claims_queue(conn: sqlite3.Connection, page: Page, next_step: str | None = None) -> str:
+    """next_step: before the first audit, the setup step that comes next (the overview then
+    says so instead of "Nothing waits on you")."""
     states = queue(conn)
-    by: dict[str, list[ClaimState]] = {g: [] for g, _, _ in GROUPS}
-    for st in states:
-        by[_group(st)].append(st)
+    by: dict[str, list[ClaimState]] = {g: [] for g, _ in GROUPS}
+    for st in states:  # each claim under its verdict; one that waits on you is also under "you"
+        if needs_you(st):
+            by["you"].append(st)
+        by[_verdict_group(st)].append(st)
     you, total = len(by["you"]), len(states)
-    done = total - you - len(by["not"])
+    proposed = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
     if not total:
         head = "No claims yet"
     elif you:
-        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you."
+        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you"
+    elif proposed:
+        head = f"{proposed} proposed claim{'s' if proposed != 1 else ''} wait for your decision"
+    elif next_step:
+        head = "Not audited yet"
     else:
-        head = "Nothing waits on you."
+        head = "Nothing waits on you"
+    lede = ""
+    if proposed:
+        lede = (
+            f"<p class='lede'>{proposed} claim{'s' if proposed != 1 else ''} the local model "
+            "proposed wait for you to accept, edit or remove them. Nothing is audited until you "
+            "accept it. <a href='/setup#claims'>Decide on Set up and run</a>.</p>"
+        )
+    elif next_step and not you:
+        lede = f"<p class='lede'>Next: {e(next_step)} <a href='/setup'>Set up and run</a>.</p>"
     out = [
         "<div class='pg-claims'>"
-        f"<div class='overview-head'><div><h1>{e(head)}</h1><p class='muted'>Nothing becomes "
-        "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
-        "evidence only sorts the work.</p></div>"
-        + (
-            f"<div class='progress'><div class='lbl'><span>Settled"
-            f"</span><b>{done} of {total}</b></div><div class='track'>"
-            f"<span style='width:{100 * done / total:.2f}%'></span></div></div>"
-            if total
-            else ""
-        )
-        + "</div>",
+        f"<div class='overview-head'><h1>{e(head)}</h1>"
+        "<span class='head-acts'><a href='/help#words'>What the words mean</a> "
+        "<a class='button' href='/claim/new'>Add a claim</a></span></div>" + lede,
         "<nav class='tiles' aria-label='Claims by finding'>"
-        + "".join(_tile(g, name, sub, len(by[g])) for g, name, sub in GROUPS if by[g] or g != "not")
+        + "".join(_tile(g, name, len(by[g])) for g, name in GROUPS if by[g] or g != "not")
         + "</nav>",
     ]
     if by["you"]:
         out.append(_next_up(by["you"][0]))
-    for g, name, sub in GROUPS:
+    for g, name in GROUPS:
         rows = by[g][1:] if g == "you" else by[g]
         if g == "you" and not rows:
             continue
         if not by[g]:
             continue
         title = "Also waiting on you" if g == "you" else name
-        folded = g in ("con", "sup") and bool(by["you"])
-        # the tile above already gives each group's sentence; the heading keeps only the count,
-        # and a folded group leaves the count to its "Show N claims" line. Unproven keeps its
-        # own caveat, which no tile says.
+        folded = g == "sup" and bool(by["you"])  # contradicted stays open: the key findings
+        # the heading keeps only the count; a folded group leaves it to its "Show N claims" line
         count = "" if folded else f"{len(rows)} claim{'s' if len(rows) != 1 else ''}"
-        sub = (
-            "What the data does not show. Not found never means it did not happen."
-            if g == "unp"
-            else ""
-        )
-        extra = ""
-        if g == "unp":
-            kinds = Counter(k for st in rows for k in st.gaps())
-            extra = "".join(
-                f"<span class='stpill'>{e(GAP_TOPICS[k])} <b>{n}</b></span>"
-                for k, n in kinds.most_common()
-            )
-        said = " · ".join(e(x) for x in (count, sub) if x)
         out.append(
             f"<section class='group' id='{g}'><div class='ghead'><h2>{e(title)}</h2>"
-            + (f"<span class='muted'>{said}</span>" if said else "")
+            + (f"<span class='muted'>{count}</span>" if count else "")
             + "</div>"
-            + (f"<div class='kinds'>{extra}</div>" if extra else "")
             + _group_rows(rows, g, folded=folded)
             + "</section>"
         )
@@ -904,7 +942,7 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
         "/evidence/decide",
         f"<input type='hidden' name='id' value='{e(item.id)}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
         "<button type='submit' name='status' value='accepted'>Accept</button>"
         "<button type='submit' name='status' value='dismissed'>Dismiss</button>" + reopen,
         back=back,
@@ -919,7 +957,7 @@ def _confirm_form(page: Page, item: EvidenceItem, back: str) -> str:
         "/evidence/confirm",
         f"<input type='hidden' name='id' value='{e(item.id)}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
         "<button type='submit' name='status' value='accepted'>Confirm contradiction</button>"
         "<button type='submit' name='status' value='dismissed'>Dismiss</button>",
         back=back,
@@ -955,8 +993,11 @@ def evidence_card(
     threads: dict[str, list[str]] | None = None,
     challenged: frozenset[str] = frozenset(),
     around_link: bool = True,
+    same_as: str | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
+    same_as: the card above on the page for the same record (another assumption's item); this
+    card then shows the verified quote and points up, rather than drawing the messages again.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
     around: messages shown either side of the record, as a conversation (0: the quote only).
     threads: the page's cache of thread orders, so many cards read each thread once.
@@ -974,7 +1015,12 @@ def evidence_card(
         if confirm
         else _decide_form(page, item, last_kind == "expert", back)
     )
-    shown, thread = _conversation(conn, item, around, threads, folded=settled)
+    shown, thread = _conversation(conn, item, 0 if same_as else around, threads, folded=settled)
+    if same_as:
+        shown += (
+            f"<p class='ev-same'>The same message as <a href='#{e(same_as)}'>the item above</a>, "
+            "judged here for this assumption.</p>"
+        )
     folds = ""  # a settled item's disclosures open on the card's last line
     if settled:
         folds = (
@@ -983,8 +1029,7 @@ def evidence_card(
         )
         form = ""
     around_a = (
-        f"<a class='ev-around' href='{e(link('/evidence', id=item.id))}'>"
-        "See about 20 messages around it</a>"
+        f"<a class='ev-around' href='{e(link('/evidence', id=item.id))}'>Messages around it</a>"
         if around_link
         else ""
     )
@@ -1002,7 +1047,10 @@ def evidence_card(
         )
         + "</div>"
         + shown
-        + f"<p class='ev-rec'>{record_line(conn, item.record_id, found)}</p>"
+        # the time above is the case's zone; this line keeps the export's own values
+        + "<p class='ev-rec'><span class='ev-asx'>As exported:</span> "
+        + f"{record_line(conn, item.record_id, found)}</p>"
+        + f"<p class='ev-src muted'>{source_line(conn, item.ref.source_id, item.ref.locator)}</p>"
         + (
             f"<p>{rationale_html(item, withheld)}</p>"
             + ("" if withheld.acknowledged else _acknowledge_form(page, item, back))
@@ -1022,6 +1070,49 @@ def evidence_card(
     )
 
 
+def _records_note(conn: sqlite3.Connection, source_id: str, records: int) -> str:
+    """Why Records differs from the rows the coverage line says were imported: rows kept as
+    accounts are not records, and one row can hold several records (a contact's two numbers)."""
+    row = conn.execute(
+        "SELECT payload_json FROM source_coverage WHERE source_id = ?", (source_id,)
+    ).fetchone()
+    try:
+        tables = json.loads(row[0]).get("tables", []) if row else []
+    except (ValueError, AttributeError):
+        return ""
+    imported = sum(int(t.get("rows_imported") or 0) for t in tables)
+    if not imported or imported == records:
+        return ""
+    accounts = sum(int(t.get("rows_imported") or 0) for t in tables if t.get("kind") == "accounts")
+    parts = []
+    if accounts:
+        parts.append(f"{accounts} account row{'s' if accounts != 1 else ''} kept as accounts")
+    extra = records - (imported - accounts)
+    if extra > 0:
+        parts.append(f"{extra} more from rows that hold two or more records (a contact's numbers)")
+    elif extra < 0:
+        parts.append(f"{-extra} row{'s' if extra != -1 else ''} not stored as records")
+    return f"<span class='muted rec-note'>{e('; '.join(parts))}</span>" if parts else ""
+
+
+_EXCEL_ROW = re.compile(r"^(?P<sheet>.+)!(?P<row>\d+)$")
+
+
+def source_line(conn: sqlite3.Connection, source_id: str, locator: str) -> str:
+    """Where a record is in the original file, unfolded on every card: the file, then the sheet
+    and spreadsheet row for an Excel report. The row is the spreadsheet's own row number, which
+    is not the report's "#" column (a header row and title rows come before the first record)."""
+    row = conn.execute("SELECT file_name, kind FROM sources WHERE id = ?", (source_id,)).fetchone()
+    name, kind = (row[0], row[1]) if row else (source_id, "")
+    m = _EXCEL_ROW.match(locator)
+    if kind == "cellebrite_excel" and m:
+        return (
+            f"From {q(name)}, {q(m['sheet'])} sheet, spreadsheet row {e(m['row'])} "
+            "(Excel's row number, not the report's # column)"
+        )
+    return f"From {q(name)}, at {e(locator)}"
+
+
 def _conversation(
     conn: sqlite3.Connection,
     item: EvidenceItem,
@@ -1037,8 +1128,13 @@ def _conversation(
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
         return quote, ""
     thread = f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
-    quoted = f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    whole = any(ln.is_target and ln.body.strip() == item.quote.strip() for ln in lines)
+    # the quote is the whole highlighted message: the bubble already shows it, word for word
+    quoted = (
+        "" if whole else f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    )
     if folded:
+        quoted = quoted or quote  # the neighbours fold away; the quote itself stays in view
         return quoted, (
             f"<details class='ev-thread'><summary>The messages around it ({len(lines)})"
             f"</summary>{thread}</details>"
@@ -1053,7 +1149,9 @@ def _msg(ln: ContextLine) -> str:
     tag = "<span class='cited'>This record</span>" if ln.is_target else ""
     return (
         f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
-        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
+        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}"
+        + (f" · to {q(ln.to)}" if ln.to else "")
+        + "</div>"
         f"<div class='body'>{q(ln.body)}</div>"
         f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
     )
@@ -1107,8 +1205,7 @@ def _flag_label_form(
             )
             + "</select> "
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor=item.id,
         )
@@ -1121,7 +1218,7 @@ def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, bac
     d = st.decision
     gave = F.baker_verdict(conn, st.claim.id, st.run_id, d.verdict.value) if d else None
     return (
-        "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
+        "<details class='flag'><summary>Flag this verdict</summary>"
         + page.form(
             "/flag/add",
             _flag_fields(st.claim.id, F.VERDICT, st.run_id)
@@ -1132,8 +1229,7 @@ def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, bac
             )
             + "</select> "
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor="verdict",
         )
@@ -1150,8 +1246,7 @@ def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
             + f"<input type='text' class='wide' name='record' maxlength='{F.RECORD_MAX}' "
             "placeholder='Where it is, for example the file and row (optional)'><br>"
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor="flag-missed",
         )
@@ -1229,17 +1324,19 @@ def flags_overview(conn: sqlite3.Connection) -> str:
     # one quiet panel: the count, how to flag, and the download on one line with its note
     return (
         "<section class='logflags'>"
-        "<h2 id='flags'>Flags for Mabillon's error log</h2>"
-        f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}."
-        " Flag a wrong label, a missed record or a verdict you disagree with on any claim page."
+        "<h2 id='flags'>Flags</h2>"
+        "<p class='muted'>A flag is your note that a label or verdict looks wrong. Flags never "
+        "change a verdict. The summary below is a download of counts only, for you to share "
+        "with the Mabillon team if you choose.</p>"
+        f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}"
         "</p>"
         "<form method='get' action='/flags/summary.json' class='flagform'>"
-        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)' "
-        "aria-label='Pilot name (optional)'> "
+        "<input type='text' name='pilot' maxlength='60' "
+        "placeholder='Pilot name, if you are in a pilot (optional)' "
+        "aria-label='Pilot name, if you are in a pilot (optional)'> "
         "<button type='submit'>Download the redacted summary</button>"
-        "<p class='muted'>Nothing is sent. The file holds counts, labels and versions only: no "
-        "claim text, quotes, notes, names, record references or ids. Read it before you share "
-        "it.</p></form></section>"
+        "<p class='muted'>Counts, labels and versions only: no case text, names or ids. Nothing "
+        "is sent.</p></form></section>"
     )
 
 
@@ -1320,24 +1417,26 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         "<div class='card' id='verdict'><div class='in'><div class='vhead'><h2>Verdict</h2>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
     )
-    needs = st.needs()
+    # the standing "not yet confirmed" reminder is the Confirm fold's job; an untested claim's
+    # why and the agent's proposal each show in full under Evidence
+    needs = [
+        t
+        for t in _you_lines(st)
+        if not (st.untested and (t.startswith("Not tested:") or t == AGENT_STEP))
+    ]
     if needs:
-        out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
-    out.append(_gap_lines(st))  # the same lines as the overview and the report
-    out.append(claim_format_notices(conn, st))  # the same notices as the report's claim
+        out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for t in needs) + "</ul>")
+    out.append(_gap_lines(st))  # the same lines as the report
+    out.append(_coverage_lines(conn, st))
+    out.append(_claim_notices(conn, st))
     out.append(forwarded_warning(conn, st))
     out.append(mixed_app_note(conn, st))
     if d is not None:
-        out.append(
-            "<details><summary>Why (reasons from the verdict rules)</summary><ul>"
-            + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
-            + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
-            f"{e(d.pipeline_run_id)}.</p></details>"
-        )
-        if d.confirmed_by:
+        out.append(_why(conn, st, d))
+        signed = signoff(conn, d)
+        if signed:
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
-            kind = "overrode" if d.override_note is not None else "confirmed"
-            out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
+            out.append(f"<p class='signoff'><strong>{e(signed)}</strong>{note}</p>")
         out.append(
             f"</div><div class='in vacts'>{_verdict_forms(page, st, back)}"
             f"{_flag_verdict_form(conn, page, st, back)}"
@@ -1361,15 +1460,15 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             "so the verdict rules contradict it whatever the evidence says. The records that "
             "check cites are the evidence; the model was not asked to label any.</p>"
         )
+        out.append(_failed_check_records(conn, st))
     elif st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
-        out.append(f"<p class='warn'><strong>{e(st.not_tested or '')}</strong></p>")
+        out.append(_not_tested_block(conn, st))
         if "matches no person" in (st.not_tested or ""):
             out.append(
-                "<p>A name in this claim is not a person in the case yet. Add it on "
-                "<a href='/identities'>Identities</a> and decide who is behind it; the next "
-                "audit run can then test the claim.</p>"
+                "<p><a href='/identities'>Add the name on Identities</a>; the next audit can then "
+                "test the claim.</p>"
             )
         out.append(_holdings(conn))
         out.append(
@@ -1378,12 +1477,16 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
         )
     groups = _groups(st)
-    if not groups:
-        out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
+    failed_cited = any(ch.outcome is CheckOutcome.FAIL and ch.record_ids for ch in st.checks)
+    if not groups and not st.untested and not (st.unlabeled and failed_cited):
+        # an untested claim searched nothing, as it says above; a failed check's records show
+        # above as that check's evidence
+        out.append("<p class='muted'>No relevant evidence items.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     challenged = challenge.found_items(conn, pipeline.view_run(conn))
+    drawn: dict[str, str] = {}  # record id -> the first card on the page that draws it
     for title, group in groups:
         out.append(f"<h3 class='ev-group'>{e(title)} <span>({len(group)})</span></h3>")
         shown_on = None
@@ -1408,13 +1511,15 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     around=AROUND,
                     threads=threads,
                     challenged=challenged,
+                    same_as=drawn.get(x.record_id),
                 )
             )
+            drawn.setdefault(x.record_id, x.id)
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     out.append("<div class='claim-more'>")
     if hidden:
         out.append(_irrelevant_list(conn, hidden, flagged, {w.evidence_id for w in st.withheld}))
-    out.append(_working(st))
+    out.append(_working(st, Names(conn).for_claim(st.claim.text)))
     if d is not None:  # a flag is about an audited claim
         out.append(_flag_missed_form(page, st, back))
     out.append("</div>")
@@ -1422,15 +1527,139 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
     out.append(_edit_claim_form(page, st, back))
     states = claim_states(conn)
-    side = (
-        f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
-        f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
-    )
-    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{''.join(out)}</div></div>"
-    return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
+    side = f"<aside class='side'>{_ledger(states, c.id)}</aside>"
+    # The run banner sits in the claim's column, so the ledger starts at the top of the page and
+    # fits the window: its last rows, and the open claim's row pinned to its edge, stay on screen.
+    main = run_banner(conn, page, back) + "".join(out)
+    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{main}</div></div>"
+    return page.wrap(st.name, body, wide=True)
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _coverage_lines(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """For a records-coverage gap (an absence claim), what the check searched and what each
+    source's coverage allows, in the verdict box: "not found" never reads as "did not happen".
+    The same text stays in Rules' working."""
+    if AssumptionKind.COMPLETENESS not in st.gaps():
+        return ""
+    kinds = {a.id: a.kind for a in st.assumptions}
+    out = [
+        f"<p class='gap-detail'><b>Searched</b> {plain_ids(conn, ch.searched)}</p>"
+        f"<p class='gap-detail'><b>Found</b> {plain_ids(conn, ch.detail)}</p>"
+        for ch in st.checks
+        if kinds.get(ch.assumption_id) is AssumptionKind.COMPLETENESS
+        and ch.outcome is not CheckOutcome.PASS
+    ]
+    return "".join(out)
+
+
+def _not_tested_block(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """An untested claim: the plain sentence first, code's refusals folded under it as written,
+    and the other claims read from the same paragraph, which may have been tested."""
+    text = st.not_tested or ""
+    head, sep, refused = text.partition(" Refused: ")
+    out = [f"<p class='warn'><strong>{e(head)}</strong></p>"]
+    if sep:
+        out.append(
+            "<details class='why-tech'><summary>Why code could not set it up</summary>"
+            f"<p class='muted'>Refused: {plain_ids(conn, refused)}</p></details>"
+        )
+    para = st.claim.paragraph_id
+    same = [
+        o
+        for o in claim_states(conn)
+        if o.claim.id != st.claim.id and o.claim.paragraph_id == para and not o.untested
+    ]
+    if same:
+        out.append(
+            "<p>Other claims from the same paragraph: "
+            + ", ".join(
+                f"<a href='{e(link('/claim', id=o.claim.id))}'>{e(o.name)}</a> ({e(o.label)})"
+                for o in same
+            )
+            + ". Their records may answer this one.</p>"
+        )
+    return "".join(out)
+
+
+FAILED_CITED_SHOWN = 12  # records listed per failed check; the rest are counted
+
+
+def _failed_check_records(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """The records each failed check cites, as the evidence of a claim the rules contradict on
+    that check, so the page never says "no evidence" beside a contradiction. Display only: the
+    check, its records and the verdict are as stored."""
+    by_assumption = {a.id: a for a in st.assumptions}
+    out = []
+    for ch in st.checks:
+        if ch.outcome is not CheckOutcome.FAIL or not ch.record_ids:
+            continue
+        a = by_assumption.get(ch.assumption_id)
+        n = len(ch.record_ids)
+        head = f"Records the failed check cites ({n})" + (
+            f" · Assumption: {plain_ids(conn, a.text)}" if a is not None else ""
+        )
+        items = []
+        for rid in ch.record_ids[:FAILED_CITED_SHOWN]:
+            href = e(link("/selection/context", id=rid))
+            ctx = (
+                f" · <a href='{href}'>See it in its conversation</a>"
+                if rid.startswith("msg:")
+                else ""
+            )
+            items.append(f"<li>{record_line(conn, rid)}{ctx}</li>")
+        more = n - FAILED_CITED_SHOWN
+        if more > 0:
+            items.append(f"<li class='muted'>and {more} more, listed under Rules' working</li>")
+        out.append(f"<h3 class='ev-group'>{head}</h3><ul class='cited'>{''.join(items)}</ul>")
+    return "".join(out)
+
+
+def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
+    """Why the verdict: one plain line per reason (core/report/why.py), then the reasons exactly
+    as the rules stored them, with the rule version and run, folded as Technical details."""
+
+    def href(rid: str, assumption: str | None, stance: Stance | None) -> str | None:
+        """A record's link: its evidence item on this claim for the line's assumption (the one
+        read with the line's stance first), else the message in its thread."""
+        items = [
+            x for x in st.evidence if x.record_id == rid and assumption in (None, x.assumption_id)
+        ]
+        items.sort(key=lambda x: x.stance is not stance)
+        if items:
+            return link("/evidence", id=items[0].id)
+        return link("/selection/context", id=rid) if rid.startswith("msg:") else None
+
+    names = Names(conn).for_claim(st.claim.text)
+    plain = why.lines(
+        conn, d.reasons, st.assumptions, st.checks, st.evidence, names=names, href=href
+    )
+    return (
+        "<details class='why'><summary>Why</summary><ul class='why-lines'>"
+        + "".join(f"<li>{ln.html}</li>" for ln in plain)
+        + "</ul><details class='why-tech'><summary>Technical details</summary><ul>"
+        + "".join(f"<li>{names.cite(r)}</li>" for r in d.reasons)
+        + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
+        f"{e(d.pipeline_run_id)}.</p></details></details>"
+    )
+
+
+def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """The report's format notices for the claim's sources (claim_format_notices); two or more
+    fold under one line that counts the untested ones, as the case page does. Every word stays."""
+    notices = claim_format_notices(conn, st)
+    n = notices.count("<p class='format-notice")
+    if n < 2:
+        return notices
+    untested = notices.count("<p class='format-notice warn'")
+    head = (
+        f"{untested} of {n} files come from an untested export format"
+        if untested
+        else f"Format notices for {n} files"
+    )
+    return f"<details class='fmt'><summary><strong>{e(head)}</strong></summary>{notices}</details>"
 
 
 AGENT_CHECKED = (
@@ -1465,18 +1694,14 @@ def _agent_card(
         f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
         f"<input type='hidden' name='attempt' value='{x.attempt}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
     )
     accept = (
         "<button type='submit' name='decision' value='accept'>Accept these assumptions</button>"
     )
     reject = "<button type='submit' name='decision' value='reject'>Reject</button>"
     if x.decided is None:
-        state = (
-            "<p><strong>Waiting for you.</strong> Nothing here is used until you accept it. "
-            "Accepting puts these assumptions in the case from the next audit on, if the agent "
-            "gives them again for this claim's text. The claim's text never changes.</p>"
-        )
+        state = "<p><strong>Waiting for you.</strong> Nothing here is used until you accept it.</p>"
         form = page.form("/testability/decide", fields + accept + reject, back=back, anchor="agent")
     else:
         action, actor = x.decided
@@ -1499,8 +1724,6 @@ def _agent_card(
         "<section class='agent' id='agent'>"
         f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> Assumptions that "
         "would make this claim testable</h2>"
-        "<p class='muted'>The testability step asked the local model again, with the reasons "
-        "code refused the first try. It only proposes.</p>"
         f"<ul class='proposed'>{rows}</ul>"
         f"<details class='more'><summary>What code checked</summary><p>{e(AGENT_CHECKED)}{sheet}"
         "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
@@ -1523,7 +1746,7 @@ def _agent_fail_card(
     texts = {a.id: a.text for a in st.assumptions}
     reason = (
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
     )
     rows = []
     for c in st.agent_fails:
@@ -1623,13 +1846,13 @@ def _must_be_true(
         )
     return (
         "<section class='truths'><h2>What has to be true</h2>"
-        "<p class='muted'>Each part of the claim the records would have to show, and what the "
-        f"verdict rules found.</p><ul class='checklist'>{''.join(rows)}</ul></section>"
+        f"<ul class='checklist'>{''.join(rows)}</ul></section>"
     )
 
 
-def _working(st: ClaimState) -> str:
-    """The rules' working: the assumption and check tables, folded."""
+def _working(st: ClaimState, names: Names) -> str:
+    """The rules' working: the assumption and check tables, folded, as stored (ids stay ids),
+    with the claim's own quoted words marked as cited."""
     d = st.decision
     out: list[str] = []
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
@@ -1648,7 +1871,7 @@ def _working(st: ClaimState) -> str:
                 else "no"
             )
             out.append(
-                f"<tr><td>{e(a.text)}</td><td>{e(a.kind.value)}</td>"
+                f"<tr><td>{names.cite(a.text)}</td><td>{e(a.kind.value)}</td>"
                 f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(cov)}</td></tr>"
             )
         out.append("</table>")
@@ -1660,18 +1883,15 @@ def _working(st: ClaimState) -> str:
         for ch in st.checks:
             out.append(
                 f"<tr><td>{e(ch.check_name)} {e(ch.check_version)}</td>"
-                f"<td>{e(ch.outcome.value)}</td><td>{e(ch.searched)}</td><td>{e(ch.detail)}</td>"
+                f"<td>{e(ch.outcome.value)}</td><td>{names.cite(ch.searched)}</td>"
+                f"<td>{names.cite(ch.detail)}</td>"
                 "</tr>"
             )
         out.append("</table>")
 
     if not out:
         return ""
-    return (
-        "<details class='working'><summary>Show the rules' working: assumptions, checks and "
-        "what was searched"
-        f"</summary>{''.join(out)}</details>"
-    )
+    return f"<details class='working'><summary>Rules' working</summary>{''.join(out)}</details>"
 
 
 def _context_link(f: explain.Fit) -> str | None:
@@ -1735,7 +1955,7 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
 def _holdings(conn: sqlite3.Connection) -> str:
     held = case_holdings(conn)
     items = "".join(f"<li>{e(h)}</li>" for h in held) or "<li>No extraction imported.</li>"
-    return f"<div class='holdings'><p>{e(HOLDINGS)}</p><ul>{items}</ul></div>"
+    return f"<div class='holdings'><p>Sources in this case</p><ul>{items}</ul></div>"
 
 
 def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
@@ -1760,8 +1980,7 @@ def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
             f"<input type='hidden' name='claim' value='{cid}'>"
             "<input type='hidden' name='status' value='edited'>"
             f"<textarea name='text' rows='3' required>{e(st.claim.text)}</textarea><br>"
-            "<button type='submit'>Save new wording</button> <span class='muted'>A changed "
-            "claim needs a full audit.</span>",
+            "<button type='submit'>Save new wording</button>",
             back=back,
             anchor="edit",
         )
@@ -1825,10 +2044,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     out.append("<h2>Context</h2>")
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:
-        out.append(
-            "<p class='muted'>Messages around the record, in time order. Times are the phone's "
-            "local time. The record under review is highlighted.</p><div class='thread'>"
-        )
+        out.append("<div class='thread'>")
         out.extend(_msg(ln) for ln in lines)
         out.append("</div>")
     else:
@@ -1855,7 +2071,25 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
 # ---------------------------------------------------------------- add a claim
 
 
-def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
+# what each claim type covers, in a few words, on the Add a claim form
+CLAIM_TYPE_HINT = {
+    ClaimType.COMMUNICATION: "someone sent, received or said something",
+    ClaimType.IDENTITY: "who is behind an account, number or name",
+    ClaimType.TIMING: "when something happened, or in what order",
+    ClaimType.CONTENT_MEANING: "what words in a message mean",
+    ClaimType.COUNT: "how many messages, calls or contacts",
+    ClaimType.ABSENCE: "something did not happen, or no contact took place",
+    ClaimType.ROLE: "what part a person played",
+    ClaimType.EVENT: "an act or event outside the phone records",
+}
+
+
+def new_claim_page(
+    conn: sqlite3.Connection, page: Page, draft: dict[str, str] | None = None
+) -> str:
+    """Add a claim: each paragraph shown in full to pick from (a short preview hid which
+    paragraph was which). `draft` refills the form after a refused add."""
+    draft = draft or {}
     paras = list(
         conn.execute(
             "SELECT p.id, p.page, p.para_no, p.label, p.text, g.title FROM govdoc_paragraphs p"
@@ -1866,18 +2100,26 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     n = 1
     while f"C{n:02d}" in ids:
         n += 1
+    chosen = draft.get("paragraph") or (paras[0][0] if paras else "")
     groups: dict[str, list[str]] = {}
     for pid, pg, no, label, text, title in paras:
         groups.setdefault(title or "", []).append(
-            f"<option value='{e(pid)}'>Page {pg}, paragraph "
-            f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
+            f"<label class='para-pick'><input type='radio' name='paragraph' value='{e(pid)}'"
+            + (" checked" if pid == chosen else "")
+            + " required><span class='where'>Page "
+            + (f"{pg}, paragraph {e(label)}" if label else f"{pg}, unnumbered text {no}")
+            + f"</span><span class='text'>{q(text)}</span></label>"
         )
     opts = "".join(
-        f"<optgroup label='{e(title)}'>{''.join(items)}</optgroup>"
+        f"<fieldset class='paras'><legend>{e(title or 'The document')}</legend>"
+        f"{''.join(items)}</fieldset>"
         for title, items in groups.items()
     )
     types = "".join(
-        f"<option value='{t.value}'>{e(t.value.replace('_', ' '))}</option>" for t in ClaimType
+        f"<option value='{t.value}'"
+        + (" selected" if draft.get("type") == t.value else "")
+        + f">{e(t.value.replace('_', ' '))}: {e(CLAIM_TYPE_HINT[t])}</option>"
+        for t in ClaimType
     )
     body = "<h1>Add a claim</h1>"
     if not paras:
@@ -1885,15 +2127,15 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     else:
         body += page.form(
             "/claim/add",
+            "<p>Pick the paragraph the claim comes from.</p>"
+            f"<div class='para-list'>{opts}</div>"
+            "<p><label>Claim text <textarea name='text' rows='4' required>"
+            f"{e(draft.get('text', ''))}</textarea></label></p>"
             "<p><label>Claim id <input type='text' name='id' required maxlength='20' "
-            f"value='C{n:02d}'></label>"
+            f"value='{e(draft.get('id') or f'C{n:02d}')}'></label>"
             f" <label>Type <select name='type'>{types}</select></label></p>"
-            f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
-            "<p><label>Claim text, as the document states it "
-            "<textarea name='text' rows='4' required></textarea></label></p>"
-            "<p class='act'><button type='submit' class='primary'>Add claim</button> "
-            "<span class='muted'>A new claim needs a full audit before it has a verdict.</span>"
-            "</p>",
+            "<p class='act'><button type='submit' class='primary'>Add claim</button>"
+            "<span class='muted'>Set up lists it as added by the expert, not the model.</span></p>",
         )
     return page.wrap("Add a claim", f"<div class='pg-newclaim'>{body}</div>")
 
@@ -1912,8 +2154,7 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         (show_views, VIEW, -1 if show_all else 200),
     )
     status = (
-        "<p class='chain ok'>Hash chain verified: every entry matches the hash of the one before."
-        "</p>"
+        "<p class='chain ok'>Hash chain verified</p>"
         if summary["chain_ok"]
         else "<div class='flash err chain'><strong>Hash chain failed verification.</strong> The "
         "log was changed outside Mabillon.</div>"
@@ -1954,14 +2195,12 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
                 ],
             )
         )
-        controls.append(
-            "<span class='muted'>"
-            + ("" if show_views else f"{views} page views not shown here; ")
-            + "<a href='/activity'>Activity</a> lists them too.</span>"
-        )
     out = [
         "<div class='pg-log'>",
         "<h1>Audit log</h1>",
+        "<p class='lede'>Every step taken in this case, by Mabillon and by you, in order. Each "
+        "entry is chained to the one before, so a changed or missing entry shows. Page views "
+        "are entries too, so the count grows as you look around.</p>",
         status,
         f"<p class='chainmeta'>{summary['entries']} entries · last hash <span class='mono'>"
         f"{e(summary['last_hash'])}</span></p>",
@@ -2027,16 +2266,13 @@ def _report_switch(conn: sqlite3.Connection, page: Page) -> str:
     """The per-case switch for the report's Examiner activity table (off by default)."""
     on = activity.in_report(conn)
     state = (
-        "<strong>In the report: included.</strong> The report shows this case's activity per "
-        "claim, with time on its pages."
+        "<strong>In the report: included.</strong>"
         if on
-        else "<strong>In the report: left out</strong> (the default). The report says it is "
-        "not included; the audit log keeps every page view."
+        else "<strong>In the report: left out.</strong>"
     )
     return page.form(
         "/activity/report",
-        f"<p>{state} <span class='muted'>The choice is yours for this case, and the audit log "
-        "records each change with your name.</span></p>"
+        f"<p>{state}</p>"
         f"<input type='hidden' name='include' value='{'0' if on else '1'}'>"
         "<button type='submit'>"
         + ("Leave activity out of the report" if on else "Include activity in the report")
@@ -2068,10 +2304,9 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     out = [
         "<div class='pg-activity'>",
         "<h1>Activity</h1>",
-        "<p class='lede'>Every page opened in this case is recorded in its audit log, with the "
-        "time, the examiner's name, the page and the evidence it listed, beside the examiner's "
-        "decisions. The hash chain covers these entries like every other. Nothing here leaves "
-        "this computer.</p>",
+        "<p class='lede'>Which claims and evidence you opened, and for how long. It stays out "
+        "of the report unless you include it below; once included, anyone who reads the report "
+        "sees it.</p>",
         "<details class='howcounted'><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
@@ -2121,7 +2356,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         if known:
             bar.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>")
         else:
-            bar.append("<span class='muted'>There is no such claim in this case.</span>")
+            bar.append("<span class='muted'>No such claim in this case.</span>")
     if cut:
         more = {"claim": claim} if known else {}
         bar.append(
@@ -2189,11 +2424,14 @@ def stored_verdict_page(page: Page, message: str, back: str) -> str:
 # ---------------------------------------------------------------- cases
 
 
-PASSPHRASE_HINT = (
-    "At least 12 characters; a few words is easiest. Mabillon cannot recover a lost passphrase: "
-    "keep it, or the recovery key Mabillon shows next, somewhere safe."
-)
-LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "Encrypted"}
+PASSPHRASE_HINT = "At least 12 characters. Mabillon cannot recover a lost passphrase."
+LOCK_LABEL = {
+    "plain": "Not encrypted",
+    "locked": "Encrypted, locked",
+    "open": "Encrypted",
+    "partial": "Encryption not finished: part of this case is still readable on disk",
+    "partial-locked": "Encryption not finished: part of this case is still readable on disk",
+}
 
 
 def _unlock_fields(slug: str) -> str:
@@ -2249,7 +2487,7 @@ def cases_page(
         for slug, name, state, lock in rows:
             fields = (
                 _unlock_fields(slug)
-                if lock == "locked"
+                if lock in ("locked", "partial-locked")
                 else f"<input type='hidden' name='case' value='{e(slug)}'>"
                 "<button type='submit'>Open</button>"
             )
@@ -2262,26 +2500,21 @@ def cases_page(
         out.append("</tbody></table>")
     else:
         out.append("<p class='empty'>No cases yet.</p>")
-    out.append(
-        f"<p class='where'>Cases folder: <span class='mono'>{e(home)}</span>. Each case is a "
-        "folder with its own database and read-only copies of its files.</p>"
-    )
+    out.append(f"<p class='where'>Cases folder: <span class='mono'>{e(home)}</span></p>")
     out.append(
         "<section class='newcase'><h2>New case</h2>"
         + page.form(
             "/case/new",
             "<p><label>Case name <input type='text' name='name' required maxlength='80' "
-            "class='wide' placeholder='For example: United States v. Petrov (synthetic)'>"
-            "</label></p>"
-            "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
-            "with a passphrase (recommended)</label></p>"
+            "class='wide'></label></p>"
+            "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt with a "
+            "passphrase</label></p>"
             "<div class='pass'><div class='passfields'>"
             "<input type='password' name='passphrase' autocomplete='new-password' minlength='12' "
             "placeholder='Passphrase' aria-label='Passphrase'> "
             "<input type='password' name='passphrase2' autocomplete='new-password' "
             "placeholder='The passphrase again' aria-label='The passphrase again'></div>"
-            f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name stays readable in this list."
-            "</p></div>"
+            f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name is not encrypted.</p></div>"
             "<button type='submit' class='primary'>Make the case</button>",
         )
         + "</section></div>"
@@ -2294,8 +2527,7 @@ def name_form(page: Page) -> str:
         return ""
     return page.form(
         "/expert",
-        "<p><strong>Who is working on this case?</strong> Your name is recorded with every "
-        "decision in the audit log.</p><div class='row'><input type='text' name='name' required "
+        "<p><strong>Your name</strong></p><div class='row'><input type='text' name='name' required "
         "maxlength='60' placeholder='Your name' aria-label='Your name'> "
         "<button type='submit'>Continue</button></div>",
         "box nameform",
@@ -2303,12 +2535,6 @@ def name_form(page: Page) -> str:
 
 
 # ---------------------------------------------------------------- set up and run
-
-FIDELITY = {
-    "curated_report": "curated report (examiner-selected; cannot show absence)",
-    "full_extraction": "full extraction",
-    "unknown": "not known (cannot show absence)",
-}
 
 
 def _import_coverage(conn: sqlite3.Connection, source_id: str) -> str:
@@ -2330,8 +2556,7 @@ def _date_order_choice(off: str) -> str:
         "<option value=''>let Mabillon work it out</option>"
         "<option value='mdy'>month first (3/4 is 4 March)</option>"
         "<option value='dmy'>day first (3/4 is 3 April)</option>"
-        "</select></label> <span class='muted'>Dates like 3/4/2026 that nothing in the report "
-        "decides are left unread unless you state the order.</span></p>"
+        "</select></label></p>"
     )
 
 
@@ -2343,7 +2568,8 @@ def _upload_form(
     return (
         "<form method='post' action='/case/import' enctype='multipart/form-data' class='box'>"
         f"<input type='hidden' name='token' value='{e(page.token)}'>"
-        f"<input type='hidden' name='kind' value='{e(kind)}'>"
+        + page.case_field()
+        + f"<input type='hidden' name='kind' value='{e(kind)}'>"
         f"<p><strong>{e(label)}</strong>"
         + (f"<br><span class='muted'>{e(hint)}</span>" if hint else "")
         + "</p>"
@@ -2353,7 +2579,7 @@ def _upload_form(
     )
 
 
-def _step_strip(ready: list, audit_busy: bool) -> str:
+def _step_strip(ready: list, audit_busy: bool, model_ok: bool | None = None) -> str:
     """The five steps as one row of links, each marked done or to do from the readiness checks
     (core.casework.cases.readiness: document, reports, claims, then phone owners if any)."""
     oks = [r.ok for r in ready]
@@ -2364,7 +2590,7 @@ def _step_strip(ready: list, audit_busy: bool) -> str:
         ("files", "Files", files),
         ("claims", "Claims", claims),
         ("owners", "Who used each phone", people),
-        ("model", "The model", None),
+        ("model", "The model", model_ok),
         ("run", "Run", True if audit_busy else None),
     ]
     items = []
@@ -2397,22 +2623,25 @@ def setup_page(
     resumable: str | None,
     protection: str = "plain",  # core.casework.protect.state
     recovery_key: str | None = None,
+    recovery_unconfirmed: bool = False,
     cloud: object | None = None,  # core.casework.cloud.CloudChoice
     cloud_case: dict | None = None,  # the case's saved cloud settings
     cloud_key: str | None = "",  # None: a key is set up; else why not
+    cloud_key_from: str | None = None,  # core.llm.cloud.key_source
+    model_ok: bool | None = None,  # the last model check passed, failed, or none ran
+    audited: str | None = None,  # the date of the last finished audit, if one finished
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
-    out = ["<h1>Set up and run</h1>", recovery_box(page, recovery_key), name_form(page)]
-    out.append(
-        "<p class='lede'>Import the files, settle the claims, confirm who used each phone, then "
-        "run the audit. It runs in the background; you can review each claim as soon as it is "
-        "labeled.</p>"
-    )
-    out.append(_step_strip(ready, audit_busy))
+    out = [
+        "<h1>Set up and run</h1>",
+        recovery_box(page, recovery_key, recovery_unconfirmed),
+        name_form(page),
+    ]
+    out.append(_step_strip(ready, audit_busy, model_ok))
 
     # 1. files
-    out.append("<h2 id='files'>1. Files</h2>")
+    out.append("<h2 id='files'>Files</h2>")
     srcs = sources(conn)
     hashes: list[str] = []
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
@@ -2432,11 +2661,18 @@ def setup_page(
                 ).fetchone()[0]
                 recs = f"{n} paragraphs"
             else:
-                what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
+                ext = {"unknown": ", extraction type not known", "not_applicable": ""}.get(
+                    extraction, f", {EXTRACTION.get(extraction, extraction).lower()} extraction"
+                )
+                what = (
+                    f"{e(SOURCE_KIND.get(kind, kind))}{e(ext)}"
+                    f"<div class='coverage made-by' title='{e(kind)}, {e(extraction)}'>Made by "
+                    f"{e(tool)} {e(tver or '')}</div>"
+                )
                 fc = tested.for_source(conn, sid)
                 what += format_notice(fc) if fc is not None else ""
-                cov = e(FIDELITY.get(fidelity, fidelity)) + _import_coverage(conn, sid)
-                recs = str(counts.get(sid, 0))
+                cov = e(COVERAGE.get(fidelity, fidelity)) + _import_coverage(conn, sid)
+                recs = str(counts.get(sid, 0)) + _records_note(conn, sid, counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td>"
                 f"<td>{what}<div class='coverage'>{cov}</div></td>"
@@ -2449,10 +2685,9 @@ def setup_page(
         out.append("<p class='muted'>No files yet.</p>")
     out.append(
         "<details class='fold'><summary>Hashes and where the copies are kept</summary>"
-        "<p class='muted'>Each file is copied into "
-        f"<span class='mono'>{e(inputs_folder)}</span>, made read-only and SHA-256 hashed; "
-        "Mabillon reads only the copy, and the hash of what it parsed must match the hash of what "
-        "it received. Your original file is not changed.</p>"
+        "<p class='muted'>Read-only copies in "
+        f"<span class='mono'>{e(inputs_folder)}</span>. Your original files are not changed."
+        "</p>"
         + (
             "<table class='tidy hashes'><thead><tr><th>File</th><th>SHA-256</th></tr></thead>"
             + "".join(hashes)
@@ -2462,9 +2697,31 @@ def setup_page(
         )
         + "</details>"
     )
+    audited = conn.execute("SELECT 1 FROM pipeline_runs LIMIT 1").fetchone() is not None
+    if srcs and not audited:
+        options = "".join(
+            f"<option value='{e(s[0])}'>{e(s[4])}</option>" for s in srcs
+        )  # s = (id, kind, fidelity, extraction, file name, ...)
+        out.append(
+            "<details class='fold' id='remove-file'><summary>Remove a wrongly imported file"
+            "</summary><p class='muted'>Only before the first audit. Mabillon's copy and its "
+            "records go; your original file is not touched, and the audit log keeps the "
+            "removal with the file's SHA-256.</p>"
+            + page.form(
+                "/case/remove_file",
+                f"<label>File <select name='source'>{options}</select></label> "
+                "<input type='text' name='reason' required maxlength='500' size='40' "
+                "placeholder='Why, in one sentence' aria-label='Why the file is removed'> "
+                f"<button type='submit'{' disabled' if busy else ''}>Remove the file</button>",
+                back="/setup",
+                anchor="files",
+            )
+            + "</details>"
+        )
+    has_report = any(s[0] not in govdocs for s in srcs)
     out.append(
-        f"<details class='add-files'{'' if srcs else ' open'}><summary>Add a file</summary>"
-        "<div class='uploads'>"
+        f"<details class='add-files'{'' if has_report else ' open'}><summary>Add a file"
+        "</summary><div class='uploads'>"
     )
     out.append(
         _upload_form(
@@ -2473,7 +2730,6 @@ def setup_page(
             "Government document (PDF)",
             ".pdf",
             busy,
-            hint="An affidavit, police or forensic report.",
         )
         + _upload_form(
             page,
@@ -2481,15 +2737,13 @@ def setup_page(
             "Phone report",
             ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
-            hint="Cellebrite (UFDR package .ufdr, Excel .xlsx or PDF) or Magnet AXIOM (XML or "
-            "Excel export). Only a UFDR stating report version 7.48 has been tested; every other "
-            "format or version shows a not-tested notice.",
+            hint="Cellebrite or Magnet AXIOM. Tested: UFDR report version 7.48 only.",
         )
         + "</div></details>"
     )
 
     # 2. claims
-    out.append("<h2 id='claims'>2. Claims</h2>")
+    out.append("<h2 id='claims'>Claims</h2>")
     claims = {c.id: c for c in pipeline.load_claims(conn, include_removed=True)}
     has_paras = conn.execute("SELECT 1 FROM govdoc_paragraphs LIMIT 1").fetchone() is not None
     if not has_paras:
@@ -2503,9 +2757,7 @@ def setup_page(
                 + ">"
                 "Propose claims with the local model</button>"
                 "<a class='button' href='/claim/new'>Add a claim yourself</a></div>"
-                "<p class='muted'>The model reads each paragraph that has no claims yet and "
-                "proposes claims, each quoting its paragraph. Nothing is audited until you "
-                "accept, edit or remove each one.</p>",
+                "<p class='muted'>Nothing is audited until you accept it.</p>",
                 "plain",
                 back="/setup",
                 anchor="claims",
@@ -2513,7 +2765,6 @@ def setup_page(
         )
     if order or any(c.status.value == "removed" for c in claims.values()):
         out.append(
-            "<p>Claims run in this order. Move the ones you want first to the top.</p>"
             "<table class='tidy claim-order'><thead><tr><th>#</th><th>Claim</th>"
             "<th>Status</th><th>Text</th><th>Decide</th></tr></thead>"
         )
@@ -2527,16 +2778,32 @@ def setup_page(
                 f"<span class='where'>{e(where)}</span>"
                 f"<span class='kind'>{e(c.claim_type.value.replace('_', ' '))}</span></td>"
                 f"<td class='brief'>{e(c.status.value)}"
-                f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
+                f"{' (added by the expert)' if c.model_run_id is None else ' (model)'}</td>"
+                f"<td>{q(c.text)}</td>"
                 f"<td class='decide'>"
                 f"{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )
         out.append("</table>")
+        waiting = [cid for cid in order if claims[cid].status.value == "proposed"]
+        if waiting and not audit_busy:
+            n_w = len(waiting)
+            out.append(
+                page.form(
+                    "/claims/accept_all",
+                    f"<input type='hidden' name='claims' value='{e(','.join(waiting))}'>"
+                    "<div class='inline-actions'><button type='submit'>Accept all "
+                    f"{n_w} proposed claim{'s' if n_w != 1 else ''} as written</button>"
+                    "<span class='muted'>Read them first. Each acceptance is logged under your "
+                    "name.</span></div>",
+                    "plain",
+                    back="/setup",
+                    anchor="claims",
+                )
+            )
         removed = [c for c in claims.values() if c.status.value == "removed"]
         if removed:
             out.append(
-                "<div class='removed'><p class='muted'>Removed, not audited. Put one back to "
-                "accept it again; each change is in the audit log.</p><ul>"
+                "<div class='removed'><p class='muted'>Removed, not audited.</p><ul>"
                 + "".join(
                     f"<li><a href='{e(link('/claim', id=c.id))}'>"
                     f"{e(claim_name(conn, c.id, c.paragraph_id))}</a>"
@@ -2559,13 +2826,18 @@ def setup_page(
                 + "</ul></div>"
             )
 
+    if has_paras:
+        out.append(_events_box(conn, page, audit_busy))
+
     # 3. owners, then the other people the document names
-    out.append("<h2 id='owners'>3. Who used each phone</h2>")
+    out.append("<h2 id='owners'>Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
     out.append(_identities_step(conn))
 
-    # 4. model and run
-    out.append("<h2 id='model'>4. The model</h2>")
+    # 4. model and run: the local model first, since every case needs it
+    out.append("<h2 id='model'>The model</h2>")
+    if cloud is not None:
+        out.append("<h3>The local model</h3>")
     if model_lines:
         out.append(
             "<ul>"
@@ -2576,25 +2848,37 @@ def setup_page(
             )
             + "</ul>"
         )
-    if cloud is not None:
-        out.append(cloud_section(page, cloud, cloud_case or {}, cloud_key, job_kind == "audit"))
-        out.append("<h3>The local model</h3>")
     out.append(f"<p class='muted'>{e(model_note)}</p>")
     out.append(
         page.form(
             "/model/check",
             "<div class='inline-actions'><button type='submit'"
             + (" disabled" if busy else "")
-            + ">Check the model now</button><span class='muted'>Finds the model file, checks its "
-            "SHA-256 against the config and checks this computer's memory. The audit also does "
-            "this first.</span></div>",
+            + ">Check the model now</button></div>",
             "plain",
             back="/setup",
             anchor="model",
         )
     )
+    if cloud is not None:
+        out.append(
+            cloud_section(
+                page,
+                cloud,
+                cloud_case or {},
+                cloud_key,
+                job_kind == "audit",
+                key_from=cloud_key_from,
+                encrypted=protection != "plain",
+            )
+        )
+        out.append(
+            "<p class='muted'>The local model is still needed with cloud AI: it proposes "
+            "claims and fills in assumptions on this computer. Only stance questions go to "
+            "the cloud.</p>"
+        )
 
-    out.append("<h2 id='run'>5. Run the audit</h2>")
+    out.append("<h2 id='run'>Run the audit</h2>")
     blocking = [r for r in ready if not r.ok and r.blocks and r.acknowledge is None]
     out.append(
         "<ul class='ready'>"
@@ -2602,6 +2886,14 @@ def setup_page(
             f"<li class='{'ok' if r.ok else 'todo'}'>"
             f"{'Done' if r.ok else '<strong>To do</strong>'}: {e(r.text)}</li>"
             for r in ready
+        )
+        + (
+            ""
+            if model_ok is None
+            else "<li class='ok'>Done: the model passed its check.</li>"
+            if model_ok
+            else "<li class='todo'><strong>To do</strong>: the model failed its check. "
+            "See step 4.</li>"
         )
         + "</ul>"
     )
@@ -2618,35 +2910,47 @@ def setup_page(
         out.append("<p><a href='/run'>The audit is running. See its progress.</a></p>")
     else:
         start = "Resume the audit" if resumable else "Start the audit"
+        again = ""
+        if audited and not resumable:
+            start = "Run the full audit again"
+            again = (
+                f"<p class='muted'>This case was audited on {e(audited)}. Running it again "
+                "sends every claim through the model again, for hours; your evidence decisions "
+                "are kept. To apply decisions you made since, use Re-run verdicts in the "
+                "Verdicts are out of date banner instead (rules only, no model).</p>"
+            )
         off = " disabled" if (busy or blocking) else ""
         out.append(
             page.form(
                 "/audit/start",
                 acks + "<details class='options'><summary>More options</summary>"
                 "<div class='checks'><label><input type='checkbox' name='ai_review' value='1'> "
-                "Also run the AI reviewer: a sorting aid that decides nothing and costs one more "
-                "model call per supporting item.</label><label><input type='checkbox' "
-                "name='label_all' value='1'> Also label claims a failed check already decides "
-                "(more model calls; their verdict cannot change).</label><label><input "
-                "type='checkbox' name='no_challenge' value='1'> Skip the challenge step: code's "
-                "searches for what undercuts a claim close to supported. It only adds doubt; "
-                "skipping it saves model calls.</label></div></details>"
-                "<div class='inline-actions'>"
+                "Also run the AI reviewer. It sorts evidence and decides nothing.</label>"
+                "<label><input type='checkbox' name='label_all' value='1'> Also label claims a "
+                "failed check already decides. Their verdict cannot change.</label><label><input "
+                "type='checkbox' name='no_challenge' value='1'> Skip the challenge step, code's "
+                "search for what undercuts a claim close to supported.</label></div></details>"
+                + again
+                + "<div class='inline-actions'>"
                 f"<button type='submit' class='primary'{off}>{start}</button>"
-                "<span class='muted'>Keeps this "
-                "computer awake while it runs. You can stop it; finished claims are kept.</span>"
                 "</div>",
                 back="/run",
             )
         )
-    out.append(encryption_section(page, protection, busy))
+    out.append(encryption_section(page, protection, busy, recovery_key is not None))
     # No refresh while the recovery key is on screen: it must not vanish mid-copy.
     refresh = 10 if busy and recovery_key is None else None
     return page.wrap("Set up and run", "".join(out), refresh=refresh)
 
 
 def cloud_section(
-    page: Page, choice: object, saved: dict, key_problem: str | None, busy: bool
+    page: Page,
+    choice: object,
+    saved: dict,
+    key_problem: str | None,
+    busy: bool,
+    key_from: str | None = None,
+    encrypted: bool = False,
 ) -> str:
     """Step 4's cloud part: which model labels this case, the per-case attestation, the key."""
     from core.casework.cloud import ATTESTATION, CSAM_NOTE
@@ -2659,8 +2963,6 @@ def cloud_section(
     out = [
         "<div id='cloud'><h3>Cloud AI for this case</h3>",
         f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
-        "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
-        "for this case below.</p>",
         "<details class='fold'><summary>What cloud AI sends, and what it never sends</summary>"
         "<p class='muted'>With cloud AI, Mabillon sends one question at a time to Anthropic under "
         "your own key: the assumption being tested, one record, the messages around it, the "
@@ -2681,8 +2983,7 @@ def cloud_section(
             f"{' checked' if csam else ''}> {e(CSAM_NOTE)} This case then never uses cloud AI."
             "</label></div>"
             f"<div class='inline-actions'><button type='submit'{off}>Save the cloud choice"
-            "</button><span class='muted'>Recorded in the case's audit log under your name."
-            "</span></div>",
+            "</button></div>",
             back="/setup",
             anchor="cloud",
         ),
@@ -2698,13 +2999,23 @@ def cloud_section(
         return "".join(out)
     # The key form folds away until the case opts in: a local-only case does not need it.
     out.append(f"<details class='fold'{' open' if allowed else ''}><summary>")
-    if key_problem is None:
+    if key_problem is None and key_from == "case":
         out.append(
-            "An Anthropic key is set up on this computer.</summary>"
-            "<p class='muted'>Replace it below if you need to.</p>"
+            "An Anthropic key is saved in this case, encrypted with the case's key.</summary>"
+        )
+    elif key_problem is None:
+        out.append(
+            "An Anthropic key is saved on this computer, not encrypted.</summary><p "
+            "class='muted'>Every case without a key of its own uses it."
+            + (" Save a key below to seal one in this case instead." if encrypted else "")
+            + "</p>"
+        )
+    elif key_problem.startswith("no Anthropic key"):
+        out.append(
+            "No cloud key yet</summary><p class='muted'>Paste your firm's Anthropic key below.</p>"
         )
     else:
-        out.append(f"No cloud key yet</summary><p class='muted'>{e(key_problem)}.</p>")
+        out.append(f"No usable cloud key</summary><p class='muted'>{e(key_problem)}.</p>")
     out.append(
         page.form(
             "/cloud/key",
@@ -2719,18 +3030,37 @@ def cloud_section(
             anchor="cloud",
         )
     )
+    if key_problem is None and key_from in ("case", "file"):
+        out.append(
+            page.form(
+                "/cloud/key/remove",
+                f"<button type='submit'{off}>Remove the saved key</button>",
+                "inline",
+                back="/setup",
+                anchor="cloud",
+            )
+        )
     out.append("</details></div>")
     return "".join(out)
 
 
-def recovery_box(page: Page, key: str | None) -> str:
+def recovery_box(page: Page, key: str | None, unconfirmed: bool = False) -> str:
     if key is None:
-        return ""
+        if not unconfirmed:
+            return ""
+        return (
+            "<div class='flash err recovery' id='recovery' role='alert'><p><strong>This case "
+            "may have no usable recovery key.</strong> One was made, but Mabillon stopped or the "
+            "case was locked before anyone said it was written down. If you did not write it "
+            "down, make a new one now: without it, a lost passphrase loses the case. "
+            "<a href='/setup#encryption'>Make a new recovery key</a></p></div>"
+        )
     return (
-        "<div class='flash' id='recovery'><p><strong>Write down this case's recovery key "
-        "now.</strong> It opens the case if the passphrase is lost. Mabillon shows it only this "
-        "once and keeps no copy anywhere; keep it away from this computer (on paper, or in your "
-        "password manager).</p>"
+        "<div class='flash recovery' id='recovery' role='alert'><h2>Recovery key</h2>"
+        "<p><strong>Write down this case's recovery key now.</strong> It opens the case if the "
+        "passphrase is lost. Mabillon keeps no copy anywhere: once you press the button below, "
+        "it cannot be shown again. Keep it away from this computer (on paper, or in your "
+        "password manager). Until then, this case cannot be locked.</p>"
         f"<p class='mono' style='font-size:1.25em'>{e(key)}</p>"
         + page.form(
             "/case/recovery/done",
@@ -2742,7 +3072,7 @@ def recovery_box(page: Page, key: str | None) -> str:
     )
 
 
-def encryption_section(page: Page, protection: str, busy: bool) -> str:
+def encryption_section(page: Page, protection: str, busy: bool, key_shown: bool = False) -> str:
     out = ["<h2 id='encryption'>Encryption</h2>"]
     off = " disabled" if busy else ""
     wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
@@ -2750,10 +3080,8 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         out.append(
             "<p>This case is <strong>not encrypted</strong>.</p>"
             "<details class='fold'><summary>Encrypt this case</summary>"
-            "<p class='muted'>Anyone who can read its folder "
-            "can read its database and the copies of its files. Encrypting locks both with a "
-            "passphrase (AES-256). It is a one-way step, it does not change any finding, and "
-            "large reports can take a few minutes; keep this page open.</p>"
+            "<p class='muted'>Locks the database and the file copies with a passphrase "
+            "(AES-256). One way; it can take a few minutes, so keep this page open.</p>"
             + wait
             + page.form(
                 "/case/encrypt",
@@ -2787,14 +3115,18 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         )
         return "".join(out)
     out.append(
-        "<p>This case is <strong>encrypted</strong>: its database and the copies of its files "
-        "cannot be read without the passphrase or the recovery key. It stays unlocked until you "
-        "lock it or stop Mabillon.</p>"
+        "<p>This case is <strong>encrypted</strong>. It stays unlocked until you lock it or stop "
+        "Mabillon.</p>"
         + wait
-        + page.form(
-            "/case/lock",
-            f"<button type='submit'{off}>Lock this case now</button>",
-            back="/cases",
+        + (
+            "<p class='muted'>Write down the recovery key at the top of this page before you "
+            "lock the case.</p>"
+            if key_shown
+            else page.form(
+                "/case/lock",
+                f"<button type='submit'{off}>Lock this case now</button>",
+                back="/cases",
+            )
         )
         + "<h3>Change the passphrase</h3>"
         + page.form(
@@ -2813,8 +3145,87 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
             back="/setup",
             anchor="encryption",
         )
+        + "<h3>Make a new recovery key</h3>"
+        + page.form(
+            "/case/recovery/new",
+            "<p class='muted'>For a lost or never written down recovery key. The new key is "
+            "shown once at the top of this page; the old one stops opening the case.</p>"
+            "<input type='password' name='passphrase' required size='34' "
+            "autocomplete='current-password' placeholder='Passphrase' aria-label='Passphrase'> "
+            f"<button type='submit'{off}>Make a new recovery key</button>",
+            back="/setup",
+            anchor="recovery",
+        )
     )
     return "".join(out)
+
+
+def _events_box(conn: sqlite3.Connection, page: Page, locked: bool) -> str:
+    """The events the document defines and claims are dated by ("the SEARCH"), as the expert
+    entered them, with a form to add one (core/review/actions.add_event)."""
+    from core.audit import case_events
+
+    events = case_events.stored(conn)
+    out = [
+        # folded, as the page's other optional steps are: most cases need no events
+        "<details class='fold' id='events'><summary>Events the document defines"
+        f"{f' ({len(events)})' if events else ''}</summary>",
+        "<p class='muted'>When the document defines an event and dates later claims by it "
+        "(\u201ctwo days before the SEARCH\u201d), enter the event, its day and the words that "
+        "define it. The audit reads only a whole day tied to a one-day event: the day of, the "
+        "day before or after, or a number of days before or after. Every report lists the "
+        "events you entered.</p>",
+    ]
+    if events:
+        out.append(
+            "<table><thead><tr><th>Event</th><th>Days</th><th>Where</th><th>Defined as</th>"
+            "<th></th></tr></thead>"
+        )
+        for ev in events:
+            days = ev.first_day.isoformat() + (
+                "" if ev.one_day else f" to {ev.last_day.isoformat()}"
+            )
+            remove = (
+                "<span class='muted'>Locked while the audit runs.</span>"
+                if locked
+                else page.form(
+                    "/event/remove",
+                    f"<input type='hidden' name='name' value='{e(ev.name)}'>"
+                    "<button type='submit'>Remove</button>",
+                    "inline",
+                    "/setup",
+                    anchor="events",
+                )
+            )
+            out.append(
+                f"<tr><td>{q(ev.name)}</td><td>{e(days)}</td>"
+                f"<td>{e(_where_short(conn, ev.paragraph_id))}</td><td>{q(ev.defined_as)}</td>"
+                f"<td>{remove}</td></tr>"
+            )
+        out.append("</table>")
+    if locked:
+        return "".join(out) + "</details>"
+    opts = "".join(
+        f"<option value='{e(pid)}'>{e(_where_short(conn, pid))}</option>"
+        for (pid,) in conn.execute("SELECT id FROM govdoc_paragraphs ORDER BY page, para_no")
+    )
+    out.append(
+        page.form(
+            "/event/add",
+            "<label>Event, as the document writes it <input type='text' name='name' "
+            "maxlength='120' placeholder='SEARCH' required></label> "
+            "<label>First day <input type='date' name='first_day' required></label> "
+            "<label>Last day <input type='date' name='last_day'></label> "
+            f"<label>Paragraph <select name='paragraph'>{opts}</select></label> "
+            "<label>Words that define it, as the paragraph writes them "
+            "<textarea name='defined_as' maxlength='2000' rows='2' required></textarea></label> "
+            "<button type='submit'>Add event</button>",
+            "box",
+            "/setup",
+            anchor="events",
+        )
+    )
+    return "".join(out) + "</details>"
 
 
 def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:
@@ -2894,7 +3305,8 @@ def run_page(
     left: str,
 ) -> str:
     running = job is not None and getattr(job, "running", False)
-    out = ["<h1>Audit progress</h1>"]
+    check_failed = False  # the job's model check failed: its lines already say what to do
+    out = ["<h1>Audit progress</h1>"]  # under Set up and run
     if job is not None:
         if running:
             out.append(
@@ -2912,20 +3324,32 @@ def run_page(
             out.append(
                 page.form(
                     "/audit/stop",
-                    "<button type='submit'>Stop after the current claim</button> <span "
-                    "class='muted'>The claim being labeled finishes first; every finished claim "
-                    "is kept and a resumed audit reuses its model outputs.</span>",
+                    "<button type='submit'>Stop after the current claim</button>",
                     back="/run",
                 )
             )
         else:
             cls = "flash" if getattr(job, "state", "") == "done" else "flash err"
-            out.append(f"<div class='{cls}'>{e(getattr(job, 'message', ''))}</div>")
             check = getattr(job, "check", None)
             if check is not None and not check.ok:
-                out.append("<ul>" + "".join(f"<li>{e(m)}</li>" for _, m in check.lines) + "</ul>")
+                # One message: the check's own lines say what failed and what to do.
+                check_failed = True
+                out.append(
+                    f"<div class='{cls}'>The audit did not start: the model failed its check. "
+                    "Nothing was labeled.</div><ul>"
+                    + "".join(
+                        f"<li>{'<strong>' if lvl == 'fail' else ''}{e(m)}"
+                        f"{'</strong>' if lvl == 'fail' else ''}</li>"
+                        for lvl, m in check.lines
+                    )
+                    + "</ul><p><a href='/setup#model'>Check the model again on Set up</a> once "
+                    "it is fixed, then start the audit.</p>"
+                )
+            else:
+                out.append(f"<div class='{cls}'>{e(getattr(job, 'message', ''))}</div>")
     if run is None:
-        out.append("<p>No audit has run on this case. <a href='/setup'>Set up and run</a>.</p>")
+        if not running and not check_failed:
+            out.append("<p>No audit has run on this case. <a href='/setup'>Set up and run</a>.</p>")
         return page.wrap("Audit progress", "".join(out), refresh=5 if running else None)
     out.append(
         f"<p>Run <span class='mono'>{e(run['id'])}</span>, started {e(run['started_at_utc'])}, "
@@ -2935,14 +3359,19 @@ def run_page(
     )
     if not running and run["status"] != "completed":
         out.append(
-            "<p>This audit did not finish. Finished claims can be reviewed now. "
-            "<a href='/setup'>Resume it from Set up and run</a>; finished claims reuse their "
-            "stored model outputs and take seconds.</p>"
+            "<p>This audit did not finish. Finished claims are kept. "
+            "<a href='/setup'>Resume it</a></p>"
         )
     view = pipeline.view_run(conn)
     labels = {}
-    if view is not None and view["run_id"] == run["id"]:
+    # the verdicts on screen come from this audit, or from a verdict re-run on its labels
+    if view is not None and run["id"] in (view["run_id"], view.get("from_run")):
         labels = {st.claim.id: st for st in claim_states(conn, run=view)}
+        if view["run_id"] != run["id"]:
+            out.append(
+                "<p class='muted'>Findings are from the verdicts re-run after expert review "
+                f"(<span class='mono'>{e(view['run_id'])}</span>) on this audit's labels.</p>"
+            )
     if not labels:
         out.append(
             "<p class='muted'>Findings show here and on Claims once this run is the one on "

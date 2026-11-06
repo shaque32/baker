@@ -150,6 +150,65 @@ def test_the_draft_prompt_and_any_signed_copy_have_every_placeholder():
         )
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        'Item 1 holds the number +1 (212) 555-0122 saved as "Marc Garage".',
+        "Item 1 holds the number +1 (212) 555-0122 saved as Marc Garage.",
+    ],
+)
+def test_a_saved_name_goes_in_quoted_text_quoted_or_not(conn, text):
+    # Baker Eval on #210: v1.1 sent a saved name to "quoted_text" while saying it takes only
+    # quoted words, so `saved as Marc Garage` had nowhere to go. The filler's contact entry
+    # needs the name written in the claim, not inside quotes (only a message's words must be),
+    # and the draft now says that.
+    flat = " ".join(DRAFT.split())
+    assert (
+        '"quoted_text": for a message, only words that stand inside quotation marks' in flat
+        and "For a contact entry, the name the contact was saved as, exactly as the claim"
+        " writes it, with or without quotation marks."
+        in flat
+    )
+    c = claim("C01").model_copy(update={"id": "X-saved", "text": text})
+    filler = LocalAssumptionFiller(FakeModel(GOOD_C01), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    (made,) = [a for a in builder.build(c) if a.template_id == "contact_entry"]
+    assert made.params.quoted_text == "Marc Garage"
+
+
+def test_handles_take_display_names_for_a_same_account_claim(conn):
+    # Codex on #211: v1.1 said "handles exactly as written" and sent saved names elsewhere, so a
+    # claim naming accounts by display names had no field for them, while the same-account
+    # check resolves a handle from account names, thread titles and printed sender text. Draft
+    # v1.2 says display names again, as v1.0 did; a contact entry's saved name stays in
+    # quoted_text (the test above).
+    flat = " ".join(DRAFT.split())
+    assert '"handles": handles or display names exactly as written' in flat
+    assert 'For a contact entry, the name the contact was saved as goes in "quoted_text"' in flat
+    text = (
+        "PETROV exchanged Telegram messages on Item 1 with a single Telegram account, which"
+        " appears as Alex and as @northstar."
+    )
+    c = claim("C02").model_copy(update={"id": "X-display", "text": text})
+    answer = {
+        "assumptions": [P("same_account", handles=["Alex", "@northstar"], channels=["Telegram"])]
+    }
+    filler = LocalAssumptionFiller(FakeModel(answer), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    (made,) = [a for a in builder.build(c) if a.template_id == "same_account"]
+    assert made.params.handles == ("Alex", "@northstar")
+
+
+def test_a_messages_words_still_need_the_claims_quotation_marks(conn):
+    text = "On March 18, 2026, PETROV wrote are you coming tonight to REYES."
+    c = claim("C01").model_copy(update={"id": "X-said", "text": text})
+    answer = {"assumptions": [P("sender", people=["PETROV"], quoted_text="are you coming tonight")]}
+    filler = LocalAssumptionFiller(FakeModel(answer), conn, template=FILLER_DRAFT)
+    builder = TemplateAssumptionBuilder(filler)
+    assert not [a for a in builder.build(c) if a.template_id == "sender"]
+    assert "not inside quotation marks" in json.dumps(builder.refused("X-said"))
+
+
 def test_the_answer_has_no_field_for_the_claim():
     fields = set(assumption_filler._ProposalOut.model_fields)
     assert not fields & {"claim", "text", "claim_text", "claim_id"}
@@ -188,6 +247,35 @@ def test_sheet_windows_compare_by_their_utc_ends():
     facts = testability.sheet_named(rows)["C05"]
     assert facts.people == {PETROV}
     assert facts.windows == {("2026-03-12T04:00:00+00:00", "2026-03-13T03:59:59.999999+00:00")}
+
+
+def test_a_claim_the_sheet_ties_to_no_phone_takes_any_reports_copy_of_its_account(conn):
+    # Codex on #211: for a claim that names no phone the filler finds the number in every
+    # report that holds it (+1 212-555-0122 on SMS is on Item 1 and Item 2), while a sheet row
+    # names one report's copy; compared id by id, a right answer was rejected as naming an
+    # account the sheet does not.
+    one, two = "acct:item1:SMS:+12125550122", "acct:item2:SMS:+12125550122"
+    copies = testability.account_copies(conn)
+    assert copies(one) == copies(two) == {one, two}
+    assert copies("acct:item1:SMS:+12125550182") == {"acct:item1:SMS:+12125550182"}
+    assert copies("acct:nowhere") == {"acct:nowhere"}
+    row = {"claim_id": "X", "template_id": "sender", "is_core": True}
+    free = [{**row, "params": {"account_ids": [one], "channels": ["SMS"]}}]
+    both = testability.Named(accounts=frozenset({one, two}))
+    assert testability.sheet_named(free, None, copies)["X"].accounts == {one, two}
+    assert testability.mismatch(both, testability.sheet_named(free, None, copies)["X"]) == []
+    assert testability.mismatch(both, testability.sheet_named(free)["X"])  # id by id, as before
+    # A claim the sheet ties to a phone keeps that phone's copy only.
+    tied = [
+        {**row, "params": {"account_ids": [one], "channels": ["SMS"], "device_ids": ["dev:item1"]}}
+    ]
+    facts = testability.sheet_named(tied, None, copies)["X"]
+    assert facts.accounts == {one}
+    (why,) = testability.mismatch(testability.Named(accounts=frozenset({two})), facts)
+    assert why == f"names the account {two!r}, which the signed sheet does not name"
+    # Another number never joins.
+    other = testability.Named(accounts=frozenset({"acct:item1:SMS:+12125550182"}))
+    assert testability.mismatch(other, testability.sheet_named(free, None, copies)["X"])
 
 
 # ---------------------------------------------------------------- the claim-only check

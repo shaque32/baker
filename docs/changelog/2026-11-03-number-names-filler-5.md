@@ -1,0 +1,151 @@
+## 2026-11-03: The expert names a number as the document does; filler 5 reads names with or without "the"
+- Changed: In the case05 testability go/no-go (NO-GO, conversion 5 of 33), 11 of the 28 claims
+  the step did not convert were stopped by a name code could not resolve. Affidavits name a
+  number ("+1 (720) 555-0186 (the "BURNER")") and then write only "the BURNER", which had no
+  place to go; and a model's "COURIER" did not match the alias "the COURIER". Seven more had
+  the claim's own sentence copied into quoted_text for a call. Four changes, all in code (no
+  signed file, no schema change), with FILLER_VERSION 5:
+  - **Number names.** The expert can give a number or account id the document's names, with
+    `mabillon name-account --identifier "+1 (720) 555-0186" --name "the BURNER" --by
+    expert:<name>` or `core/review/actions.name_account`, as phones are named with
+    name-device (#139). Each change is a hash-chained audit-log entry `account.names` (the
+    identifier's whole list; empty clears it), read back by core/review/account_names.py.
+    The identifier must be held by an account in the case. A name is refused when it would
+    also match a person (whole name, surname or alias), a phone, an event, another number's
+    name, or is itself another account's number or id, with or without a leading "the"; and
+    a person alias, phone name or event that would match a number's name is refused too. The
+    filler reads the name as that number or id: in a model's account answer (the rules for
+    numbers still apply, so a number alone never picks the app) and wherever code reads a
+    party from the claim's words (a call's parties, a count's sides and sender, no contact,
+    a recipient). A name for an id that is no number is not read as a no-contact party. The
+    name is never a person: a model that writes it as one is refused with "write it as an
+    account", and it confirms no identity link. Report 0.32.0 lists each name under
+    Limitations as the expert's statement, and that it says nothing about who used the
+    number. A change marks verdicts Not current (case_changed_after), and the bundle check
+    counts it as an input that can change a testability repair. The testability step's
+    lookups list a number's name as every account that holds it, "an account, not a person".
+    A number named as WhatsApp writes it ("12125550122@s.whatsapp.net") or as bare digits is
+    still that number on the phone app; digits only an app's user id holds are no phone
+    number. A person added after a number was named, with a name the number's name matches,
+    is refused, and an answer that would name both a person and a number is refused rather
+    than picking one (Codex on #209). A no-contact party named by such a WhatsApp id or bare
+    digits reads as the number too; an id other than a number is compared whole, its
+    punctuation kept, so "alice.smith@example.com" and "alice-smith@example.com" are two
+    accounts with their own names (Codex on #210). Bare digits are a number only on a phone
+    app or the call log, as the filler already read them: a Telegram user id is held only by
+    its digits whole, so "7185550199" and "17185550199" are two users, each with its own names,
+    while "12125550182" and "+1 (212) 555-0182" are one entry for a number a phone app holds. A
+    call on no named app reads a number named by bare digits or a WhatsApp id as that number in
+    the call log (Codex on #211).
+  - **"the" either way.** A model's answer matches a person alias or a phone name whole, with
+    or without a leading "the" on either side (core/identity/aliases.answers,
+    device_names.keys): "COURIER" for "the COURIER", and so does the claim's own wording when
+    code reads a person from it ("COURIER sent ...", Codex on #209), and a phone from it
+    ("SAMSUNG exchanged ...", Codex on #210). Clash checks compare the form without
+    "the" too (aliases.forms), so an alias "the COURIER" is refused when another person is
+    named "Courier", and the same holds for events and number names.
+  - **A defined term in capitals counts only in capitals** (Baker Eval on #209). A person
+    alias, a phone name or a number's name made only of capital letters ("the COURIER", "the
+    BURNER", "the TARGET PHONE") is matched only where it is written in capitals, its "the" in
+    any case: in lower case the same words are an ordinary noun ("the courier dropped off the
+    package", "a burner phone"). A model's answer in lower case matches no one; where code
+    reads a party from the claim's words and finds such words in lower case, it refuses rather
+    than guess which they mean; the testability lookups do not list them. A name with a digit
+    ("SUBJECT-1", "CW-1") is no ordinary word and is still matched in any case ("Subject 1",
+    Codex on #181), as is a name with a lower-case letter ("the iPHONE"). This narrows #139: a
+    phone the expert named "TARGET PHONE" is no longer matched by "target phone". Event names
+    (#201) follow the same rule (case_events.spans, asked by the validation thread): "the day
+    after the search" ties nothing to the event "the SEARCH", so a claim with no other date is
+    refused as before and a claim's own written date stands. Clash checks still compare every
+    name in any case, so "the search" and "the SEARCH" can never name two things. A model's
+    range must also lie on the day a claim's tie names, as code's own reading already had to
+    (#201): "On March 22, 2026, the day after the RAID" with the RAID on March 20 is refused
+    either way (Codex on #210).
+  - **A call's unquoted words.** When the claim quotes nothing at all (no straight, curly or
+    single quotes), quoted_text on a call's time range (record_time with channel "call") is
+    dropped, and the drop is logged with the words, instead of refusing the time range: a
+    call holds no words, so its check rests on parties, app and time. Everything else keeps
+    its rule: a sender's, a meaning's and a message's time range's words must lie inside the
+    claim's quotation marks (a message's time range is picked by its words), and a contact's
+    saved name or a weekday must be written in the claim, quoted or not.
+  - **Code reads a plainly stated time.** When the words a model gives for a range state one
+    plain range, code's reading of them is the range, not the model's arithmetic: "at about
+    11:50 p.m. on November 14, 2025" is 11:42 to 11:58 p.m. (8 minutes either side, as
+    stated_windows already reads it), where a model gave 11:50 to midnight and check_window's
+    15 minutes let it through. Without this, dropping a call's stray quote would have let such
+    a try reach the sheet check and count as a wrong-window try. A range the words leave
+    open, or that holds more than one date, keeps the model's checked times as before. It applies
+    only when code's reading lies within check_window's 15 minutes of the model's range at both
+    ends, so it moves each end by at most a few minutes. Further off, the words are part of the
+    range or open, and the model's checked range stands (Codex on #211): "March 9, 2026" copied
+    from "between March 9, 2026 and March 12, 2026" would have searched an absence on one day
+    of four, and case01's own good answers for C04 ("first made contact ... on March 12", read
+    as March 12 alone) and C11 ("at 10:05 p.m. ... and after that call", read as that minute)
+    were narrowed by the first version of this change without changing their test outcomes. A
+    call just outside code's range stays inconclusive (calls are picked by their
+    parties, so the time check never fails on one); a message picked by its words, every copy
+    just outside, fails, as it already did whenever a model wrote code's range. In the
+    recorded case04 and case05 runs it changes one answer in each: case04 C13 (3:15 to 3:25
+    a.m. read as 3:12 to 3:28) and case05 C14 (the call above, whose try now reaches the sheet
+    check, where case05's sheet ends at 11:59, a minute later than code's reading).
+  - **Code's own fills never stop the audit** (Codex on #211). Where code reads the claim's own
+    words for a fill (a sender, a time range) and finds a name in capitals written in lower
+    case ("on the samsung" for the phone named "the SAMSUNG"), it keeps nothing for the claim
+    and records why, in the first pass and in a testability repair; the claim stays unproven.
+    Before, that refusal escaped and stopped the whole audit.
+  - **Lookups.** The testability step's lookups find a person alias, a phone name or a
+    number's name written with or without its "the", and list a number's name once per app
+    that holds it ("an account on SMS: +1 (720) 555-0186, as the expert named it, not a
+    person").
+  - **Vocabulary.** "texting" names SMS; "spoke by phone", "talked by phone" and "spoke on the
+    phone" name a call.
+  Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
+  #201 (case events, FILLER_VERSION 4).
+- Where: PR #209 (merge after #201)
+- Verified: tests/test_account_names.py (83 tests on synthetic case01): entering, replacing
+  and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
+  resolves to a person and adds no person or link; Not current; bundle repair inputs; the
+  report line passes the word check; the CLI; a model's account answer, a code-read call
+  party, an exchange count and a sent-by count each checked on the named number and passing;
+  no contact by a number's name, and refused for an id's name; testability lookups; "the
+  COURIER" refused beside a person "Courier"; "the" matching for aliases and phones; the quote
+  drop only for a call's time range in a claim with no quotes, and a sender with unquoted
+  words still refused, so a dropped quote never leaves a sender without its anchor; "texting"
+  and "spoke by phone". Near misses (Baker Eval on #209): a call at 7:58 p.m. for "about 7:49
+  p.m." stays inconclusive with the call listed outside the window; a message 9 minutes after
+  "about" fails on code's range; an apostrophe ("VARGA's") quotes nothing and a single-quoted
+  word does; "the courier", "a burner phone" and "the samsung" are never the alias, number or
+  phone named in capitals; "spoke by phone about the messages" never names SMS. Codex on
+  #209: a number named by its WhatsApp id or bare digits finds the Phone account; a Telegram
+  user id of ten digits is no phone number; a person "Burner" after "the BURNER" is refused;
+  "COURIER sent ..." reads the sender as the alias "the COURIER".
+  tests/test_device_names.py: "target phone" no longer matches "TARGET PHONE".
+  tests/test_case_events.py: "The day after the search" dates nothing for the SEARCH (refused,
+  no date) and "On March 21, 2026, the day after the search" keeps its own date; "The SEARCH"
+  with its "the" in any case is read; "OP-7" and "KEDZIE YARD theft" match in any case; an
+  alias and an event that differ only in case still clash, both ways; a model's range on a
+  written date that is not the tied day is refused. Codex on #210: no contact with a number
+  named by its WhatsApp id or bare digits; "SAMSUNG exchanged ..." reads the phone named "the
+  SAMSUNG", once, and a count on the other phone is refused; two email ids differing only in
+  punctuation keep their own names. Codex on #211: a lower-case phone name met by code's own
+  sender fill leaves the claim unproven, recorded, in the first pass and a repair, and the
+  audit goes on; window words that are part of a range or open keep the model's range, and
+  within 15 minutes code's reading still wins; a call-log call to a number named by bare digits
+  or a WhatsApp id is searched on that number; two Telegram ids, one a "1" before the other,
+  keep their own names, and a Telegram id holds no phone number. make check: see the PR.
+- Open: Not measured on any model run. The case05 claims these address are development data
+  (case05 is spent); the go/no-go of record is a fresh case06 on Arsh's Mac. A blocker fixed
+  does not mean a claim converts: some case05 claims had two. The case screen has no form for
+  number names yet (CLI and action only). The eval case setup does not yet enter phone or
+  number names from case.json (next PR). A code-made sender (`received_from`) does not read
+  a number's name.
+- Affects: capabilities (expert-entered number names; the filler resolves more of an
+  affidavit's own names, so more claims can be tested by code); no privacy, network or verdict
+  rule change; no customer-facing claim.
+- Status doc: pending: section 8, in the item that says "The expert can record the document's
+  names for each phone (TARGET PHONE, Item 1); ... (#139).", add after it: "The expert can also
+  record the document's names for a number or account id ("the BURNER"), with `mabillon
+  name-account`; the audit reads a claim's use of the name as that number, never as a person,
+  and every report lists the names as the expert's statement. A name matches with or without a
+  leading "the", and a name in capitals (a person's alias, a phone's, a number's or an event's)
+only where it is written in capitals (#209)."

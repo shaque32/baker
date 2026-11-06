@@ -32,18 +32,32 @@ CSS = """
 .pg-claim .vhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
   margin: 0 0 12px; }
 .pg-claim .claim-main .vhead h2 { margin: 0; font-size: 15px; }
-.pg-claim #verdict .vhead .verdict { margin: 0; padding: 3px 10px; font-size: 13.5px;
-  font-weight: 600; border-radius: 6px; }
+.pg-claim #verdict .vhead .verdict { margin: 0; padding: 2px 8px; font-size: 13.5px;
+  font-weight: 600; border-radius: 4px; }
 .pg-claim ul.needs { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
 .pg-claim ul.needs li { position: relative; padding-left: 16px; }
 .pg-claim ul.needs li::before { content: ""; position: absolute; left: 2px; top: 0.6em;
   width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
 .pg-claim #verdict .gap { margin: 8px 0; padding: 0; border: 0; border-radius: 0;
   background: none; font-size: 13px; }
+.pg-claim #verdict .gap-detail { margin: 4px 0 8px; font-size: 13px; color: var(--ink-2);
+  overflow-wrap: anywhere; }
 .pg-claim #verdict p.format-notice { margin: 8px 0; }
 .pg-claim #verdict p.format-notice strong { font-weight: 500; }
+.pg-claim ul.cited { margin: 4px 0 16px; padding-left: 18px; font-size: 13px; }
+.pg-claim ul.cited li { margin: 4px 0; }
+.pg-claim #verdict details.fmt > summary { color: var(--ink-2); }
+.pg-claim #verdict details.fmt > summary strong { font-weight: 500; }
+.pg-claim #verdict details.fmt p.format-notice { margin-left: 18px; }
 .pg-claim #verdict .in > details { margin-top: 10px; }
 .pg-claim #verdict .in > details > summary { font-size: 13px; }
+/* why: the plain lines first, the rules' exact text folded under Technical details */
+.pg-claim #verdict ul.why-lines { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.pg-claim #verdict details.why-tech { margin: 10px 0 0; }
+.pg-claim #verdict details.why-tech > summary { font-size: 12.5px; color: var(--muted); }
+.pg-claim #verdict details.why-tech ul { margin: 6px 0; padding-left: 18px; display: grid;
+  gap: 6px; font-size: 12px; color: var(--ink-2); overflow-wrap: break-word; }
+.pg-claim #verdict details.why-tech p.muted { margin: 6px 0 0; font-size: 12px; }
 .pg-claim #verdict > .in.vacts { display: flex; flex-wrap: wrap; align-items: baseline;
   gap: 6px 28px; padding: 12px 22px; background: var(--card); }
 .pg-claim .vacts > details { margin: 0; }
@@ -59,15 +73,14 @@ CSS = """
   max-width: none; }
 .pg-claim .checklist .mark { display: none; }
 .pg-claim .checklist .meta { font-size: 12.5px; margin-top: 3px; }
-.pg-claim .checklist .said { padding: 2px 10px; border-radius: 999px;
-  font: 500 12px/1.5 var(--sans); color: var(--unp); background: var(--unp-bg);
+.pg-claim .checklist .said { padding: 1px 7px; border-radius: 4px;
+  font: 500 12px/18px var(--sans); color: var(--unp); background: var(--unp-bg);
   white-space: nowrap; }
 .pg-claim .checklist li.ok .said { color: var(--sup); background: var(--sup-bg); }
 .pg-claim .checklist li.ok[data-tier=ai_reviewed] .said { color: var(--muted);
   background: var(--panel); }
 .pg-claim .checklist li.con .said { color: var(--con); background: var(--con-bg); }
-.pg-claim .checklist li.no .said { color: var(--unp); background: var(--unp-bg);
-  box-shadow: inset 0 0 0 1px var(--unp-line); }
+.pg-claim .checklist li.no .said { color: var(--muted); background: var(--panel); }
 
 /* other explanations: one line per lead, the records behind them folded */
 .pg-claim details.alts-fold { margin: 24px 0 8px; }
@@ -104,8 +117,11 @@ CSS = """
 .pg-claim .item blockquote, .pg-evidence .item blockquote { margin: 0 0 6px;
   padding: 1px 0 1px 14px; font-size: 15px; }
 .pg-claim .item p.quoted { margin: 8px 0 2px; font-size: 13.5px; }
-.pg-claim p.ev-rec, .pg-evidence p.ev-rec { margin: 2px 0 0; font-size: 12.5px;
+.pg-claim p.ev-same { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.pg-claim p.ev-rec, .pg-evidence p.ev-rec,
+.pg-claim p.ev-src, .pg-evidence p.ev-src { margin: 2px 0 0; font-size: 12.5px;
   color: var(--muted); overflow-wrap: anywhere; }
+.pg-claim p.ev-rec .ev-asx, .pg-evidence p.ev-rec .ev-asx { font-weight: 500; }
 .pg-claim p.ev-review, .pg-evidence p.ev-review { margin: 12px 0 0; padding-top: 12px;
   border-top: 1px solid var(--line); font-size: 13px; max-width: none; }
 .pg-claim p.ev-review strong, .pg-evidence p.ev-review strong { font-weight: 600; }
@@ -187,6 +203,20 @@ CSS = """
   outline: 1.5px solid var(--accent); outline-offset: 0; }
 .pg-claim .msg .cited, .pg-evidence .msg .cited { font-size: 12px; }
 
+/* the side ledger keeps the open claim in view. A ledger link lands on that claim's row
+   (#lg-<id>), which scrolls the ledger to it, a third of the way down; the window stays at
+   the top of the new claim (the padding below is only set while a ledger row is the target).
+   scroll-initial-target centres the open claim on any load, after a form or from the
+   overview, where the browser supports it (Chrome, Edge). No script: the page's policy
+   forbids it. */
+.pg-claim aside.side .ledger { overflow: clip; } /* not a scroll box, so the aside is "nearest" */
+.pg-claim aside.side .ledger li { scroll-margin-top: 30vh; }
+.pg-claim aside.side .ledger li.on { scroll-initial-target: nearest; scroll-snap-align: center; }
+/* where nothing scrolled the ledger (Safari after a form), the open claim's row still shows:
+   it sticks to the ledger's top or bottom edge until the list is scrolled to it */
+.pg-claim aside.side .ledger li.on { position: sticky; top: 0; bottom: 0; z-index: 1; }
+html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }
+
 /* ---- one evidence item */
 .pg-evidence { max-width: 820px; }
 .pg-evidence p.ev-of { color: var(--muted); max-width: 70ch; }
@@ -196,6 +226,9 @@ CSS = """
 
 @media (max-width: 960px) {
   .pg-claim .claim-main { max-width: none; }
+  /* the ledger sits below the claim here: opening a claim stays at the top of the page */
+  .pg-claim aside.side .ledger li { scroll-margin-top: 100000px; }
+  .pg-claim aside.side .ledger li.on { position: relative; }
 }
 @media (max-width: 600px) {
   .pg-claim #verdict > .in, .pg-claim #verdict > .in.vacts { padding-left: 16px;

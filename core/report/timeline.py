@@ -9,12 +9,12 @@ time and a quiet stretch are derived (computed by code). Nothing here is a verdi
 
 from __future__ import annotations
 
-import html
 import sqlite3
 from dataclasses import dataclass
 from datetime import timedelta
 
 from core.ingest import forwarded
+from core.report.fmt import e, q
 from core.timeline.check import (
     FLAGGED,
     STATUS_TEXT,
@@ -24,6 +24,7 @@ from core.timeline.check import (
     fmt_delta,
     timeline,
     window_utc,
+    zoneless_note,
 )
 from core.timeline.gaps import MIN_EXPECTED, Gap, Strip, find_gaps, strips
 from core.timeline.records import CaseRecords
@@ -84,15 +85,6 @@ CSS = """
   .gap dl { grid-template-columns: minmax(0, 1fr); }
 }
 """
-
-
-def q(text: object) -> str:
-    """A cited span: text from the government document or the evidence."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 @dataclass(frozen=True)
@@ -211,6 +203,8 @@ def timeline_rows(rows: list[TimelineRow], data: CaseRecords) -> str:
                 "</ul></details>"
             )
         notes = "".join(f"<li>{e(n)}</li>" for n in row.notes)
+        if row.zoneless:  # each phone label is source text: cited, never the tool's own words
+            notes += f"<li>{zoneless_note(row.zoneless, q)}</li>"
         flag = " class='flag'" if row.status in FLAGGED else ""
         out.append(
             f"<li{flag} id='{e(st.id)}'><div><div class='meta'>{e(st.location)} · document"
@@ -288,7 +282,10 @@ def gap_card(g: Gap, data: CaseRecords, timeline_href: str = "/timeline") -> str
         f"{e(g.after.when())}: {e(fmt_delta(g.seconds))}."
     )
     elsewhere = (
-        "; ".join(f"{q(p)} holds {n} record{'s' if n != 1 else ''}" for p, n in g.elsewhere)
+        "; ".join(
+            f"{q(p)} holds {n} record{'s' if n != 1 else ''} of any app or call in this stretch"
+            for p, n in g.elsewhere
+        )
         or "No other phone in the case holds a record in this stretch."
     )
     stated = (
@@ -309,9 +306,11 @@ def gap_card(g: Gap, data: CaseRecords, timeline_href: str = "/timeline") -> str
         f"<div class='gap'><div class='meta'>{e(sr.scope)} · derived</div>"
         f"<div class='stmt'>{stmt}</div><dl>"
         f"<dt>Pace</dt><dd>{g.per_day:.1f} a day between this series' first and last record; "
-        f"about {g.expected:.0f} would fall in this stretch at that pace.</dd>"
-        f"<dt>Either side</dt><dd>Last before: {e(g.before.id)}; first after: "
-        f"{e(g.after.id)}.</dd>"
+        f"about {g.expected:.0f} would fall in this stretch at that pace. That is a rate, not "
+        "a count of missing records.</dd>"
+        f"<dt>Either side</dt><dd>Last before: {e(g.before.when())} "
+        f"<span class='mono'>{e(g.before.id)}</span>; first after: {e(g.after.when())} "
+        f"<span class='mono'>{e(g.after.id)}</span>.</dd>"
         f"<dt>Searched</dt><dd>{what} imported from {q(phone.file_name)}, "
         f"{e(FIDELITY.get(phone.fidelity, phone.fidelity))}.</dd>"
         f"<dt>Other phones</dt><dd>{elsewhere}</dd>{untimed}"
@@ -339,7 +338,8 @@ def strip_block(sp: Strip, gaps: list[Gap], data: CaseRecords) -> str:
 
     peak = max((max(c) for _, c in sp.rows if c), default=1) or 1
     rows = []
-    for app, counts in sp.rows:
+    paces = sp.pace or (None,) * len(sp.rows)
+    for (app, counts), pace in zip(sp.rows, paces, strict=True):
         cells = []
         for i, n in enumerate(counts):
             if quiet(app, i):
@@ -351,18 +351,20 @@ def strip_block(sp: Strip, gaps: list[Gap], data: CaseRecords) -> str:
                 "</span>"
             )
         bars = "".join(cells)
-        per = sum(counts) / max(len(counts), 1)
+        # the pace a quiet stretch's card gives, so the two never disagree
+        per = "" if pace is None else f"{pace:.1f} a day"
         rows.append(
             f"<div class='strip'><div>{q(app)}</div><div class='bars' role='img' "
             f"aria-label='records per {sp.unit}'>{bars}</div>"
-            f"<div class='meta'>{per:.1f}/{sp.unit}</div></div>"
+            f"<div class='meta'>{per}</div></div>"
         )
     first, last = sp.labels[0], sp.labels[-1]
     zone = sp.tz or "UTC (phone zone unknown)"
     return (
         f"<div class='strips'><div><strong>{q(_phone_name(data, sp.source_id))}</strong> "
         f"<span class='meta'>records per local {sp.unit}, {e(zone)}; shaded: a quiet stretch "
-        f"listed below</span></div>{''.join(rows)}"
+        "listed below; at the right, each app's pace between its first and last record, as "
+        f"the cards give it</span></div>{''.join(rows)}"
         f"<div class='strip'><div></div><div class='axis'><span>{first:%b %d}</span>"
         f"<span>{last:%b %d}</span></div><div></div></div></div>"
     )

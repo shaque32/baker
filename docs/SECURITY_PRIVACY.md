@@ -111,7 +111,7 @@ Full design: `docs/encryption.md`.
 **On the computer.** Mabillon deletes nothing on a schedule. A case is kept until the expert deletes
 it. Mabillon has no "delete case" button: delete the case folder (under `~/Mabillon/cases` by default),
 plus any backups of it, any downloaded reports, any request draft downloaded from the case
-(`baker-request-draft.txt`: file names, device labels, extraction details, hashes) and any
+(`mabillon-request-draft.txt`: file names, device labels, extraction details, hashes) and any
 `mabillon ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
 settings under `~/.mabillon` (`~/.baker` on a computer set up when the product was called Baker): `model.json` (which model file to use), `model-check.json` (the model
 file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,

@@ -85,7 +85,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import challenge, invariants, rules, testability
+from core.audit import case_events, challenge, invariants, rules, testability
 from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
@@ -107,7 +107,9 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.review import activity, audit_log, device_names
+from core.report import why
+from core.report.fmt import e, q, said
+from core.review import account_names, activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
     CONTRADICTION_FOUND,
@@ -117,6 +119,7 @@ from core.review.status import (
     ClaimState,
     case_holdings,
     claim_states,
+    signoff,
 )
 from core.review.status import verdict_label as _verdict_label
 from core.review.withheld import Withheld
@@ -162,7 +165,8 @@ from core.review.withheld import summary as withheld_summary
 # 0.17.0: Limitations list each name the expert gave a device for the document ("TARGET PHONE"),
 # with who gave it and when (core/review/device_names.py).
 # 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
-# every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
+# every claim that rests on the source: "Not tested: ..." (since 0.32.0 "Untested export
+# format: ...") outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
 # 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
 # Native Messages: iMessages and SMS together) says so, on the claim page too.
@@ -204,7 +208,39 @@ from core.review.withheld import summary as withheld_summary
 # summary table is narrower. No wording, fact or section changed.
 # 0.30.0: Limitations list each other name the expert gave a person for the document
 # ("SUBJECT-1", "HAL"), with who gave it and when (core/identity/aliases.py, schema 0.6.0).
-REPORT_VERSION = "0.30.0"
+# 0.31.0: Limitations list each event the expert entered for the document ("the SEARCH"), with
+# its days, the paragraph and words that define it, and who entered it and when
+# (core/audit/case_events.py, schema 0.7.0).
+# 0.32.0: Limitations list each name the expert gave a number or an account for the document
+# ("the BURNER"), with who gave it and when, and that it names the number only, never a person
+# (core/review/account_names.py).
+# 0.33.0: words an assumption, check line or verdict reason quotes from a claim print as cited,
+# so a claim that quotes "It's been deleted." no longer stops the report (validation run 3).
+# 0.34.0: those words are cited only as whole words, and a claim's own lines cite only that
+# claim's quotes (a word another claim quotes is still checked as the tool's own).
+# 0.35.0: a claim's verdict sign-off reads "Verdict confirmed by <name>, <time> UTC" (or
+# overridden, or kept from the earlier run), apart from "expert-confirmed" evidence; a report
+# made on the screen opens with the case, the examiner and when it was made (`header`).
+# 0.36.0: wording only. A source outside the tested set reads "Untested export format: ...",
+# not "Not tested: ...", so it is not read as the claim-level "Unproven, not tested"; the demo
+# banner's first line says the expert decisions are scripted, not made by a person.
+# 0.37.0: reading order. Each claim gives its verdict's reasons in plain lines (core/report/why.py,
+# as on the claim page); the rules' exact words, the rule version and run, and the verdict trace
+# with its ids move to an appendix, one entry per claim, linked from the claim. Limitations open
+# with what the five tiers mean and define only the labels this report uses (the sentence that
+# AI review alone never makes a claim supported always stays). The Selection audit says where
+# each quote not placed is listed, and the Quiet stretches strip gives each app the same pace as
+# the cards.
+REPORT_VERSION = "0.37.0"
+
+# what each provenance tier means, in the report's Limitations and on the Help page
+TIER_WORDS = (
+    ("observed", "Read straight from the extraction."),
+    ("derived", "Worked out by code from observed records, such as a local time."),
+    ("inferred", "A model's reading, such as a label on a record."),
+    ("ai_reviewed", "Accepted by the local AI reviewer. It never counts as confirmed."),
+    ("confirmed", "Accepted by a human expert."),
+)
 
 
 @dataclass(frozen=True)
@@ -331,21 +367,6 @@ details summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var
   .noprint { display: none; }
 }
 """
-
-
-def q(text: object) -> str:
-    """A cited span: text from the government document or the evidence, not the tool's words."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def said(text: object) -> str:
-    """A reason or note an expert typed, as they wrote it. Never for Mabillon's or a model's
-    text."""
-    return f'<span class="said">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 def withheld_word(word: str) -> str:
@@ -500,7 +521,7 @@ def verdict_trace(
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
     marks = marks or {}
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(st.claim.text)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -698,8 +719,25 @@ def sources(conn: sqlite3.Connection) -> list[tuple]:
     )
 
 
-def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
-    items: list[str] = []
+def tier_legend() -> str:
+    """What the five tiers mean: the report's first limitation, and the Help page's list."""
+    return (
+        "<li><strong>Each item carries a tier saying where it comes from.</strong><ul>"
+        + "".join(f"<li><strong>{e(t)}</strong>: {e(m)}</li>" for t, m in TIER_WORDS)
+        + "</ul></li>"
+    )
+
+
+def _limitations(
+    conn: sqlite3.Connection, srcs: list[tuple], labels: set[str] | None = None
+) -> str:
+    """`labels`: the verdict labels the report's claims carry, so only those are defined
+    (None: define every label)."""
+    items: list[str] = [tier_legend()]
+
+    def used(label: str) -> bool:
+        return labels is None or label in labels
+
     stips = [
         st for st in pipeline.load_stipulations(conn) if st.status == StipulationStatus.CONFIRMED
     ]
@@ -724,6 +762,15 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"{q(label)} ({e(did)}). Mabillon did not verify it. Every claim that names the "
             "phone this way was audited on that device.</li>"
         )
+    for ident, by, at, names in account_names.named_by(conn):
+        said = ", ".join(q(n) for n in names)
+        items.append(
+            "<li><strong>Which number or account the document means is an expert statement, not "
+            f"a finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
+            f"{q(ident)}. Mabillon did not verify it. A claim that names it this way was audited "
+            "on the accounts that hold that number or id. The name says nothing about who used "
+            "it.</li>"
+        )
     people = dict(conn.execute("SELECT id, name FROM persons"))
     given: dict[tuple[str, str, str], list[str]] = {}
     for a in aliases.stored(conn):
@@ -735,6 +782,40 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
             f"{q(people.get(pid, pid))}. Mabillon did not verify it. Every claim that names the "
             "person this way was audited as that person.</li>"
+        )
+    paras = {
+        pid: (label, page)
+        for pid, label, page in conn.execute("SELECT id, label, page FROM govdoc_paragraphs")
+    }
+    readable = {ev.name for ev in case_events.readable(conn)}
+    for ev in case_events.stored(conn):
+        days = ev.first_day.isoformat() + ("" if ev.one_day else f" to {ev.last_day.isoformat()}")
+        if ev.name not in readable:
+            # a name a person, an alias or another event also matches dates nothing
+            # (case_events.readable), so the report never says a claim was dated by it
+            dated = (
+                "This name also matches a person, an alias or another event, so Mabillon "
+                "dated no claim by it."
+            )
+        elif not ev.one_day:
+            dated = "Mabillon dates no claim by an event of more than one day."
+        else:
+            dated = (
+                "For a claim the audit dated by this event, code set the day from the "
+                "expert's day and the tie the claim writes (the day of, the day before or "
+                "after, or a number of days before or after), as a whole day in the phone's "
+                "zone."
+            )
+        label, page = paras.get(ev.paragraph_id, (None, None))
+        where = (f"paragraph {e(label)}" if label else f"paragraph {e(ev.paragraph_id)}") + (
+            f", page {e(page)}" if page is not None else ""
+        )
+        items.append(
+            "<li><strong>When a defined event happened is an expert statement, not a finding."
+            f"</strong> {e(ev.created_by)} said on {e(ev.created_at_utc)} that the document's "
+            f"{q(ev.name)} is {e(days)}, from {where}: {q(ev.defined_as)}. Mabillon checked "
+            f"that these words are the paragraph's own, not that the event happened then. {dated}"
+            "</li>"
         )
     for app, ident, person, by, at in conn.execute(
         "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"
@@ -783,23 +864,41 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "in the parts listed here are not in the evidence Mabillon reviewed, and times it "
                 f"could not read are not used.<ul>{lis}</ul></li>"
             )
+    # the labels this report's claims carry are defined; the rule that AI review alone never
+    # makes a claim supported is stated whatever labels occur
+    supported = (
+        f"<strong>{SUPPORTED_EXPERT}</strong> means an expert accepted every supporting item "
+        "the finding stands on. "
+        if used(SUPPORTED_EXPERT)
+        else ""
+    )
+    if used(SUPPORTED_AI):
+        supported += (
+            f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
+            "supporting evidence and no human expert has confirmed it; under the current rules "
+            "no claim reaches supported on AI review alone."
+        )
+    else:
+        supported += "Under the current rules no claim reaches supported on AI review alone."
+    items.append(f"<li>{supported}</li>")
+    if used(AWAITING_EXPERT):
+        items.append(
+            f"<li><strong>{AWAITING_EXPERT}</strong> means Mabillon found records it reads as "
+            "supporting the claim and no expert has accepted or dismissed them yet. Until an "
+            "expert does, the verdict is unproven. The labels are model output and can be wrong, "
+            "so the expert checks each item. The local AI reviewer's acceptances only sort "
+            "evidence for the expert; they never make a claim supported.</li>"
+        )
+    if used(CONTRADICTION_FOUND):
+        items.append(
+            f"<li><strong>{CONTRADICTION_FOUND}</strong> means Mabillon found records it reads "
+            "as contradicting a core assumption of the claim. A contradiction found by the "
+            "stance labeler counts once an expert confirms it, with a reason recorded in the "
+            "audit log; until then the verdict is unproven. A failed deterministic check "
+            "contradicts a claim without this step, unless the check failed on an assumption the "
+            "testability agent proposed: that failure counts once an expert confirms it.</li>"
+        )
     items += [
-        f"<li><strong>{SUPPORTED_EXPERT}</strong> means an expert accepted every supporting "
-        "item the finding stands on. "
-        f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
-        "supporting evidence and no human expert has confirmed it; under the current rules no "
-        "claim reaches supported on AI review alone.</li>",
-        f"<li><strong>{AWAITING_EXPERT}</strong> means Mabillon found records it reads as "
-        "supporting the claim and no expert has accepted or dismissed them yet. Until an expert "
-        "does, the verdict is unproven. The labels are model output and can be wrong, so the "
-        "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
-        "the expert; they never make a claim supported.</li>",
-        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Mabillon found records it reads as "
-        "contradicting a core assumption of the claim. A contradiction found by the stance "
-        "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
-        "until then the verdict is unproven. A failed deterministic check contradicts a claim "
-        "without this step, unless the check failed on an assumption the testability agent "
-        "proposed: that failure counts once an expert confirms it.</li>",
         "<li>Unproven means the evidence Mabillon reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -905,6 +1004,35 @@ def record_line(
     return q(text) if text is not None else "record not found"
 
 
+def appendix_anchor(claim_id: str) -> str:
+    return f"ids-{claim_id}"
+
+
+def claim_appendix(
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    marks: dict[str, str] | None = None,
+    names: case_names.Names | None = None,
+) -> str:
+    """One claim's entry in the appendix: its verdict's reasons exactly as the rules stored them,
+    the rule version and run, and the verdict trace, each id in full. "" for a claim with no
+    verdict."""
+    decision = st.decision
+    if decision is None:
+        return ""
+    names = (names or case_names.Names(conn)).for_claim(st.claim.text)
+    return (
+        f"<div class='claim-ids' id='{e(appendix_anchor(st.claim.id))}'>"
+        f"<h3>{e(st.name)} <span class='muted'>· <a href='#{e(st.claim.id)}'>back to the "
+        "claim</a></span></h3>"
+        "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
+        f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
+        + verdict_trace(conn, st, marks or {}, names)
+        + "</div>"
+    )
+
+
 def _claim_block(
     conn: sqlite3.Connection,
     st: ClaimState,
@@ -921,7 +1049,7 @@ def _claim_block(
     assumptions that audit took from the testability step (repair_marks)."""
     marks = marks or {}
     claim, decision = st.claim, st.decision
-    names = names or case_names.Names(conn)
+    names = (names or case_names.Names(conn)).for_claim(claim.text)
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
         f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
@@ -951,16 +1079,21 @@ def _claim_block(
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
-        out.append(
-            "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        # plain lines here, as on the claim page; the rules' exact words, with every id, and the
+        # verdict trace are in the appendix (claim_appendix), one link away
+        plain = why.lines(
+            conn, decision.reasons, st.assumptions, st.checks, st.evidence, names=names
         )
+        out.append("<ul>" + "".join(f"<li>{ln.html}</li>" for ln in plain) + "</ul>")
         out.append(
-            f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
-            f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
+            f"<p class='muted'>The rules' exact words, the rule version and run, and how each "
+            f"core assumption was covered: <a href='#{e(appendix_anchor(claim.id))}'>Appendix, "
+            f"{e(st.name)}</a>.</p>"
         )
-        if decision.confirmed_by:
+        signed = signoff(conn, decision)
+        if signed:
             note = f" Note: {said(decision.override_note)}" if decision.override_note else ""
-            out.append(f"<p>Verdict reviewed by {e(decision.confirmed_by)}.{note}</p>")
+            out.append(f"<p class='signoff'><strong>{e(signed)}</strong>{note}</p>")
     coverage = {cv.assumption_id: cv for cv in (decision.coverage if decision else ())}
 
     if st.assumptions:
@@ -1030,7 +1163,6 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
-    out.append(verdict_trace(conn, st, marks, names))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -1224,13 +1356,26 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     return "".join(out)
 
 
+@dataclass(frozen=True)
+class Header:
+    """Who made a report, for which case and when: printed under the title of a report made on
+    the screen, so two cases' reports can be told apart. A bundle's report leaves it out (its
+    report must re-render from the tables alone)."""
+
+    case_name: str
+    examiner: str | None
+    made_at_utc: datetime
+
+
 def render_report(
     conn: sqlite3.Connection,
     timeline: timeline_html.Settings | None = None,
     scope: BundleScope | None = None,
+    header: Header | None = None,
 ) -> str:
     """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None.
-    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py)."""
+    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py).
+    header: the case, examiner and time, for a report made on the screen."""
     srcs = sources(conn)
     run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
@@ -1246,6 +1391,13 @@ def render_report(
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Mabillon claims report</h1>",
+        (
+            ""
+            if header is None
+            else f"<p class='made'>Case {q(header.case_name)} · "
+            + (f"prepared by {said(header.examiner)}" if header.examiner else "examiner not named")
+            + f" · made {e(header.made_at_utc.strftime('%Y-%m-%d %H:%M'))} UTC</p>"
+        ),
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"
@@ -1320,7 +1472,7 @@ def render_report(
     parts.append("</table>")
     parts.append(withheld_section(states))
 
-    parts.append(_limitations(conn, srcs))
+    parts.append(_limitations(conn, srcs, {st.label for st in states}))
     parts.append("<h2>Claims</h2>")
     whole = scope is None or scope.whole_phone
     case = explain.load(conn) if whole else None
@@ -1439,6 +1591,14 @@ def render_report(
             )
         parts.append("</table>")
     parts.append(activity_section(conn, scope))
+    appendix = [claim_appendix(conn, st, marks, names) for st in states]
+    if any(appendix):
+        parts.append(
+            "<h2 id='appendix'>Appendix: each verdict's exact rule text and ids</h2><p>Each "
+            "claim's reasons as the verdict rules stored them, word for word, with every case "
+            "id, the rule version and run, and how each core assumption was covered. The claims "
+            "above give the same reasons in plain lines.</p>" + "".join(appendix)
+        )
     parts.append("</body></html>")
     return "".join(parts)
 
@@ -1559,10 +1719,10 @@ def stand_in_banner(run: dict) -> str:
     exactly what was scripted; any other stand-in run is a test run."""
     if pipeline.scripted_demo(run):
         return (
-            "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
+            "<div class='banner'><strong>Demo case: synthetic data. The evidence labels and "
+            "most expert decisions are scripted, not made by a person.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
-            "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key."
+            "ran: the labels and those decisions were scripted from the signed answer key."
             + (
                 " The testability agent's answers were scripted from the demo's own claims, "
                 "and so was the examiner who accepted one of its proposals. Its work here is "

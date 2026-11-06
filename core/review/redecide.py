@@ -18,6 +18,12 @@ reviews evidence, so this re-decides instead:
 - Claims removed since the run are skipped. Claims whose text the expert edited since the run,
   and claims added since, are left out with a reason: their assumptions were built from other
   text, or never built, so only a full audit can check them.
+- An expert's confirmation or override of a claim's verdict carries to the new run when the
+  rules give that claim exactly the verdict they gave before (same verdict, reasons, coverage
+  and cited records): nothing the expert signed off on changed. It is logged as verdict.carry,
+  naming the verdict it came from. When anything changed, it lapses and the claim waits for
+  the expert again (result.lapsed lists them). An override to Supported always lapses: it
+  cites the support the expert accepted on the old run, which the expert checks again.
 - The run's audit-log entry has the same shape as a full run's, plus mode, from_run,
   evidence_from_run and requested_by, so reports and predictions read it the same way. A run
   re-decided from a test run with stand-in components stays marked as a test run.
@@ -27,6 +33,7 @@ No model is called, nothing is retrieved and no AI review happens here.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -34,7 +41,14 @@ from datetime import UTC, datetime
 
 from core import build, pipeline
 from core.audit import invariants, rules, testability
-from core.contracts import CONTRACTS_VERSION, PipelineRunStatus, VerdictDecision, canonical_json
+from core.contracts import (
+    CONTRACTS_VERSION,
+    PipelineRunStatus,
+    SupportedBasis,
+    Verdict,
+    VerdictDecision,
+    canonical_json,
+)
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 from core.review.status import edited_after
@@ -72,6 +86,106 @@ class RedecideResult:
     fake: bool
     decisions: list[VerdictDecision] = field(default_factory=list)
     skipped: dict[str, str] = field(default_factory=dict)  # claim id -> why
+    carried: list[str] = field(default_factory=list)  # expert verdict decisions kept
+    lapsed: list[str] = field(default_factory=list)  # ...and those whose verdict changed
+
+
+CARRY_ACTION = "verdict.carry"
+
+
+@dataclass(frozen=True)
+class _Prior:
+    """The source run's stored verdict for one claim, with what the rules had given it."""
+
+    id: str
+    verdict: str
+    basis: str | None
+    reasons: str
+    coverage: str
+    cited: str
+    confirmed_by: str | None
+    note: str | None
+    rules_verdict: str  # before any expert override
+
+
+def _priors(conn: sqlite3.Connection, run_id: str) -> dict[str, _Prior]:
+    was: dict[str, str] = {}
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action IN ('verdict.override', ?) ORDER BY seq",
+        (CARRY_ACTION,),
+    ):
+        p = json.loads(payload_json)
+        vid, first = p.get("verdict_id"), p.get("was")
+        if isinstance(vid, str) and isinstance(first, str):
+            was.setdefault(vid, first)  # the first override names the rules' own verdict
+    out: dict[str, _Prior] = {}
+    for row in conn.execute(
+        "SELECT id, claim_id, verdict, supported_basis, reasons_json, coverage_json, cited_json,"
+        " confirmed_by, override_note FROM verdicts WHERE pipeline_run_id = ?",
+        (run_id,),
+    ):
+        vid, claim_id, verdict = row[0], row[1], row[2]
+        out[claim_id] = _Prior(
+            vid, verdict, row[3], row[4], row[5], row[6], row[7], row[8], was.get(vid, verdict)
+        )
+    return out
+
+
+def _same_decision(prior: _Prior, d: VerdictDecision) -> bool:
+    """The rules decided the claim exactly as before, so an expert's sign-off still applies."""
+    if d.verdict.value != prior.rules_verdict:
+        return False
+    if prior.verdict == Verdict.SUPPORTED.value and prior.rules_verdict != prior.verdict:
+        # An override to Supported cites the support the expert had accepted on the old run
+        # (core/review/actions.py override_verdict). Carrying it would keep Supported on review
+        # state the rules' reasons need not reflect, or store Supported citing nothing, so it
+        # lapses: the expert overrides again on the new run if it still holds.
+        return False
+    if prior.verdict == prior.rules_verdict:  # not overridden: the basis must match too
+        if (d.supported_basis.value if d.supported_basis else None) != prior.basis:
+            return False
+    return (
+        canonical_json(list(d.reasons)) == prior.reasons
+        and canonical_json([cv.model_dump(mode="json") for cv in d.coverage]) == prior.coverage
+        and canonical_json(
+            {
+                "evidence": list(d.cited_evidence_ids),
+                "checks": list(d.cited_check_ids),
+                "stipulations": list(d.cited_stipulation_ids),
+            }
+        )
+        == prior.cited
+    )
+
+
+def _carry(
+    conn: sqlite3.Connection, prior: _Prior, d: VerdictDecision, now: datetime, by: str
+) -> VerdictDecision:
+    """Keep the expert's confirmation or override on the new run's verdict, and log it.
+    Returns the decision as stored, so the result counts the verdicts the run holds."""
+    conn.execute(
+        "UPDATE verdicts SET verdict = ?, supported_basis = ?, confirmed_by = ?,"
+        " override_note = ? WHERE id = ?",
+        (prior.verdict, prior.basis, prior.confirmed_by, prior.note, d.id),
+    )
+    payload = {
+        "verdict_id": d.id,
+        "from_verdict_id": prior.id,
+        "verdict": prior.verdict,
+        "confirmed_by": prior.confirmed_by,
+        "note": prior.note,
+    }
+    if prior.verdict != prior.rules_verdict:
+        payload["was"] = prior.rules_verdict  # as an override entry names it
+    audit_log.append(conn, now, by, CARRY_ACTION, payload)
+    return d.model_copy(
+        update={
+            "verdict": Verdict(prior.verdict),
+            "supported_basis": SupportedBasis(prior.basis) if prior.basis else None,
+            "confirmed_by": prior.confirmed_by,
+            "override_note": prior.note,
+        }
+    )
 
 
 def _new_run_id(conn: sqlite3.Connection, now: datetime) -> str:
@@ -141,6 +255,7 @@ def redecide(
     edited = edited_after(conn, src["started_at_utc"])
     manifest: dict[str, dict[str, list[str]]] = {}
     accepted = testability.accepted_in(conn, src)  # the step's proposals the audit used
+    priors = _priors(conn, src["run_id"])
     try:
         with conn:
             stipulations = pipeline.load_stipulations(conn)
@@ -175,6 +290,13 @@ def redecide(
                     result.run_id,
                 )
                 _store(conn, decision)
+                prior = priors.get(claim.id)
+                if prior is not None and prior.confirmed_by is not None:
+                    if _same_decision(prior, decision):
+                        decision = _carry(conn, prior, decision, now, requested_by)
+                        result.carried.append(claim.id)
+                    else:
+                        result.lapsed.append(claim.id)
                 manifest[claim.id] = items
                 result.decisions.append(decision)
             components = {**src["components"], "rule": RULE_COMPONENT}

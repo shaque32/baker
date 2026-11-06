@@ -33,6 +33,7 @@ def _links() -> Links:
         context=lambda rid: link("/selection/context", id=rid),
         claim=lambda cid: link("/claim", id=cid),
         gaps="/gaps",
+        plain=True,
     )
 
 
@@ -65,6 +66,8 @@ def selection_page(conn: sqlite3.Connection, page: Page, timeline: Settings) -> 
     states = claim_states(conn)
     body = (
         "<div class='pg-selection'><h1>Selection audit</h1>"
+        "<p class='lede'>What the government quoted from the phones, each quote in its "
+        "conversation, and the messages around it that it left out.</p>"
         + _calmer(selection_html(audit, _links(), states))
         + paired_html(
             paired_check(conn, states, audit),
@@ -91,11 +94,6 @@ def context_page(conn: sqlite3.Connection, page: Page, record_id: str) -> str | 
     )
     body = (
         "<div class='pg-context'><p class='back'><a href='/selection'>Back to the selection "
-        "audit</a></p><h1>Message in its conversation</h1>"
-        + picked
-        + "<p class='muted tiers'>Messages are observed; the phone's local time is derived from "
-        "UTC and the phone's time zone. The message is highlighted.</p>"
-        + conversation(view)
-        + "</div>"
+        "audit</a></p><h1>Message in its conversation</h1>" + picked + conversation(view) + "</div>"
     )
     return page.wrap("Message in its conversation", body, wide=True)

@@ -10,11 +10,12 @@
 #   bash baker/eval/validation/aws_run.sh status   # how far it is
 #
 # It installs Python 3.12 and Mabillon, builds the CUDA llama-cpp-python pinned in
-# packaging/windows/pins.json, downloads the pinned model and the public iOS 15 phone and checks
-# both by SHA-256, then runs eval/validation/hickman_run.py. The result is ~/results.zip.
+# packaging/windows/pins.json, downloads the pinned model (those three steps are in
+# eval/aws_setup.sh) and the public iOS 15 phone and checks both by SHA-256, then runs
+# eval/validation/hickman_run.py. The result is ~/results.zip.
 # Everything it fetches is public; the claims file holds claims only, no answers.
 # Run it again after any stop: finished steps are kept and the audit resumes.
-set -euo pipefail
+set -eEuo pipefail  # -E: the ERR trap below also fires inside the setup functions
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK="${WORK:-$HOME/mabillon-run}"
@@ -55,14 +56,13 @@ if [ -z "${MABILLON_RUN_CHILD:-}" ]; then
   exit 0
 fi
 
-mkdir -p "$WORK/phone" "$WORK/models" "$WORK/sdist"
+mkdir -p "$WORK/phone"
 exec 9> "$WORK/.lock"
 flock -n 9 || { echo "another run is already going"; exit 1; }
 say() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 die() { say "STOPPED: $*"; exit 1; }
-pin() { python3 -c 'import json, sys; d = json.load(open(sys.argv[1]))
-for k in sys.argv[2].split("."): d = d[k]
-print(d)' "$PINS" "$1"; }
+# shellcheck source=../aws_setup.sh
+. "$REPO/eval/aws_setup.sh"
 trap 'say "STOPPED at line $LINENO. Run the start command again to resume, or send these lines."' ERR
 if [ -f "$HOME/results.zip" ] && [ ! -f "$OUT/results.zip" ]; then
   # An earlier run's results: kept under another name, so status does not report this run done.
@@ -81,52 +81,9 @@ need_gb=5  # the case database, the runtime build and the results
 [ "$free_gb" -ge "$need_gb" ] || die "only ${free_gb} GB free, need ${need_gb} GB; make the disk 200 GB"
 
 say "2/6 installing Python 3.12 and Mabillon"
-if [ ! -x "$PY" ]; then
-  command -v uv > /dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | sh
-  "$HOME/.local/bin/uv" venv -q --seed --python 3.12 "$WORK/venv" 2> /dev/null \
-    || uv venv -q --seed --python 3.12 "$WORK/venv"
-fi
-"$PY" -m pip install -q -e "$REPO[synthetic]"
-
-llama_version=$(pin llama_cpp_python.version)
-if ! "$PY" -c 'import sys, llama_cpp
-sys.exit(0 if llama_cpp.__version__ == sys.argv[1] and llama_cpp.llama_supports_gpu_offload() else 1)' \
-  "$llama_version" 2> /dev/null; then
-  say "3/6 building the model runtime for the graphics card (about 15 minutes)"
-  "$PY" -m pip download -q --no-deps --no-binary :all: "llama-cpp-python==$llama_version" -d "$WORK/sdist"
-  sdist=$(ls "$WORK"/sdist/llama_cpp_python-*.tar.gz | head -n 1)
-  echo "$(pin llama_cpp_python.sdist_sha256)  $sdist" | sha256sum -c --quiet \
-    || die "$sdist is not the pinned llama-cpp-python source"
-  CUDACXX=/usr/local/cuda/bin/nvcc
-  [ -x "$CUDACXX" ] || CUDACXX=$(ls /usr/local/cuda-*/bin/nvcc 2> /dev/null | sort -V | tail -n 1)
-  [ -x "$CUDACXX" ] || die "no CUDA compiler found; use the Deep Learning Base OSS Nvidia Driver AMI"
-  export CUDACXX PATH="$(dirname "$CUDACXX"):$PATH"
-  CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real;89" FORCE_CMAKE=1 \
-    CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" "$PY" -m pip install -q --no-cache-dir "$sdist"
-  "$PY" -c 'import llama_cpp, sys; sys.exit(0 if llama_cpp.llama_supports_gpu_offload() else 1)' \
-    || die "the model runtime was built without graphics card support"
-else
-  say "3/6 model runtime already built"
-fi
-
-model="$WORK/models/$(pin model.file)"
-if [ ! -f "$model" ]; then
-  say "4/6 downloading the AI model (9 GB)"
-  curl -fL --retry 5 -C - -s -o "$model.part" "$(pin model.url)"
-  echo "$(pin model.sha256)  $model.part" | sha256sum -c --quiet || {
-    rm -f "$model.part"
-    die "the model download is damaged; run the start command again"
-  }
-  mv "$model.part" "$model"
-else
-  say "4/6 AI model already downloaded"
-fi
-export MABILLON_MODEL_CONFIG="$WORK/model.json"
-"$PY" -c 'import json, sys
-json.dump({"name": sys.argv[1], "path": sys.argv[2], "sha256": sys.argv[3], "n_ctx": int(sys.argv[4])},
-          open(sys.argv[5], "w"), indent=2)' \
-  "$(pin model.name)" "$model" "$(pin model.sha256)" "$(pin model.n_ctx)" "$MABILLON_MODEL_CONFIG"
-"$WORK/venv/bin/mabillon" model-check || die "the model check failed"
+aws_install
+aws_build_runtime "3/6"
+aws_get_model "4/6"
 
 if [ "$(stat -c %s "$UFDR" 2> /dev/null || echo 0)" != "$UFDR_SIZE" ]; then
   say "5/6 downloading the public test phone (15 GB, unpacks to 31 GB; about 20 minutes)"

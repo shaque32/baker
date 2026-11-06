@@ -640,7 +640,7 @@ def test_the_setup_page_attests_per_case_and_keeps_the_key_local(tmp_path, monke
     post("/cloud/key", api_key=KEY)
     assert cloud.load_config(tmp_path / "cloud.json").api_key == KEY
     page = get("/setup").text
-    assert KEY not in page and "An Anthropic key is set up" in page
+    assert KEY not in page and "An Anthropic key is saved on this computer" in page
 
     post("/cloud/case", allowed="1")
     assert "cloud" not in app.case.settings  # kept in the case database, not case.json
@@ -739,7 +739,14 @@ def test_an_item_relabeled_by_another_model_names_the_model_of_the_latest_run(tm
     cloud_lab = stance_mod.create(conn, cloud_model=up)
     audit(cloud_lab)
     rows = conn.execute("SELECT model_run_id, rationale FROM evidence_items").fetchall()
-    assert rows and {r for r in rows} == {(_cloud_run(cloud_lab).id, "cloud")}
+    # the model's own rationale, after any note code puts in front of it (subject_label)
+    notes = (stance_mod.NEAR_MISS, stance_mod.NOT_THE_MESSAGE_SUPPORT, stance_mod.NOT_THE_MESSAGE)
+    seen = set()
+    for run_id, why in rows:
+        for note in notes:
+            why = why.removeprefix(note)
+        seen.add((run_id, why))
+    assert rows and seen == {(_cloud_run(cloud_lab).id, "cloud")}
 
 
 class _Misquoter(_Quoter):

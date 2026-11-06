@@ -6,6 +6,7 @@ examiner reads exactly what would leave the computer. Mabillon sends nothing its
 
 from __future__ import annotations
 
+from core.report.html import TIER_WORDS
 from core.support import bug_report
 from core.support.contact import SUPPORT_EMAIL, SUPPORT_IS_PLACEHOLDER
 from ui.pages import Page, e
@@ -45,14 +46,12 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
     )
     about = (
         "<section class='hs about'><h2>What Mabillon does and doesn't do</h2>"
-        "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM. It takes the "
-        "scrolling, not the judgment.</p>"
+        "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM.</p>"
         "<div class='dodont'><div><h3>It does</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES)
         + "</ul></div><div><h3>It does not</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES_NOT)
-        + "</ul></div></div><p class='muted'>The full one-page explainer is "
-        "<code>docs/ONE_PAGER.md</code> in the Mabillon folder.</p></section>"
+        + "</ul></div></div></section>"
     )
     scope = (
         "It describes this Mabillon install and the case open now (counts and states only)."
@@ -68,9 +67,8 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
     else:
         body = (
             "<ol class='steps'><li><a class='button' href='/help/bug-report.json' download>"
-            "Save the bug report</a> "
-            "(a small JSON file).</li>"
-            "<li>Open it and read it. It is the same text as below.</li>"
+            "Save the bug report</a></li>"
+            "<li>Read it. It is the text below.</li>"
             f"<li>Attach it to an email to {e(SUPPORT_EMAIL)}.</li></ol>"
             "<h3>Left out on purpose</h3><ul>"
             + "".join(f"<li>{e(x)}</li>" for x in bug_report.WITHHELD)
@@ -79,11 +77,65 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         )
     report = (
         "<section class='hs report'><h2>Send a bug report</h2>"
-        "<p>The bug report holds Mabillon's versions, this computer's system and model setup, "
-        f"the last background job and recent errors, with no case data. {e(scope)} Mabillon "
-        "never sends it: you save it and send it yourself.</p>"
+        "<p>Versions, this computer's system and model setup, the last background job and "
+        f"recent errors, with no case data. {e(scope)} You send it yourself.</p>"
         f"{body}</section>"
     )
     return page.wrap(
-        "Help", "<div class='pg-help'><h1>Help</h1>" + contact + report + about + "</div>"
+        "Help",
+        "<div class='pg-help'><h1>Help</h1>" + contact + report + about + WORDS + "</div>",
     )
+
+
+# The screen's own words, defined once (first-time-user review, 2026-11-04). Definitions follow
+# the verdict rules (core/audit/rules.py) and the provenance tiers in CLAUDE.md.
+_VERDICTS = (
+    (
+        "Supported",
+        "Every core part of the claim is covered and an expert accepted the records "
+        "that support it.",
+    ),
+    (
+        "Contradicted",
+        "The phone records contradict a core part of the claim: a check on the "
+        "records failed, or an expert accepted records that contradict it.",
+    ),
+    ("Unproven", "Not established either way. It does not mean the claim is false."),
+    (
+        "Support found: do you agree?",
+        "Unproven until you accept the records Mabillon read as support.",
+    ),
+    ("Unproven, not tested", "Mabillon could not set up what to check, so no record was searched."),
+)
+_TIERS = TIER_WORDS  # the same words as the report's Limitations
+_TERMS = (
+    (
+        "supports, contradicts, complicates, irrelevant",
+        "How one record bears on one thing the "
+        "claim needs. Each is a proposal until an expert accepts or dismisses it.",
+    ),
+    ("core", "A part the claim cannot be true without."),
+    (
+        "Stipulated",
+        "A fact the expert sets once for the case, such as who used each phone. "
+        "The report lists each one as a limitation. It is not a concession by either side.",
+    ),
+    (
+        "Untested export format",
+        "Mabillon has not been tested on this export format or version. "
+        "Check results against the source tool.",
+    ),
+)
+
+
+def _dl(rows: tuple[tuple[str, str], ...]) -> str:
+    return "<dl>" + "".join(f"<dt>{e(t)}</dt><dd>{e(d)}</dd>" for t, d in rows) + "</dl>"
+
+
+WORDS = (
+    "<section class='hs words' id='words'><h2>Words on the screen</h2>"
+    "<h3>Verdicts</h3>" + _dl(_VERDICTS)
+    + "<h3>Where an item comes from</h3>" + _dl(_TIERS)
+    + "<h3>Other words</h3>" + _dl(_TERMS)
+    + "</section>"
+)  # fmt: skip

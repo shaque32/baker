@@ -1,4 +1,5 @@
--- Baker canonical schema v0.6.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.7.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- 0.7.0: case_events, the dated events the document defines (signed by Arsh 2026-11-01).
 -- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh 2026-10-30).
 -- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
 -- 0.4.0: messages.forwarded and messages.forwarded_from_raw (signed by Arsh 2026-10-16).
@@ -82,6 +83,26 @@ CREATE TABLE person_aliases (
     created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
     created_at_utc TEXT NOT NULL,
     PRIMARY KEY (person_id, alias)
+);
+
+-- Events the government document defines and later claims are dated by ("the SEARCH"), with
+-- the first and last wall-clock day (YYYY-MM-DD) the document gives each, and the paragraph
+-- and words that define it (checked verbatim against the paragraph). Only an expert enters
+-- one, never a model. Code matches a name whole, in any case. A name that would also
+-- match a person or another event is refused when entered. Reports list every event as a
+-- limitation.
+CREATE TABLE case_events (
+    name           TEXT PRIMARY KEY COLLATE NOCASE
+                   CHECK (length(trim(name)) BETWEEN 1 AND 120),
+    first_day      TEXT NOT NULL
+                   CHECK (first_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    last_day       TEXT NOT NULL
+                   CHECK (last_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                          AND last_day >= first_day),
+    paragraph_id   TEXT NOT NULL REFERENCES govdoc_paragraphs(id),
+    defined_as     TEXT NOT NULL CHECK (length(trim(defined_as)) BETWEEN 1 AND 2000),
+    created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
+    created_at_utc TEXT NOT NULL
 );
 
 CREATE TABLE identity_links (

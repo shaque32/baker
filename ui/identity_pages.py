@@ -19,6 +19,9 @@ from core.identity import aliases
 from core.identity import links as L
 from ui.pages import Page, _folded, e, link, q
 
+# a pick list starts here, so nothing is linked or named by a default the expert did not choose
+CHOOSE = "<option value='' selected disabled>Choose…</option>"
+
 STATUS_LABEL = {
     "proposed": "Proposed",
     "unresolved": "Unresolved",
@@ -208,9 +211,7 @@ def _person_card(
             "<label>Also called in the document "
             "<input type='text' name='aliases' maxlength='600' placeholder='SUBJECT-1, HAL' "
             f"value='{e(', '.join(_stored_aliases(conn, person.id)))}'></label> "
-            "<button type='submit'>Save names</button>"
-            "<span class='muted hint'> Separate names with commas. Each is matched whole, and "
-            "every report lists the names you gave.</span>",
+            "<button type='submit'>Save names</button>",
             "plain aliasf",
             "/identities",
             anchor=person.id,
@@ -247,18 +248,11 @@ def _stored_aliases(conn: sqlite3.Connection, person_id: str) -> list[str]:
 
 def _unplaced(page: Page, names: list[L.UnplacedName], persons: list[L.Person]) -> str:
     if not names:
-        return (
-            "<p class='muted'>Every capitalised name in the claims, and every name the claim "
-            "reader proposed, resolves to exactly one person.</p>"
-        )
+        return "<p class='muted'>Each name in the claims matches one person.</p>"
     out = ["<ul class='ledger unplaced'>"]
     for u in names:
         cl = ", ".join(f"<a href='{e(link('/claim', id=c))}'>{e(c)}</a>" for c in u.claim_ids)
-        why = (
-            "matches no person, so the audit cannot test what it says about them"
-            if u.matches == 0
-            else f"matches {u.matches} people, so the audit refuses it as ambiguous"
-        )
+        why = "no person yet" if u.matches == 0 else f"matches {u.matches} people"
         add = (
             page.form(
                 "/person/add",
@@ -271,18 +265,21 @@ def _unplaced(page: Page, names: list[L.UnplacedName], persons: list[L.Person]) 
             else ""
         )
         if u.matches == 0 and persons:
-            opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in persons)
+            # starts on "Choose…": a name joins a person only by the expert's own pick
+            opts = CHOOSE + "".join(
+                f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in persons
+            )
             add += page.form(
                 "/person/alias/add",
                 f"<input type='hidden' name='alias' value='{e(u.name)}'>"
-                f"<select name='id' aria-label='Person'>{opts}</select> "
+                f"<select name='id' aria-label='Person' required>{opts}</select> "
                 "<button type='submit'>Add as another name</button>",
                 "inline",
                 "/identities",
             )
         out.append(
             f"<li><div class='row'><div class='head'><div class='text'>{q(u.name)}</div>"
-            f"<div class='acts'>{add}</div></div><div class='needs'>Used in {cl}; {e(why)}.</div>"
+            f"<div class='acts'>{add}</div></div><div class='needs'>Used in {cl} · {e(why)}</div>"
             "</div></li>"
         )
     out.append("</ul>")
@@ -330,16 +327,15 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         for r in rows:
             counts[r["status"]] += 1
     out = [
-        "<h1>Who is behind each name</h1>",
-        "<p class='lede'>Each proposed link between an account and a person shows the records "
-        "for and against it. Nothing is merged: a link counts in the audit's checks only after "
-        "you confirm it.</p>",
-        "<details class='more'><summary>How links are proposed and used</summary>"
+        "<h1>Identities</h1>",
+        "<details class='more'><summary>How links work</summary>"
+        "<p>Nothing is merged: a link counts in the audit's checks only after you confirm it. "
         "<p>Code proposes a link only where the extraction itself puts a form of the person's "
         "name on the account; no model is involved. Every report lists each confirmed link as "
         "a limitation. Proposed, unresolved and rejected links stay unknown. A proposed or "
-        "unresolved link only widens what the audit searches for that person.</p></details>",
-        "<div class='idbar'><div class='counts'>"
+        "unresolved link only widens what the audit searches for that person. Adding a name "
+        "ties it to nothing; Mabillon then proposes links for you to decide.</p></details>",
+        "<div class='idbar'><div class='counts'><span class='muted'>Account links</span> "
         + "".join(
             f"<span class='stpill st-{s}{' zero' if not n else ''}'>{e(STATUS_LABEL[s])} "
             f"<b>{n}</b></span>"
@@ -348,8 +344,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         + "</div>"
         + page.form(
             "/identity/look",
-            "<button type='submit'>Look for links again</button> <span class='muted'>After "
-            "importing more data or changing a phone owner.</span>",
+            "<button type='submit'>Look for links again</button>",
             "plain look",
             "/identities",
         )
@@ -360,10 +355,8 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         out.append(
             _folded(
                 f"<div class='banner'><strong>{changed} identity change(s) since the last audit "
-                "started.</strong> They reach the checks and searches on the next audit run. "
-                "Finished model work is reused, so only what changed goes to the model. "
-                "<a href='/setup'>Set up and run</a>. Re-running the verdicts alone does not "
-                "apply them.</div>"
+                "started.</strong> They apply on the next audit run (<a href='/setup'>Set up "
+                "and run</a>); re-running the verdicts alone does not apply them.</div>"
             )
         )
     out.append("<h2>Names the claims use with no person yet</h2>")
@@ -371,11 +364,9 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
     out.append(
         page.form(
             "/person/add",
-            "<label>Add a person, written as the document writes the name "
-            "<input type='text' name='name' required maxlength='120' "
-            "placeholder='The name as printed'></label> <button type='submit'>Add person</button>"
-            "<p class='muted'>Adding a name ties it to nothing. Mabillon then looks for accounts "
-            "that carry the name and proposes links for you to decide.</p>",
+            "<label>Add a person <input type='text' name='name' required maxlength='120' "
+            "placeholder='The name as the document prints it'></label> "
+            "<button type='submit'>Add person</button>",
             "plain addp",
             back="/identities",
         )
@@ -391,18 +382,21 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         out.append(_person_card(conn, page, case, p, rows_by_person.get(p.id, [])))
     if case.persons and case.groups:
         accounts = sorted(case.groups.values(), key=lambda g: g.label.casefold())
-        acc_opts = "".join(
+        acc_opts = CHOOSE + "".join(
             f"<option value='{e(g.account_ids[0])}'>{e(g.label)}"
             f"{' · ' + e(g.names[0].text) if g.names else ''}</option>"
             for g in accounts
         )
-        per_opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in case.persons)
+        per_opts = CHOOSE + "".join(
+            f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in case.persons
+        )
         out.append(
-            "<h2>Link an account yourself</h2>"
+            "<h2 id='link-yourself'>Link an account yourself</h2>"
             + page.form(
                 "/identity/link",
-                f"<p class='pick'><label>Account <select name='account'>{acc_opts}</select>"
-                f"</label> <label>Person <select name='person'>{per_opts}</select></label></p>"
+                "<p class='pick'><label>Account "
+                f"<select name='account' required>{acc_opts}</select></label> <label>Person "
+                f"<select name='person' required>{per_opts}</select></label></p>"
                 "<p><label>Why (one sentence, recorded with your name)<input type='text' "
                 "name='note' required maxlength='300' class='wide'></label></p>"
                 "<p class='go'><button type='submit' class='primary'>Link and confirm</button> "
@@ -410,6 +404,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
                 "once and listed in the report as a limitation.</span></p>",
                 "box linkself",
                 back="/identities",
+                anchor="link-yourself",  # back to this form, not the top of a long page
             )
         )
     return page.wrap("Identities", "<div class='pg-ids'>" + "".join(out) + "</div>")

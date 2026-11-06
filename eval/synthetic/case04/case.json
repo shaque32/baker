@@ -17,6 +17,7 @@
         "SUBJECT-1",
         "HAL"
       ],
+      "names": [],
       "messages": 418,
       "calls": 13,
       "contacts": 7
@@ -31,6 +32,9 @@
       "owner": "Nadia Ferro",
       "aliases": [
         "SUBJECT-2"
+      ],
+      "names": [
+        "the TARGET PHONE"
       ],
       "messages": 456,
       "calls": 11,
@@ -49,9 +53,18 @@
         "DEZ",
         "the DRIVER"
       ],
+      "names": [],
       "messages": 506,
       "calls": 23,
       "contacts": 7
+    }
+  ],
+  "numbers": [
+    {
+      "identifier": "+1 (312) 555-0199",
+      "names": [
+        "the PREPAID"
+      ]
     }
   ],
   "sources": [

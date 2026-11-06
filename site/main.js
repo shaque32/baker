@@ -1,7 +1,8 @@
 // Drives the home page: fades sections in on first sight, and runs the one-claim walk as a
 // stepper. Progress is a fractional value from 1 to 5.95; every panel part's data-on grammar
-// is unchanged, only what moves the dial. Autoplay suggests the rhythm; the pointer, focus,
-// pause button, keys, or a tab click take it over at any moment.
+// is unchanged, only what moves the dial. Autoplay suggests the rhythm; focus, the pause
+// button, keys, or a tab click take it over at any moment. A mouse resting on the panel does not
+// pause it.
 const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Sections play once, when about a third of them is on screen.
@@ -51,7 +52,6 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let t = 0;
   let last = null;
-  let pointerPaused = false;
   let focusHeld = false;
   let userPaused = false;
   let userHoldUntil = 0;
@@ -111,7 +111,7 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function playing(ts) {
     if (!panelVisible) return false;
-    if (pointerPaused || focusHeld || userPaused) return false;
+    if (focusHeld || userPaused) return false;
     if (ts < userHoldUntil) return false;
     return true;
   }
@@ -160,8 +160,6 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     });
   });
 
-  panel.addEventListener("pointerenter", () => { pointerPaused = true; });
-  panel.addEventListener("pointerleave", () => { pointerPaused = false; });
   // Keyboard focus inside the panel holds autoplay until it leaves, so the step never changes
   // under a keyboard reader. A mouse click focuses a tab too, but only holds for USER_HOLD.
   function keyboardFocus(el) {

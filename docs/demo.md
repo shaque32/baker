@@ -13,11 +13,13 @@ mabillon demo --paired           # also add a UFDR of Item 1, to show what the c
 Run it again before every demo: each run deletes the demo case and builds a clean one (about
 6 seconds). It uses its own folder (`~/Mabillon/demo/cases`, or `$MABILLON_DEMO/cases`) and its own
 port (8766), so it never shows your other cases on a screen share and can run beside a real
-`mabillon serve` on 8765. Ctrl+C stops it.
+`mabillon serve` on 8765. Ctrl+C stops it. If 8766 is taken, by a demo from earlier that is
+still running or by another program, it uses the next free port and says which; stop the old
+demo with Ctrl+C in its window.
 
 ## What is real and what is scripted
 
-Say this if asked; the yellow banner on every page says the same.
+Say this if asked; the yellow banner on every page of the case says the same.
 
 | Real (Mabillon's own code) | Scripted (so the demo opens in seconds) |
 |---|---|
@@ -60,6 +62,9 @@ the scripted case).
   its contact record, so D02 shows the whole path to "Supported (expert-confirmed)". D03's ("At
   about 7:58 p.m. on March 9, 2026, Item 1 placed a call to +1 (212) 555-0122") waits on its
   claim page for you.
+- **One exhibit**, "Government Exhibit 4 (synthetic demo)" (eval/demo.py): two Item 1 messages
+  as an exhibit would print them next to paragraph 6, so the Exhibits tab shows what it does.
+  Both are found. An exhibit never changes a verdict.
 - **`mabillon demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
   UFDR of Item 1 that holds records the curated report does not (eval/synthetic/paired.py). It
   is imported after the audit, so every verdict is the same as in the plain demo. The Selection

@@ -211,3 +211,23 @@ def test_the_command_line_names_the_repair_for_a_bad_row(root, tmp_path, capsys)
     assert "breaks the verdict contract" in err and "mabillon redecide" in err
     assert main(["redecide", "--db", str(case.db), "--by", EXPERT]) == 0
     assert main(["report", "--db", str(case.db), "--out", str(tmp_path / "r.html")]) == 0
+
+
+def test_a_supported_override_lapses_on_a_verdict_re_run(root):
+    """The override cites support accepted on the old run, so a re-run never carries it, even
+    when the rules decide the claim exactly as before; the claim waits for the expert again."""
+    from core.review.redecide import redecide
+
+    conn = connect(_case(root).db)
+    items = _supports(conn, "C05")
+    for x in items:
+        actions.decide_evidence(conn, x.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
+    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Sent March 12 local.")
+    for x in items:  # back to as the rules last saw it
+        actions.decide_evidence(conn, x.id, EvidenceStatus.OPEN, EXPERT, "Look again.")
+    result = redecide(conn, EXPERT)
+    assert "C05" in result.lapsed and "C05" not in result.carried
+    verdict, basis, cited_json, by, note = _row(conn, "C05")
+    assert (verdict, basis, by, note) == ("unproven", None, None, None)
+    assert json.loads(cited_json)["evidence"] == []
+    assert _get(_app(root), "/claim", id="C05").status == 200

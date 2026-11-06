@@ -98,14 +98,12 @@ from core.contracts import (
     CheckOutcome,
     CheckResult,
     Claim,
-    ClaimExtractor,
     ClaimStatus,
     ClaimType,
     DeterministicCheck,
     EvidenceItem,
     EvidenceReviewer,
     EvidenceStatus,
-    GovDocParagraph,
     ModelCallOutcome,
     ModelRun,
     PipelineRunStatus,
@@ -876,29 +874,6 @@ def view_run(conn: sqlite3.Connection) -> dict | None:
     return last_run(conn)
 
 
-# ---------------------------------------------------------------- claims step
-
-
-def extract_claims(
-    conn: sqlite3.Connection, extractor: ClaimExtractor, paragraphs: list[GovDocParagraph]
-) -> list[Claim]:
-    """Store the extractor's proposals. The expert then accepts, edits or removes each one."""
-    claims = extractor.extract(paragraphs)
-    para_ids = {p.id for p in paragraphs}
-    with conn:
-        for c in claims:
-            if c.paragraph_id not in para_ids:
-                raise ValueError(f"{c.id} cites paragraph {c.paragraph_id}, which was not given")
-            if c.status != ClaimStatus.PROPOSED:
-                raise ValueError(f"{c.id}: an extractor only proposes claims")
-            conn.execute(
-                "INSERT INTO claims (id, paragraph_id, text, claim_type, status, model_run_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (c.id, c.paragraph_id, c.text, c.claim_type.value, c.status.value, c.model_run_id),
-            )
-    return claims
-
-
 # ---------------------------------------------------------------- audit step
 
 
@@ -1109,10 +1084,8 @@ class _Run:
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
         self.flush_calls()
-        stance_ = stance.subject_stance(a, text, label.stance)
-        rationale = label.rationale
-        if stance_ is not label.stance:  # the model call log keeps the raw label
-            rationale = stance.NOT_THE_MESSAGE + rationale
+        stance_, note = stance.subject_label(a, text, label.stance)
+        rationale = note + label.rationale  # the model call log keeps the raw label
         if cand.record_id in self.forwarded and stance_ in (Stance.SUPPORTS, Stance.CONTRADICTS):
             # fail closed: forwarded words can neither support nor contradict (forwarded.py)
             rationale = f"{forwarded.STANCE_NOTE}{stance_.value}. {rationale}"
@@ -1489,6 +1462,7 @@ def run_audit(
         **({"cloud": components.cloud} if components.cloud is not None else {}),
         **(config or {}),
         "quote_check": quote_check_version(components),  # a caller's config cannot restate it
+        "subject_stance": stance.SUBJECT_VERSION,  # how code rewrites a label on another record
         "build": build.build_info(),  # release and git commit; nor this
     }
     with conn:

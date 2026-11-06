@@ -438,10 +438,12 @@ def test_server_binds_loopback_only_and_answers(db):
     try:
         host, port = server.server_address[:2]
         assert host == "127.0.0.1"
+        key = server.key  # type: ignore[attr-defined]
+        cookie = {"Cookie": f"{key.cookie_name}={key.value}"}
         t = threading.Thread(target=server.handle_request)
         t.start()
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request("GET", "/claims")
+        c.request("GET", "/claims", headers=cookie)
         r = c.getresponse()
         body = r.read().decode()
         t.join(10)
@@ -453,7 +455,7 @@ def test_server_binds_loopback_only_and_answers(db):
             "POST",
             "/redecide",
             urlencode({"token": "forged"}),
-            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"Content-Type": "application/x-www-form-urlencoded", **cookie},
         )
         assert c.getresponse().status == 403
         t.join(10)
@@ -507,3 +509,23 @@ def test_a_form_brings_the_expert_back_to_what_they_acted_on(db, conn):
     assert 'class="flash toast" role="status"' in page  # seen wherever the page opens
     assert 'value="/claim?id=C05#verdict"' in page  # the re-run banner comes back to the verdict
     assert 'value="/#audit"' in get(app, "/").text and "id='audit'" in get(app, "/").text
+
+
+def test_the_side_ledger_keeps_the_open_claim_in_view(db, conn):
+    """Each ledger link lands on its own row, so opening C10 from the ledger scrolls the ledger
+    to C10 instead of back to C01; the CSS keeps the window at the top of the new claim, and
+    scroll-initial-target covers a load with no anchor (after a form, from the overview)."""
+    app = App(db, expert="Test Expert", port=PORT)
+    page = get(app, "/claim", id="C10").text
+    side = page.split("<aside class='side'>", 1)[1].split("</aside>", 1)[0]
+    assert "<li id='lg-C10' class=on>" in side
+    assert "<a href='/claim?id=C10#lg-C10'>" in side
+    assert "<li id='lg-C01'>" in side and "<a href='/claim?id=C01#lg-C01'>" in side
+    assert ".pg-claim aside.side .ledger li.on { scroll-initial-target: nearest;" in page
+    assert "html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }" in page
+    # an overflow:hidden ledger would itself be the nearest scroll box and nothing would move
+    assert ".pg-claim aside.side .ledger { overflow: clip; }" in page
+    # Safari has no scroll-initial-target: the open claim's row is pinned to the ledger's edge
+    assert ".pg-claim aside.side .ledger li.on { position: sticky; top: 0; bottom: 0;" in page
+    # the run banner sits in the claim's column, so the ledger starts at the top and fits
+    assert "class='banner'" not in page.split("<div class='split pg-claim'>", 1)[0]
