@@ -65,8 +65,12 @@ def _name_the_mac_app() -> None:
     try:
         foundation = importlib.import_module("Foundation")
         bundle = foundation.NSBundle.mainBundle()
-        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
-        info["CFBundleName"] = TITLE
+        # Both: Python.app has a localized dictionary too, and the menu bar read the plain one
+        # when only the localized one was set (seen on a Mac, 2026-11-06).
+        for info in (bundle.infoDictionary(), bundle.localizedInfoDictionary()):
+            if info is not None:
+                info["CFBundleName"] = TITLE
+                info["CFBundleDisplayName"] = TITLE
     except Exception as err:  # noqa: BLE001 - a name is cosmetic; never stop the window over it
         print(f"(menu bar name not set: {type(err).__name__})")
 
