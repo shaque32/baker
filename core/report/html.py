@@ -107,6 +107,7 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
+from core.report import why
 from core.report.fmt import e, q, said
 from core.review import account_names, activity, audit_log, device_names
 from core.review.status import (
@@ -164,7 +165,8 @@ from core.review.withheld import summary as withheld_summary
 # 0.17.0: Limitations list each name the expert gave a device for the document ("TARGET PHONE"),
 # with who gave it and when (core/review/device_names.py).
 # 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
-# every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
+# every claim that rests on the source: "Not tested: ..." (since 0.32.0 "Untested export
+# format: ...") outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
 # 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
 # Native Messages: iMessages and SMS together) says so, on the claim page too.
@@ -219,7 +221,26 @@ from core.review.withheld import summary as withheld_summary
 # 0.35.0: a claim's verdict sign-off reads "Verdict confirmed by <name>, <time> UTC" (or
 # overridden, or kept from the earlier run), apart from "expert-confirmed" evidence; a report
 # made on the screen opens with the case, the examiner and when it was made (`header`).
-REPORT_VERSION = "0.35.0"
+# 0.36.0: wording only. A source outside the tested set reads "Untested export format: ...",
+# not "Not tested: ...", so it is not read as the claim-level "Unproven, not tested"; the demo
+# banner's first line says the expert decisions are scripted, not made by a person.
+# 0.37.0: reading order. Each claim gives its verdict's reasons in plain lines (core/report/why.py,
+# as on the claim page); the rules' exact words, the rule version and run, and the verdict trace
+# with its ids move to an appendix, one entry per claim, linked from the claim. Limitations open
+# with what the five tiers mean and define only the labels this report uses (the sentence that
+# AI review alone never makes a claim supported always stays). The Selection audit says where
+# each quote not placed is listed, and the Quiet stretches strip gives each app the same pace as
+# the cards.
+REPORT_VERSION = "0.37.0"
+
+# what each provenance tier means, in the report's Limitations and on the Help page
+TIER_WORDS = (
+    ("observed", "Read straight from the extraction."),
+    ("derived", "Worked out by code from observed records, such as a local time."),
+    ("inferred", "A model's reading, such as a label on a record."),
+    ("ai_reviewed", "Accepted by the local AI reviewer. It never counts as confirmed."),
+    ("confirmed", "Accepted by a human expert."),
+)
 
 
 @dataclass(frozen=True)
@@ -698,8 +719,25 @@ def sources(conn: sqlite3.Connection) -> list[tuple]:
     )
 
 
-def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
-    items: list[str] = []
+def tier_legend() -> str:
+    """What the five tiers mean: the report's first limitation, and the Help page's list."""
+    return (
+        "<li><strong>Each item carries a tier saying where it comes from.</strong><ul>"
+        + "".join(f"<li><strong>{e(t)}</strong>: {e(m)}</li>" for t, m in TIER_WORDS)
+        + "</ul></li>"
+    )
+
+
+def _limitations(
+    conn: sqlite3.Connection, srcs: list[tuple], labels: set[str] | None = None
+) -> str:
+    """`labels`: the verdict labels the report's claims carry, so only those are defined
+    (None: define every label)."""
+    items: list[str] = [tier_legend()]
+
+    def used(label: str) -> bool:
+        return labels is None or label in labels
+
     stips = [
         st for st in pipeline.load_stipulations(conn) if st.status == StipulationStatus.CONFIRMED
     ]
@@ -826,23 +864,41 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "in the parts listed here are not in the evidence Mabillon reviewed, and times it "
                 f"could not read are not used.<ul>{lis}</ul></li>"
             )
+    # the labels this report's claims carry are defined; the rule that AI review alone never
+    # makes a claim supported is stated whatever labels occur
+    supported = (
+        f"<strong>{SUPPORTED_EXPERT}</strong> means an expert accepted every supporting item "
+        "the finding stands on. "
+        if used(SUPPORTED_EXPERT)
+        else ""
+    )
+    if used(SUPPORTED_AI):
+        supported += (
+            f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
+            "supporting evidence and no human expert has confirmed it; under the current rules "
+            "no claim reaches supported on AI review alone."
+        )
+    else:
+        supported += "Under the current rules no claim reaches supported on AI review alone."
+    items.append(f"<li>{supported}</li>")
+    if used(AWAITING_EXPERT):
+        items.append(
+            f"<li><strong>{AWAITING_EXPERT}</strong> means Mabillon found records it reads as "
+            "supporting the claim and no expert has accepted or dismissed them yet. Until an "
+            "expert does, the verdict is unproven. The labels are model output and can be wrong, "
+            "so the expert checks each item. The local AI reviewer's acceptances only sort "
+            "evidence for the expert; they never make a claim supported.</li>"
+        )
+    if used(CONTRADICTION_FOUND):
+        items.append(
+            f"<li><strong>{CONTRADICTION_FOUND}</strong> means Mabillon found records it reads "
+            "as contradicting a core assumption of the claim. A contradiction found by the "
+            "stance labeler counts once an expert confirms it, with a reason recorded in the "
+            "audit log; until then the verdict is unproven. A failed deterministic check "
+            "contradicts a claim without this step, unless the check failed on an assumption the "
+            "testability agent proposed: that failure counts once an expert confirms it.</li>"
+        )
     items += [
-        f"<li><strong>{SUPPORTED_EXPERT}</strong> means an expert accepted every supporting "
-        "item the finding stands on. "
-        f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
-        "supporting evidence and no human expert has confirmed it; under the current rules no "
-        "claim reaches supported on AI review alone.</li>",
-        f"<li><strong>{AWAITING_EXPERT}</strong> means Mabillon found records it reads as "
-        "supporting the claim and no expert has accepted or dismissed them yet. Until an expert "
-        "does, the verdict is unproven. The labels are model output and can be wrong, so the "
-        "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
-        "the expert; they never make a claim supported.</li>",
-        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Mabillon found records it reads as "
-        "contradicting a core assumption of the claim. A contradiction found by the stance "
-        "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
-        "until then the verdict is unproven. A failed deterministic check contradicts a claim "
-        "without this step, unless the check failed on an assumption the testability agent "
-        "proposed: that failure counts once an expert confirms it.</li>",
         "<li>Unproven means the evidence Mabillon reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -948,6 +1004,35 @@ def record_line(
     return q(text) if text is not None else "record not found"
 
 
+def appendix_anchor(claim_id: str) -> str:
+    return f"ids-{claim_id}"
+
+
+def claim_appendix(
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    marks: dict[str, str] | None = None,
+    names: case_names.Names | None = None,
+) -> str:
+    """One claim's entry in the appendix: its verdict's reasons exactly as the rules stored them,
+    the rule version and run, and the verdict trace, each id in full. "" for a claim with no
+    verdict."""
+    decision = st.decision
+    if decision is None:
+        return ""
+    names = (names or case_names.Names(conn)).for_claim(st.claim.text)
+    return (
+        f"<div class='claim-ids' id='{e(appendix_anchor(st.claim.id))}'>"
+        f"<h3>{e(st.name)} <span class='muted'>· <a href='#{e(st.claim.id)}'>back to the "
+        "claim</a></span></h3>"
+        "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
+        f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
+        + verdict_trace(conn, st, marks or {}, names)
+        + "</div>"
+    )
+
+
 def _claim_block(
     conn: sqlite3.Connection,
     st: ClaimState,
@@ -994,12 +1079,16 @@ def _claim_block(
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
-        out.append(
-            "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        # plain lines here, as on the claim page; the rules' exact words, with every id, and the
+        # verdict trace are in the appendix (claim_appendix), one link away
+        plain = why.lines(
+            conn, decision.reasons, st.assumptions, st.checks, st.evidence, names=names
         )
+        out.append("<ul>" + "".join(f"<li>{ln.html}</li>" for ln in plain) + "</ul>")
         out.append(
-            f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
-            f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
+            f"<p class='muted'>The rules' exact words, the rule version and run, and how each "
+            f"core assumption was covered: <a href='#{e(appendix_anchor(claim.id))}'>Appendix, "
+            f"{e(st.name)}</a>.</p>"
         )
         signed = signoff(conn, decision)
         if signed:
@@ -1074,7 +1163,6 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
-    out.append(verdict_trace(conn, st, marks, names))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -1384,7 +1472,7 @@ def render_report(
     parts.append("</table>")
     parts.append(withheld_section(states))
 
-    parts.append(_limitations(conn, srcs))
+    parts.append(_limitations(conn, srcs, {st.label for st in states}))
     parts.append("<h2>Claims</h2>")
     whole = scope is None or scope.whole_phone
     case = explain.load(conn) if whole else None
@@ -1503,6 +1591,14 @@ def render_report(
             )
         parts.append("</table>")
     parts.append(activity_section(conn, scope))
+    appendix = [claim_appendix(conn, st, marks, names) for st in states]
+    if any(appendix):
+        parts.append(
+            "<h2 id='appendix'>Appendix: each verdict's exact rule text and ids</h2><p>Each "
+            "claim's reasons as the verdict rules stored them, word for word, with every case "
+            "id, the rule version and run, and how each core assumption was covered. The claims "
+            "above give the same reasons in plain lines.</p>" + "".join(appendix)
+        )
     parts.append("</body></html>")
     return "".join(parts)
 
@@ -1623,10 +1719,10 @@ def stand_in_banner(run: dict) -> str:
     exactly what was scripted; any other stand-in run is a test run."""
     if pipeline.scripted_demo(run):
         return (
-            "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
+            "<div class='banner'><strong>Demo case: synthetic data. The evidence labels and "
+            "most expert decisions are scripted, not made by a person.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
-            "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key."
+            "ran: the labels and those decisions were scripted from the signed answer key."
             + (
                 " The testability agent's answers were scripted from the demo's own claims, "
                 "and so was the examiner who accepted one of its proposals. Its work here is "

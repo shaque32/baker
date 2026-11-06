@@ -1,0 +1,603 @@
+{
+  "case_id": "case06",
+  "description": "Synthetic held-out case for the testability step's go/no-go of record, built to case05's design: 48 claims, six of each type, plain and affidavit wordings, a wrong reading planted for most claims (same names, second numbers, a second phone, near-miss windows, one contact name on two phones, similar words). Three phones with three report time settings, across the start of daylight saving time. Carries the names and events the affidavit defines.",
+  "synthetic": true,
+  "generator": "case06-gen 0.1.0",
+  "seed": 20250309,
+  "devices": [
+    {
+      "source_id": "item1",
+      "label": "Item 1: Samsung Galaxy Z Flip5 seized from Emmett Varlow",
+      "model": "Samsung Galaxy Z Flip5 (SM-F731U)",
+      "timezone": "America/Los_Angeles",
+      "report_time": "utc",
+      "extraction_type": "file_system",
+      "owner": "Emmett Varlow",
+      "aliases": [
+        "CC-1",
+        "SKIP"
+      ],
+      "names": [
+        "the GALAXY"
+      ],
+      "messages": 429,
+      "calls": 14,
+      "contacts": 6
+    },
+    {
+      "source_id": "item2",
+      "label": "Item 2: Apple iPhone 12 mini seized from Renata Coyle",
+      "model": "Apple iPhone 12 mini (A2176)",
+      "timezone": "America/Los_Angeles",
+      "report_time": "local",
+      "extraction_type": "logical",
+      "owner": "Renata Coyle",
+      "aliases": [
+        "CC-2"
+      ],
+      "names": [],
+      "messages": 421,
+      "calls": 7,
+      "contacts": 6
+    },
+    {
+      "source_id": "item3",
+      "label": "Item 3: Kyocera DuraForce Ultra 5G seized from Duncan Pelloquin",
+      "model": "Kyocera DuraForce Ultra 5G (E7110)",
+      "timezone": "America/Los_Angeles",
+      "report_time": "fixed-480",
+      "extraction_type": "logical",
+      "owner": "Duncan Pelloquin",
+      "aliases": [
+        "CC-3",
+        "DUKE",
+        "the HAULER"
+      ],
+      "names": [
+        "the KYOCERA"
+      ],
+      "messages": 460,
+      "calls": 17,
+      "contacts": 8
+    }
+  ],
+  "numbers": [
+    {
+      "identifier": "+1 (360) 555-0163",
+      "names": [
+        "the SPARE LINE"
+      ]
+    },
+    {
+      "identifier": "+1 (360) 555-0192",
+      "names": [
+        "the WORK NUMBER"
+      ]
+    },
+    {
+      "identifier": "8820450",
+      "names": [
+        "the KELPWISE ACCOUNT"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "HARBOR THEFT",
+      "first_day": "2025-02-28",
+      "last_day": "2025-03-01",
+      "defined_as": "four outboard motors and two chartplotters were taken from boats moored at Sculpin Harbor Marina on Tidewrack Road"
+    },
+    {
+      "name": "TRANSFER",
+      "first_day": "2025-03-08",
+      "last_day": "2025-03-09",
+      "defined_as": "VARLOW and PELLOQUIN moved the motors from COYLE's boathouse on Halyard Point to a barn on Gannet Lane"
+    },
+    {
+      "name": "KITTIWAKE THEFT",
+      "first_day": "2025-03-13",
+      "defined_as": "two outboard motors and a pallet of marine batteries were taken from the fenced yard of Kittiwake Marine Supply on Ferrule Street"
+    },
+    {
+      "name": "SURVEILLANCE",
+      "first_day": "2025-03-17",
+      "last_day": "2025-03-19",
+      "defined_as": "deputies watched COYLE's boathouse on Halyard Point"
+    },
+    {
+      "name": "RECOVERY",
+      "first_day": "2025-03-25",
+      "defined_as": "deputies opened unit 17 at Port Wendle Mini Storage and recovered three of the outboard motors"
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "item1",
+      "file": "item1.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "33909c45c88927a767a98d772926b8c98723f8bc422cd66b03d4b8f77b56413f"
+    },
+    {
+      "source_id": "item2",
+      "file": "item2.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "e3cbc78dd853e90d3ca5a1f2b086f0e5841cbf21289176afe8f27e25b28e5a6d"
+    },
+    {
+      "source_id": "item3",
+      "file": "item3.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "55eb3d2a1da09590533b0fc03fa07ad79abc4c52b8a91bd29196b32c526169ec"
+    }
+  ],
+  "plants": {
+    "C01": {
+      "claim_type": "communication",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!393"
+      ]
+    },
+    "C02": {
+      "claim_type": "communication",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "none",
+      "wrong_records": []
+    },
+    "C03": {
+      "claim_type": "communication",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item2:Chats!202"
+      ]
+    },
+    "C04": {
+      "claim_type": "communication",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item1:Chats!85"
+      ]
+    },
+    "C05": {
+      "claim_type": "communication",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "msg:item3:Chats!313"
+      ]
+    },
+    "C06": {
+      "claim_type": "communication",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item3:Chats!456",
+        "msg:item2:Chats!408"
+      ]
+    },
+    "C07": {
+      "claim_type": "identity",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "contact_name",
+      "wrong_records": [
+        "contact:item3:Contacts!8#1"
+      ]
+    },
+    "C08": {
+      "claim_type": "identity",
+      "wording": "plain",
+      "verdict": "unproven",
+      "hazard": "second_number",
+      "wrong_records": [
+        "contact:item1:Contacts!5#1"
+      ]
+    },
+    "C09": {
+      "claim_type": "identity",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "same_name",
+      "wrong_records": [
+        "msg:item3:Chats!345"
+      ]
+    },
+    "C10": {
+      "claim_type": "identity",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "contact_name",
+      "wrong_records": [
+        "contact:item3:Contacts!7#1"
+      ]
+    },
+    "C11": {
+      "claim_type": "identity",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "contact:item3:Contacts!6#1"
+      ]
+    },
+    "C12": {
+      "claim_type": "identity",
+      "wording": "affidavit",
+      "verdict": "contradicted",
+      "hazard": "contact_name",
+      "wrong_records": [
+        "contact:item2:Contacts!6#1",
+        "contact:item1:Contacts!4#1"
+      ]
+    },
+    "C13": {
+      "claim_type": "timing",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "near_window",
+      "wrong_records": [
+        "call:item1:Call Log!4"
+      ]
+    },
+    "C14": {
+      "claim_type": "timing",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "near_window",
+      "wrong_records": [
+        "call:item3:Call Log!11",
+        "call:item3:Call Log!12"
+      ]
+    },
+    "C15": {
+      "claim_type": "timing",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item3:Chats!319"
+      ]
+    },
+    "C16": {
+      "claim_type": "timing",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "call:item1:Call Log!12"
+      ]
+    },
+    "C17": {
+      "claim_type": "timing",
+      "wording": "affidavit",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!423"
+      ]
+    },
+    "C18": {
+      "claim_type": "timing",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "call:item3:Call Log!17"
+      ]
+    },
+    "C19": {
+      "claim_type": "content_meaning",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item3:Chats!204"
+      ]
+    },
+    "C20": {
+      "claim_type": "content_meaning",
+      "wording": "plain",
+      "verdict": "unproven",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item2:Chats!88"
+      ]
+    },
+    "C21": {
+      "claim_type": "content_meaning",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!408"
+      ]
+    },
+    "C22": {
+      "claim_type": "content_meaning",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item3:Chats!110"
+      ]
+    },
+    "C23": {
+      "claim_type": "content_meaning",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "msg:item2:Chats!373"
+      ]
+    },
+    "C24": {
+      "claim_type": "content_meaning",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "same_name",
+      "wrong_records": [
+        "msg:item2:Chats!206"
+      ]
+    },
+    "C25": {
+      "claim_type": "count",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!363",
+        "msg:item1:Chats!364",
+        "msg:item1:Chats!365",
+        "msg:item1:Chats!372",
+        "msg:item1:Chats!373"
+      ]
+    },
+    "C26": {
+      "claim_type": "count",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item2:Chats!411"
+      ]
+    },
+    "C27": {
+      "claim_type": "count",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item3:Chats!315",
+        "msg:item3:Chats!316"
+      ]
+    },
+    "C28": {
+      "claim_type": "count",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "msg:item3:Chats!321",
+        "msg:item3:Chats!322",
+        "msg:item3:Chats!323"
+      ]
+    },
+    "C29": {
+      "claim_type": "count",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item3:Chats!432",
+        "msg:item3:Chats!435"
+      ]
+    },
+    "C30": {
+      "claim_type": "count",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item2:Chats!327",
+        "msg:item2:Chats!328"
+      ]
+    },
+    "C31": {
+      "claim_type": "absence",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!347",
+        "msg:item1:Chats!348"
+      ]
+    },
+    "C32": {
+      "claim_type": "absence",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "second_number",
+      "wrong_records": [
+        "msg:item2:Chats!422"
+      ]
+    },
+    "C33": {
+      "claim_type": "absence",
+      "wording": "plain",
+      "verdict": "unproven",
+      "hazard": "contact_name",
+      "wrong_records": [
+        "msg:item3:Chats!276"
+      ]
+    },
+    "C34": {
+      "claim_type": "absence",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item3:Chats!448",
+        "msg:item3:Chats!449"
+      ]
+    },
+    "C35": {
+      "claim_type": "absence",
+      "wording": "affidavit",
+      "verdict": "contradicted",
+      "hazard": "same_name",
+      "wrong_records": [
+        "contact:item2:Contacts!6#1"
+      ]
+    },
+    "C36": {
+      "claim_type": "absence",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item3:Chats!438"
+      ]
+    },
+    "C37": {
+      "claim_type": "role",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item2:Chats!303"
+      ]
+    },
+    "C38": {
+      "claim_type": "role",
+      "wording": "plain",
+      "verdict": "contradicted",
+      "hazard": "near_window",
+      "wrong_records": [
+        "msg:item1:Chats!410"
+      ]
+    },
+    "C39": {
+      "claim_type": "role",
+      "wording": "plain",
+      "verdict": "unproven",
+      "hazard": "same_name",
+      "wrong_records": [
+        "msg:item2:Chats!174"
+      ]
+    },
+    "C40": {
+      "claim_type": "role",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item3:Chats!428"
+      ]
+    },
+    "C41": {
+      "claim_type": "role",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item1:Chats!324"
+      ]
+    },
+    "C42": {
+      "claim_type": "role",
+      "wording": "affidavit",
+      "verdict": "unproven",
+      "hazard": "contact_name",
+      "wrong_records": [
+        "contact:item3:Contacts!8#1"
+      ]
+    },
+    "C43": {
+      "claim_type": "event",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "similar_quote",
+      "wrong_records": [
+        "msg:item2:Chats!207"
+      ]
+    },
+    "C44": {
+      "claim_type": "event",
+      "wording": "plain",
+      "verdict": "supported",
+      "hazard": "same_name",
+      "wrong_records": [
+        "msg:item2:Chats!230",
+        "msg:item2:Chats!231"
+      ]
+    },
+    "C45": {
+      "claim_type": "event",
+      "wording": "plain",
+      "verdict": "unproven",
+      "hazard": "same_name",
+      "wrong_records": [
+        "call:item2:Call Log!6",
+        "contact:item2:Contacts!6#1"
+      ]
+    },
+    "C46": {
+      "claim_type": "event",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "msg:item3:Chats!445"
+      ]
+    },
+    "C47": {
+      "claim_type": "event",
+      "wording": "affidavit",
+      "verdict": "supported",
+      "hazard": "second_number",
+      "wrong_records": [
+        "msg:item2:Chats!403"
+      ]
+    },
+    "C48": {
+      "claim_type": "event",
+      "wording": "affidavit",
+      "verdict": "contradicted",
+      "hazard": "second_phone",
+      "wrong_records": [
+        "call:item3:Call Log!16"
+      ]
+    }
+  },
+  "no_sheet": {},
+  "ground_truth_people": {
+    "varlow": "Emmett Varlow",
+    "coyle": "Renata Coyle",
+    "pelloquin": "Duncan Pelloquin",
+    "broker": "the BROKER (a buyer, +12535550148 and Telegram 'kelpwise'; Item 1 saves the number as 'Lars')",
+    "petrakis": "Lars Petrakis (Pelloquin's cousin; Item 3 saves him as 'Lars', a second Lars)",
+    "tennant": "Skip Tennant (a dock hand; Item 3 saves him as 'Skip', a second Skip)",
+    "marchetti": "Duke Marchetti (Coyle's mechanic; Item 2 saves him as 'Duke', a second Duke)",
+    "strade": "Emmett Strade (Coyle's brother-in-law; Item 2 saves him as 'Emmett', a second Emmett)",
+    "dunmore": "Rollo Dunmore (the harbormaster; Item 3 saves him as 'Captain')",
+    "grebe": "Hollis Grebe (Varlow's foreman at the boatyard)",
+    "ostrowski": "Mina Ostrowski (Varlow's partner)",
+    "coyle_mom": "Coyle's mother",
+    "marsh": "Odile Marsh (Pelloquin's sister)",
+    "lindqvist": "Rafe Lindqvist (Pelloquin's fishing friend)",
+    "ig_customers": "resale customers on Instagram"
+  }
+}

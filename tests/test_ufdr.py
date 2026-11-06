@@ -483,7 +483,8 @@ def iso_local_ts(c: int, i: int) -> str:
 
 
 NOT_TESTED_5_2 = (
-    "Not tested: Cellebrite UFDR report version 5.2.0.0 has not been tested with Mabillon. "
+    "Untested export format: "
+    "Cellebrite UFDR report version 5.2.0.0 has not been tested with Mabillon. "
     "Check results against the source tool."
 )
 
@@ -501,7 +502,10 @@ def test_case_screen_imports_a_ufdr_and_shows_it_not_tested(case01, tmp_path):
     app = _screen(tmp_path)
     assert _send(app, case01 / "item2.ufdr").status == 303
     page = _setup(app)
-    assert "Imported item2.ufdr" in page and "Not tested: Cellebrite UFDR report version" in page
+    assert (
+        "Imported item2.ufdr" in page
+        and "Untested export format: Cellebrite UFDR report version" in page
+    )
     assert "Unverified format." in page and "UFDR reader is not yet verified" in page
     assert "synthetic packages" not in page
     assert ".ufdr" in page  # the upload form takes UFDR packages
@@ -514,7 +518,7 @@ def test_report_limitations_say_each_ufdr_is_not_tested(case01, edge):
     UfdrImporter(source_id="edge").import_source(edge, conn)
     html = render_report(conn)
     limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
-    assert limits.count("Not tested: Cellebrite UFDR report version") == 2
+    assert limits.count("Untested export format: Cellebrite UFDR report version") == 2
     assert limits.count("UFDR reader, which is not yet verified") == 2
     assert "synthetic packages" not in limits
     assert "The coverage of" in limits  # fidelity not known: no absence finding rests on it
