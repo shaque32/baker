@@ -190,7 +190,10 @@ def _document_glance(audit: SelectionAudit, doc_id: str, title: str) -> list[str
     rest = [f"{missing:,} not found"] if missing else []
     rest += [f"{unplaced:,} found but not placed"] if unplaced else []
     rest += [f"{skipped:,} not looked up (names, single words, redactions)"] if skipped else []
-    out = [line + (f"; {', '.join(rest)}." if rest else ".")]
+    # every quote not placed is listed once: with its paragraph when that paragraph has a placed
+    # quote, otherwise in the table of paragraphs with none, so neither list alone holds them all
+    where = " Each quote not placed is listed with its paragraph below." if rest else ""
+    out = [line + (f"; {', '.join(rest)}." if rest else ".") + where]
     t = totals(units, audit.same)
     if t.exchanges:
         out.append(
@@ -567,7 +570,9 @@ def _tags_html(
     )
 
 
-def _unplaced_html(units: list[Unit]) -> str:
+def _unplaced_html(units: list[Unit], elsewhere: int = 0) -> str:
+    """The paragraphs with no quote placed on a message. `elsewhere`: quotes not placed that
+    are listed with their paragraph above, since that paragraph has a placed quote."""
     rows = [
         f"<tr><td>{paragraph_name(u)}</td><td>{q(lk.text)}</td><td>{e(lookup_note(lk))}</td></tr>"
         for u in units
@@ -575,9 +580,20 @@ def _unplaced_html(units: list[Unit]) -> str:
     ]
     if not rows:
         return ""
+    more = (
+        f"<p class='muted'>{_n(elsewhere, 'more quote')} not placed "
+        f"{'is' if elsewhere == 1 else 'are'} listed above, with "
+        f"{'its paragraph' if elsewhere == 1 else 'their paragraphs'}, which also "
+        f"{'has' if elsewhere == 1 else 'have'} a placed quote.</p>"
+        if elsewhere
+        else ""
+    )
     return (
-        "<h4>Quotes not placed on a message</h4><table><thead><tr><th>Paragraph</th>"
-        "<th>Quoted words</th><th>Why</th></tr></thead>" + "".join(rows) + "</table>"
+        "<h4>Paragraphs with no quote placed on a message</h4><table><thead><tr>"
+        "<th>Paragraph</th><th>Quoted words</th><th>Why</th></tr></thead>"
+        + "".join(rows)
+        + "</table>"
+        + more
     )
 
 
@@ -623,7 +639,8 @@ def selection_html(
         heading = "Government document" if len(audit.docs) <= 1 else "Government documents"
         out.append(f"<h3 class='eyebrow'>{heading}</h3>")
         out += [_paragraph_html(u, marks, links, claims_of(u), audit.same) for u in shown]
-        out.append(_unplaced_html([u for u in docs if not u.passages]))
+        elsewhere = sum(1 for u in shown for lk in u.lookups if not lk.places)
+        out.append(_unplaced_html([u for u in docs if not u.passages], elsewhere))
     exhibits = [u for u in audit.of("exhibit") if u.passages or u.lookups]
     if exhibits:
         out.append("<h3 class='eyebrow'>Exhibits</h3>")

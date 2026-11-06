@@ -87,10 +87,10 @@ def test_the_tested_set_is_ufdr_report_version_7_48_only():
     ("version", "expected"),
     [
         ("7.48", TESTED),
-        ("7.50", f"Not tested: Cellebrite UFDR report version 7.50 has not been tested with "
-         f"Mabillon. {CHECK}"),
-        (None, f"Not tested: Cellebrite UFDR (no report version stated) has not been tested "
-         f"with Mabillon. {CHECK}"),
+        ("7.50", "Untested export format: Cellebrite UFDR report version 7.50 has not been "
+         f"tested with Mabillon. {CHECK}"),
+        (None, "Untested export format: Cellebrite UFDR (no report version stated) has not "
+         f"been tested with Mabillon. {CHECK}"),
     ],
 )  # fmt: skip
 def test_a_ufdr_import_records_its_report_version_and_gets_its_notice(tmp_path, version, expected):
@@ -132,15 +132,19 @@ def _pdf(tmp: Path) -> Path:
     ("make", "importer", "expected"),
     [
         (lambda tmp, c: _excel(tmp), CellebriteExcelImporter,
-         "Not tested: Cellebrite Excel export version 7.70.0.1 has not been tested with Mabillon."),
+         "Untested export format: "
+         "Cellebrite Excel export version 7.70.0.1 has not been tested with Mabillon."),
         (lambda tmp, c: _pdf(tmp), CellebritePdfImporter,
-         "Not tested: Cellebrite PDF report version 7.70.0.1 has not been tested with Mabillon."),
+         "Untested export format: "
+         "Cellebrite PDF report version 7.70.0.1 has not been tested with Mabillon."),
         (lambda tmp, c: c / "item1-axiom.xml", AxiomImporter,
          # the synthetic XML report states no AXIOM version
-         "Not tested: Magnet AXIOM XML report (no version stated) has not been tested with "
+         "Untested export format: "
+         "Magnet AXIOM XML report (no version stated) has not been tested with "
          "Mabillon."),
         (lambda tmp, c: c / "item1-axiom.xlsx", AxiomImporter,
-         "Not tested: Magnet AXIOM Excel report version SYNTHETIC has not been tested with "
+         "Untested export format: "
+         "Magnet AXIOM Excel report version SYNTHETIC has not been tested with "
          "Mabillon."),
     ],
 )  # fmt: skip
@@ -205,7 +209,7 @@ def test_case_screen_and_report_show_the_same_notices(tmp_path):
     assert sorted(shown) == sorted(_notices(limits)) == sorted(_notices(setup))
     texts = [t for _sid, t in shown]
     assert sum(t.startswith(TESTED) for t in texts) == 1
-    assert sum(t.startswith("Not tested: ") for t in texts) == 2
+    assert sum(t.startswith("Untested export format: ") for t in texts) == 2
     assert "synthetic packages only" not in report and "tested only on synthetic" not in setup
     for page in (overview, setup, report):
         check_report_text(page)
@@ -236,7 +240,10 @@ def test_each_claim_page_shows_the_notices_its_report_claim_shows(audited, tmp_p
         assert _notices(page) == _notices(block), cid
         seen += len(_notices(block))
     assert seen  # the case01 claims rest on its Excel reports, which are not tested
-    assert all(t.startswith("Not tested: Cellebrite Excel export") for _s, t in _notices(report))
+    assert all(
+        t.startswith("Untested export format: Cellebrite Excel export")
+        for _s, t in _notices(report)
+    )
 
 
 def test_a_claim_shows_only_the_sources_it_rests_on(audited):

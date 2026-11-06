@@ -58,6 +58,9 @@ CSS = """
   margin-top: 4px; }
 .pg-claims .ledger .gap + .gap::before { content: " · "; color: var(--muted); }
 .pg-claims .nextup .gap { margin-top: 4px; }
+.pg-claims .head-acts { display: inline-flex; align-items: center; gap: 16px; font-size: 13.5px; }
+/* a claim listed under its verdict that also waits on the expert (it is in the to-do above) */
+.pg-claims .ledger .gap.you { background: var(--accent-bg); color: var(--accent); }
 
 @media (max-width: 600px) {
   .pg-claims .tiles { gap: 14px 32px; }
