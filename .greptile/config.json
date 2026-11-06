@@ -1,0 +1,69 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "autoReview": ["open"],
+  "triggerOnDrafts": true,
+  "triggerOnUpdates": false,
+  "statusCheck": true,
+  "shouldUpdateDescription": false,
+  "disabledLabels": ["skip-greptile"],
+  "fileChangeLimit": 150,
+  "ignorePatterns": "eval/synthetic/case02*\neval/synthetic/case02*/**\neval/gold/case02/**\neval/out/**\n**/*case02*\n*.db\n*.sqlite\n*.gguf\n**/*.png\n**/*.jpg\n**/*.svg\n**/*.pdf\n**/*.xlsx\nsite/**\n.impeccable/**\ndocs/CHANGELOG_AI.md",
+  "instructions": "Mabillon audits government claims about phone evidence for criminal defense experts. Correctness is the product: one wrong SUPPORTED verdict in front of an expert destroys trust. Comment only on findings that would change what gets merged: a concrete bug with the input that triggers it, a break of a rule in CLAUDE.md, or a privacy or data-safety risk. Per finding: the failure, the line, the fix, in at most four sentences. No praise, no restating the diff, no style or formatting comments (ruff gates style), no speed or ranking-order suggestions unless they cause a wrong result. If nothing meets the bar, leave no inline comments. Never quote or describe the contents of any case02 file.",
+  "rules": [
+    {
+      "id": "signed-files",
+      "rule": "These files are human-owned and signed: CLAUDE.md, core/contracts.py, core/schema.sql, core/audit/rules.py, anything under core/audit/prompts/, anything under eval/gold/, the PROBE_PASSED entries in core/llm/cloud.py, and the gate thresholds MIN_VERDICT_ACCURACY, MAX_FALSE_SUPPORTED_RATE and MAX_FALSE_SUPPORTED in eval/run_eval.py. If the PR changes any of them, say so in the first inline comment and check that the PR description's Merge order section has a Hold or Signed line for each one (docs/MERGING.md sections 3 and 4). Changes to .greptile/ itself weaken or change this review, so flag those too.",
+      "scope": ["**"],
+      "severity": "high"
+    },
+    {
+      "id": "verdicts-from-rules-only",
+      "rule": "Verdicts come only from core/audit/rules.py. Flag any code path where a model output, a stance label alone, or an AI reviewer acceptance (ai_accepted) makes a claim SUPPORTED, or where ai_reviewed provenance displays or exports as confirmed. A human decision must always override an AI reviewer decision.",
+      "scope": ["core/**", "ui/**", "cli/**", "workers/**"],
+      "severity": "high"
+    },
+    {
+      "id": "quotes-and-provenance",
+      "rule": "Any quote attributed to evidence must be verified verbatim by code before it is stored; unverified quotes are discarded, never stored. Every derived record carries a source_ref to the original artifact, and every displayed item carries a provenance tier (observed, derived, inferred, ai_reviewed, confirmed). An inference never becomes observed because another component consumed it. Flag code that breaks any of these.",
+      "scope": ["core/**", "ui/**", "cli/**"],
+      "severity": "high"
+    },
+    {
+      "id": "network-and-privacy",
+      "rule": "No network calls in core/ except the stance labeler's Anthropic call in core/llm/cloud.py. No telemetry. Local models load from local paths. Cloud is used only for a case where the expert opted in and the case is not marked as possibly containing CSAM. Only the filled-in stance prompt is sent, never input files or the case database, and each request is written to the case audit log before it is sent. A case's stance labels never mix models. Flag any change that adds a network call, widens what is sent, or skips the audit log entry.",
+      "scope": ["core/**", "ui/**", "cli/**", "workers/**", "packaging/**"],
+      "severity": "high"
+    },
+    {
+      "id": "times-absence-identities-wording",
+      "rule": "Times are stored as UTC with the original offset and raw source value kept. Absence findings state what was searched and the source's coverage; 'not found' never means 'did not happen'. Identity links stay proposed until an expert confirms them; never auto-merge identities. User-facing text never says guilty, innocent, leader or deleted. Inputs are opened read-only and SHA-256 hashed on import. Flag code or text that breaks any of these.",
+      "scope": ["core/**", "ui/**", "cli/**", "workers/**"],
+      "severity": "high"
+    },
+    {
+      "id": "agents-only-propose",
+      "rule": "The testability agents (core/audit/testability.py) only propose. Code checks each proposal, each is logged, and only an examiner's acceptance puts it in a case. Flag any path where an agent labels, accepts, dismisses, links identities, sets a verdict, changes a claim's text, or runs by default outside the eval and the scripted demo.",
+      "scope": ["core/**", "eval/demo.py", "ui/**", "cli/**"],
+      "severity": "high"
+    },
+    {
+      "id": "synthetic-data-only",
+      "rule": "Only synthetic data generated under eval/ may enter the repo. Flag anything that looks like real discovery material, real phone numbers or names from a real case, API keys or secrets, in code, tests, fixtures, prompts or docs.",
+      "scope": ["**"],
+      "severity": "high"
+    },
+    {
+      "id": "changelog-and-status-docs",
+      "rule": "A PR that changes code under core/, cli/, ui/ or packaging/, or a fact the status docs record, adds one new docs/changelog/YYYY-MM-DD-<name>.md entry in the format of docs/changelog/README.md, or its description says why the change is not meaningful. Feature PRs must not edit docs/PRODUCT_STATUS.md or docs/CHANGELOG_AI.md. Flag a missing entry or a forbidden edit. Flag numbers in docs that are not marked with hardware and date, or claims of accuracy, validation or court-readiness.",
+      "scope": ["**"],
+      "severity": "medium"
+    },
+    {
+      "id": "frozen-names",
+      "rule": "Mabillon was called Baker in development. File format ids, the baker_version field and the baker command alias keep that name. Flag any rename of them.",
+      "scope": ["**"],
+      "severity": "medium"
+    }
+  ]
+}
