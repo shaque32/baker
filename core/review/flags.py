@@ -120,7 +120,8 @@ def baker_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str | None, s
     or the stored verdict when nobody overrode it."""
     vid = f"vd:{claim_id}@{run_id}"
     for (payload_json,) in conn.execute(
-        "SELECT payload_json FROM audit_log WHERE action = 'verdict.override' ORDER BY seq"
+        "SELECT payload_json FROM audit_log WHERE action IN ('verdict.override',"
+        " 'verdict.carry') ORDER BY seq"
     ):
         p = json.loads(payload_json)
         if p.get("verdict_id") == vid and p.get("was"):
