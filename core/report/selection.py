@@ -399,8 +399,20 @@ def _who(
         return ""
     return (
         f"<div class='who2' title='{e(direction)} · observed'>"
-        f"{sender_words(sender, shown_as, app)}</div>"
+        f"{sender_words(sender, shown_as, app)}{direction_words(direction)}</div>"
     )
+
+
+def direction_words(direction: str) -> str:
+    """The direction in words when the bubble's side cannot show it: an unknown direction is
+    drawn on the left with incoming messages, so it says so on the screen."""
+    return "" if direction in ("incoming", "outgoing") else f" · direction {e(direction)}"
+
+
+def shows_side(direction: str) -> bool:
+    """The bubble's side gives this direction, so a run from one sender can leave the name off;
+    a message of unknown direction always keeps its sender line and its direction."""
+    return direction in ("incoming", "outgoing")
 
 
 _MORE = {
@@ -417,7 +429,7 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = F
     was_inside: bool | None = None
     # the sender last named on each side: a bubble from the same account on its side leaves
     # the name off, as a chat app does; a run of messages not shown names them again
-    last_sender: dict[str, tuple[str, str | None]] = {}
+    last_sender: dict[str, tuple[str, str | None, str]] = {}
     for row in p.rows:
         inside = row.role not in ("earlier", "later")
         notes = []
@@ -438,9 +450,13 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]], plain: bool = F
             continue
         ln = row.line
         side = "out" if ln.direction == "outgoing" else "in"  # as _bubble draws it
-        same = plain and last_sender.get(side) == (ln.sender, ln.shown_as)
+        same = (
+            plain
+            and shows_side(ln.direction)
+            and last_sender.get(side) == (ln.sender, ln.shown_as, ln.direction)
+        )
         out.append(_bubble(unit, row, marks.get(ln.record_id, []), plain, p.thread.app, same))
-        last_sender[side] = (ln.sender, ln.shown_as)
+        last_sender[side] = (ln.sender, ln.shown_as, ln.direction)
     out.append("</div>")
     return "".join(out)
 

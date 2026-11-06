@@ -8,7 +8,8 @@
   printed a name for the sender it leads ("Dan P (5551234)"). The claim and evidence pages
   always name the sender of the record under review, and drop "to <account>" when the one
   account seen answering in the thread is that recipient (a group's recipients still show).
-  The account itself is never dropped. The exported report is unchanged (core/report/selection.py
+  A message of unknown direction (drawn on the left) always keeps its sender line and says
+  "direction unknown". The account itself is never dropped. The exported report is unchanged (core/report/selection.py
   `sender_words` and the side rule run only when `Links.plain` is on).
 - Where: PR #226 (after #222 and #216)
 - Verified: ruff; `make check` (numbers in the PR); tests/test_demo.py checks Selection names

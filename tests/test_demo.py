@@ -350,6 +350,11 @@ def test_claim_page_keeps_recipients_when_more_than_one_account_answers():
         ]
     )
     assert mixed.count("<div class='who2'") == 3
+    # an unknown direction keeps its sender line and says so, even after the same sender
+    same = _msgs([line(1, "Telegram 1", "incoming"), line(2, "Telegram 1", "unknown")])
+    assert same.count("<div class='who2'") == 2 and same.count(" · direction unknown") == 1
+    twice = _msgs([line(1, "Telegram 1", "unknown"), line(2, "Telegram 1", "unknown")])
+    assert twice.count(" · direction unknown") == 2
 
 
 def test_sender_words_puts_the_printed_name_first_and_keeps_the_account():

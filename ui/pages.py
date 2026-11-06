@@ -70,7 +70,7 @@ from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
-from core.report.selection import claim_note, sender_words
+from core.report.selection import claim_note, direction_words, sender_words, shows_side
 from core.report.timeline import CSS as TIMELINE_CSS
 from core.review import activity, device_names
 from core.review import flags as F
@@ -1148,13 +1148,14 @@ def _msgs(lines: list[ContextLine]) -> str:
     the bubble's side gives the direction, which also sits in the sender's hover title."""
     others = {ln.sender for ln in lines if ln.direction != "outgoing"}
     out: list[str] = []
-    last: dict[str, tuple[str, str | None, str]] = {}
+    last: dict[str, tuple[str, str | None, str, str]] = {}
     for ln in lines:
         # an outgoing message to the one account seen answering here needs no "to"
         to = "" if others == {ln.to} else ln.to
-        key = (ln.sender, ln.shown_as, to)
+        key = (ln.sender, ln.shown_as, to, ln.direction)
         side = "out" if ln.direction == "outgoing" else "in"  # as _msg draws it
-        out.append(_msg(ln, to, same=last.get(side) == key and not ln.is_target))
+        same = last.get(side) == key and shows_side(ln.direction) and not ln.is_target
+        out.append(_msg(ln, to, same=same))
         last[side] = key
     return "".join(out)
 
@@ -1171,6 +1172,7 @@ def _msg(ln: ContextLine, to: str, same: bool = False) -> str:
         else f"<div class='who2' title='{e(ln.direction)}'>"
         + sender_words(ln.sender, ln.shown_as)
         + (f" to {q(to)}" if to else "")
+        + direction_words(ln.direction)
         + "</div>"
     )
     return (
