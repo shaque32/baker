@@ -1,4 +1,5 @@
--- Baker canonical schema v0.7.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.8.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- 0.8.0: counsel reviews and the checked and counsel_reviewed bases (signed by Arsh 2026-11-06).
 -- 0.7.0: case_events, the dated events the document defines (signed by Arsh 2026-11-01).
 -- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh 2026-10-30).
 -- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
@@ -110,7 +111,7 @@ CREATE TABLE identity_links (
     account_id TEXT NOT NULL REFERENCES accounts(id),
     person_id  TEXT NOT NULL REFERENCES persons(id),
     status     TEXT NOT NULL CHECK (status IN ('proposed', 'confirmed', 'rejected', 'unresolved')),
-    tier       TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'confirmed')),
+    tier       TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'counsel_reviewed', 'confirmed')),
     basis      TEXT NOT NULL,
     decided_by TEXT,
     decided_at_utc TEXT
@@ -309,7 +310,7 @@ CREATE TABLE assumptions (
     text     TEXT NOT NULL,          -- human-readable rendering; never parsed
     is_core  INTEGER NOT NULL CHECK (is_core IN (0, 1)),
     -- tier at creation; coverage is computed in rules.py and never stored back here
-    tier     TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'confirmed'))
+    tier     TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'counsel_reviewed', 'confirmed'))
 );
 
 CREATE TABLE evidence_items (
@@ -333,9 +334,9 @@ CREATE TABLE evidence_reviews (
     id             TEXT PRIMARY KEY,  -- 'rv:<evidence_id>#<seq>'
     evidence_id    TEXT NOT NULL REFERENCES evidence_items(id),
     seq            INTEGER NOT NULL CHECK (seq >= 1),
-    reviewer_kind  TEXT NOT NULL CHECK (reviewer_kind IN ('ai', 'expert')),
-    reviewer       TEXT NOT NULL,     -- 'ai:<model_name>' or 'expert:<name>'
-    status         TEXT NOT NULL CHECK (status IN ('open', 'ai_accepted', 'accepted', 'dismissed')),
+    reviewer_kind  TEXT NOT NULL CHECK (reviewer_kind IN ('ai', 'expert', 'counsel')),
+    reviewer       TEXT NOT NULL,     -- 'ai:<model_name>', 'expert:<name>' or 'counsel:<name>'
+    status         TEXT NOT NULL CHECK (status IN ('open', 'ai_accepted', 'accepted', 'counsel_accepted', 'dismissed')),
     reason         TEXT NOT NULL CHECK (length(reason) > 0),
     model_run_id   TEXT REFERENCES model_runs(id),
     model_call_id  TEXT REFERENCES model_calls(id),
@@ -344,6 +345,8 @@ CREATE TABLE evidence_reviews (
     CHECK ((reviewer_kind = 'ai' AND status IN ('ai_accepted', 'dismissed')
                 AND model_run_id IS NOT NULL)
         OR (reviewer_kind = 'expert' AND status IN ('accepted', 'dismissed', 'open')
+                AND model_run_id IS NULL)
+        OR (reviewer_kind = 'counsel' AND status IN ('counsel_accepted', 'open')
                 AND model_run_id IS NULL))
 );
 
@@ -384,7 +387,7 @@ CREATE TABLE verdicts (
     claim_id        TEXT NOT NULL REFERENCES claims(id),
     pipeline_run_id TEXT NOT NULL REFERENCES pipeline_runs(id),
     verdict         TEXT NOT NULL CHECK (verdict IN ('supported', 'contradicted', 'unproven')),
-    supported_basis TEXT CHECK (supported_basis IN ('ai_reviewed', 'confirmed')),
+    supported_basis TEXT CHECK (supported_basis IN ('ai_reviewed', 'confirmed', 'counsel_reviewed', 'checked')),
     rule_version    TEXT NOT NULL,
     reasons_json    TEXT NOT NULL,
     coverage_json   TEXT NOT NULL,     -- AssumptionCoverage per core assumption, as computed

@@ -69,8 +69,9 @@ so it opens in seconds. Run it before you open anything real.
    Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
-3. Open claim **C05** ("need 2 more by friday"). The model-side label says "supports", but the
-   verdict is **Unproven**: nothing is supported until you accept its evidence.
+3. Open claim **C05** ("need 2 more by friday"). It reads **Supported by the records (code
+   checks)**: its sender and time checks passed against the records, with no model label used. No
+   expert has confirmed it yet.
 4. Enter your name, type a short reason, click **Accept** on both items, then **Re-run verdicts**.
    C05 becomes "Supported (expert-confirmed)", with your name in the audit log.
 5. Open two contradicted claims (C10 and C04 are good ones) and read "Why (reasons from the verdict
