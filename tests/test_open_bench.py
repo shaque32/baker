@@ -140,3 +140,28 @@ def test_each_answer_records_who_served_it_in_call_order(tmp_path, monkeypatch):
     assert [r["provider"] for r in rows] == ["A", "B", "A", "C"]
     assert [r["prompt_sha256"] for r in rows] == [c["prompt_sha256"] for c in calls]
     assert rows[0]["request_id"] == "gen-1" and rows[0]["finish_reason"] == "stop"
+
+
+def test_a_model_without_a_thinking_mode_is_not_asked_to_reason():
+    body = ob.HostedModel(ob.model("llama-4-maverick"), post=ob.dry_post, key="k").body(
+        "PROMPT", prompts.STANCE_SCHEMA
+    )
+    assert "reasoning" not in body and body["seed"] == 1234
+    assert ob.HostedModel(ob.model("llama-4-maverick"), post=ob.dry_post).params.reasoning == "none"
+
+
+def test_a_model_may_widen_only_its_own_precision_list():
+    body = ob.HostedModel(ob.model("mistral-large-4"), post=ob.dry_post, key="k").body(
+        "P", prompts.STANCE_SCHEMA
+    )
+    assert "unknown" in body["provider"]["quantizations"]
+    assert body["provider"]["data_collection"] == "deny"
+    assert "fp4" not in ob.PROVIDER["quantizations"]
+
+
+def test_on_case01_a_hosted_model_reads_the_cloud_stance_prompt():
+    from core.audit import stance
+
+    labeler = ob.CaseLabeler(_hosted(ob.dry_post))
+    assert stance.prompt_file(labeler) == stance.CLOUD_PROMPT_FILE
+    assert labeler.generate_json("p", prompts.STANCE_SCHEMA).parsed["stance"] == "irrelevant"

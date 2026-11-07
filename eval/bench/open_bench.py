@@ -55,6 +55,7 @@ from eval.bench.claude_bench import (
     ROOT,
     SIGNED_PROBE,
     api_schema,
+    check_case,
     check_prompt_path,
     probe_items,
 )
@@ -75,6 +76,11 @@ class OpenModel:
     license: str  # from the model card, 2026-11-05; read it before any commercial use
     parameters_b: int  # total parameters, billions (Hugging Face safetensors metadata)
     usd_per_mtok: tuple[float, float]  # OpenRouter list price (input, output), 2026-11-05
+    reasons: bool = True  # False for a model with no thinking mode: the request then omits it
+    # Weights precisions accepted for this model, when no provider serves it at 8-bit or wider
+    # with every parameter we send. None keeps the default (8-bit or wider). A pass on narrower
+    # or undisclosed weights is weaker evidence: the self-hosted repeat must use 8-bit or wider.
+    quantizations: tuple[str, ...] | None = None
 
 
 # Names, revisions, licenses and sizes read from huggingface.co and openrouter.ai on
@@ -145,8 +151,47 @@ MODELS = (
         parameters_b=28,
         usd_per_mtok=(0.15, 1.875),
     ),
+    # US and EU origin (added 2026-11-07, after the Chinese-origin question).
+    OpenModel(
+        name="gpt-oss-120b",
+        api_model="openai/gpt-oss-120b",
+        weights="openai/gpt-oss-120b",
+        revision="b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+        license="Apache-2.0",
+        parameters_b=117,
+        usd_per_mtok=(0.013, 0.047),
+    ),
+    OpenModel(
+        name="nemotron-3-ultra",
+        api_model="nvidia/nemotron-3-ultra-550b-a55b",
+        weights="nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+        revision="77df655d5e9f8362164ed14dd8b48f8bce657498",
+        license="other (openmdw-1.1)",
+        parameters_b=561,
+        usd_per_mtok=(0.60, 2.40),
+        quantizations=("fp4", "fp8", "bf16"),  # only 4-bit providers honor seed and schema
+    ),
+    OpenModel(
+        name="mistral-large-4",
+        api_model="mistralai/mistral-large-4-0",
+        weights="mistralai/Mistral-Large-4-1T-A52B",
+        revision="af26e7869af601441d5cdf75a1272469ddc3d059",
+        license="other (unread)",
+        parameters_b=1000,
+        usd_per_mtok=(0.70, 2.10),
+        quantizations=("unknown", "fp8", "bf16"),  # only Mistral serves it, precision unstated
+    ),
+    OpenModel(
+        name="llama-4-maverick",
+        api_model="meta-llama/llama-4-maverick",
+        weights="meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+        revision="73d14711bcc77c16df3470856949c3764056b617",
+        license="other (llama4)",
+        parameters_b=402,
+        usd_per_mtok=(0.35, 1.00),
+        reasons=False,
+    ),
 )
-
 PROVIDER = {
     "data_collection": "deny",
     "require_parameters": True,
@@ -230,7 +275,9 @@ class HostedModel:
     def __post_init__(self) -> None:
         self.name = self.spec.name
         self.sha256 = f"hosted:{self.spec.api_model}"
-        self.params = OpenParams(self.spec.api_model, self.reasoning)
+        self.params = OpenParams(
+            self.spec.api_model, self.reasoning if self.spec.reasons else "none"
+        )
         if self.post is None:
             self.post = _post
             self.key = self.key or os.environ.get("OPENROUTER_API_KEY")
@@ -239,7 +286,7 @@ class HostedModel:
 
     def body(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         p = self.params
-        return {
+        body: dict[str, Any] = {
             "model": p.api_model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": p.temperature,
@@ -250,9 +297,16 @@ class HostedModel:
                 "json_schema": {"name": "answer", "strict": True, "schema": api_schema(schema)},
             },
             "reasoning": {"effort": p.reasoning, "exclude": True},
-            "provider": PROVIDER,
+            "provider": (
+                PROVIDER
+                if self.spec.quantizations is None
+                else {**PROVIDER, "quantizations": list(self.spec.quantizations)}
+            ),
             "usage": {"include": True},
         }
+        if not self.spec.reasons:
+            del body["reasoning"]
+        return body
 
     def generate_json(self, prompt: str, schema: dict[str, Any], params: Any = None) -> ModelOutput:
         out = self._generate(prompt, schema)
@@ -375,6 +429,60 @@ def run_one(hosted: HostedModel, prompt_file: Path, repeat: int, out: Path) -> d
     return res
 
 
+class CaseLabeler:
+    """The hosted model as case01's stance labeler. Its sha256 carries the cloud prefix, so the
+    pipeline gives it the cloud stance prompt (v1.2, core/audit/prompts/stance_cloud.md), the
+    prompt a hosted model would read in the product and the one the probe passes were on."""
+
+    def __init__(self, hosted: HostedModel) -> None:
+        self.hosted = hosted
+        self.name = hosted.name
+        self.sha256 = f"api:open:{hosted.spec.api_model}"
+        self.params = hosted.params
+
+    def generate_json(self, prompt: str, schema: dict[str, Any], params: Any = None) -> ModelOutput:
+        return self.hosted.generate_json(prompt, schema, params)
+
+
+def run_case(hosted: HostedModel, out: Path) -> dict[str, Any]:
+    """Synthetic case01 through the real pipeline with this model as the stance labeler, then
+    the simulated expert and the merge-gate scoring, as claude_bench does for Claude. Stage 2's
+    bar: accuracy >= 0.80 and 0 false supported."""
+    from core.contracts import GoldClaim
+    from eval import run_pipeline as rp
+    from eval.run_eval import load_jsonl, score
+
+    case = check_case("case01")
+    out.mkdir(parents=True, exist_ok=True)
+    cost_before, calls_before = hosted.usage.cost_usd, len(hosted.served)
+    start = time.perf_counter()
+    preds = rp.run_once(case, "real", "accept", out, rp.assumption_sheet(case), "simulated",
+                        labeler_model=CaseLabeler(hosted))  # fmt: skip
+    wall = time.perf_counter() - start
+    s = score(load_jsonl(rp.gold_path(case), GoldClaim), preds)
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    calls = len(hosted.served) - calls_before
+    res = {
+        "model": hosted.name,
+        "case": case,
+        "weights": f"{hosted.spec.weights}@{hosted.spec.revision}",
+        "wall_seconds": round(wall, 1),
+        "stance_calls": calls,
+        "seconds_per_call": round(wall / calls, 2) if calls else None,
+        "verdict_accuracy": round(s.verdict_accuracy, 3),
+        "n_false_supported": s.n_false_supported,
+        "confusion": s.confusion,
+        "dropped_labels": run.get("dropped_labels"),
+        "cost_usd": round(hosted.usage.cost_usd - cost_before, 4),
+        "passes": s.n_false_supported == 0 and s.verdict_accuracy >= 0.80,
+    }
+    with (out / "served.jsonl").open("w", encoding="utf-8") as f:
+        for row in hosted.served[calls_before:]:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    (out / "case.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
+    return res
+
+
 def _pct(v: object) -> str:
     return f"{v:.0%}" if isinstance(v, float) else "n/a"
 
@@ -413,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reasoning", default="medium", choices=["low", "medium", "high"])
     ap.add_argument("--dry-run", action="store_true", help="stand-in answers, no network")
     ap.add_argument("--list", action="store_true", help="print the screened models and exit")
+    ap.add_argument("--case", action="store_true", help="stage 2: synthetic case01, not the probe")
     args = ap.parse_args(argv)
 
     names = [n.strip() for n in args.models.split(",") if n.strip()]
@@ -422,6 +531,11 @@ def main(argv: list[str] | None = None) -> int:
             inp, out = m.usd_per_mtok
             print(f"{m.name}: {m.api_model}, {m.weights}@{m.revision[:12]}, {m.parameters_b}B,"
                   f" {m.license}, ${inp}/${out} per M tokens")  # fmt: skip
+        return 0
+    if args.case:
+        for spec in specs:
+            hosted = HostedModel(spec, args.reasoning, post=dry_post if args.dry_run else None)
+            print(json.dumps(run_case(hosted, args.out / spec.name / "case01"), indent=2))
         return 0
     for spec in specs:
         hosted = HostedModel(spec, args.reasoning, post=dry_post if args.dry_run else None)
