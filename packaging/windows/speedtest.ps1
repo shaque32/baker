@@ -17,6 +17,9 @@ Options:
     -Claims C02,C05,C12     time only these case01 claims and project the whole case
                             (default: the whole case on an NVIDIA GPU, C02,C05,C12 on CPU)
     -SkipProbe              skip the 88-item probe (CI's CPU run does; it adds hours on a CPU)
+    -Repeat                 also run the repeat check (eval/probe/repeat_check.py, about 2 more
+                            hours on an NVIDIA GPU): the same questions asked again, in a fresh
+                            process, and 20 of them without the GPU; are the answers identical?
     -NCtx 8192              model context (8192 is what accuracy was measured with)
     -Out <folder>           where results go (default: Documents\mabillon-speedtest)
 
@@ -28,6 +31,7 @@ param(
     [string]$InstallerSha256 = '',
     [string]$Claims = '',
     [switch]$SkipProbe,
+    [switch]$Repeat,
     [int]$NCtx = 8192,
     [string]$Out = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'mabillon-speedtest')
 )
@@ -152,6 +156,30 @@ $timeArgs = @('-m', 'eval.probe.time_case', '--models', $models, '--n-ctx', "$NC
 if ($Claims) { $timeArgs += @('--claims', $Claims) }
 Run-Py $timeArgs
 
+# ------------------------------------------------------------------ repeat check
+$repeatDir = ''
+if ($Repeat) {
+    Step 'Repeat check (same answers when asked again?)'
+    $repeatDir = Join-Path $Out ('repeat-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
+    $hostFile = Join-Path $Out 'host.json'
+    $hostInfo = [ordered]@{
+        machine = $machine
+        runtime = $runtime
+        installer = "$(Split-Path $Installer -Leaf) sha256 $installerSha"
+        mabillon_commit = $build.git_commit
+    }
+    [IO.File]::WriteAllText($hostFile, ($hostInfo | ConvertTo-Json))
+    # Each stage runs in a new Python process; UTF-8 mode carries over to them this way.
+    $env:PYTHONUTF8 = '1'
+    # A stage that fails still leaves summary.md, which says which one: keep going to RESULTS.md.
+    try {
+        Run-Py @('-m', 'eval.probe.repeat_check', '--models', $models, '--n-ctx', "$NCtx",
+            '--host', $hostFile, '--out', $repeatDir)
+    } catch {
+        Write-Warning "Repeat check: $_"
+    }
+}
+
 # ------------------------------------------------------------------ results
 Step 'Results'
 $results = Join-Path $Out 'RESULTS.md'
@@ -165,8 +193,9 @@ $lines = @(
     ''
 )
 if (Test-Path $smi) { $lines += @('```', (& $smi) , '```', '') }
-foreach ($part in @('probe\summary.md', 'speed\summary.md')) {
-    $f = Join-Path $Out $part
+$parts = @((Join-Path $Out 'probe\summary.md'), (Join-Path $Out 'speed\summary.md'))
+if ($repeatDir) { $parts += (Join-Path $repeatDir 'summary.md') }
+foreach ($f in $parts) {
     if (Test-Path $f) { $lines += (Get-Content $f); $lines += '' }
 }
 [IO.File]::WriteAllText($results, ($lines -join "`r`n") + "`r`n")

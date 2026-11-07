@@ -35,10 +35,12 @@ from core.contracts import (
     ProvenanceTier,
     ReviewDecision,
     ReviewerKind,
+    Stance,
     StipulationKind,
     StipulationStatus,
     SupportedBasis,
     Verdict,
+    canonical_json,
     review_id,
     stipulation_id,
 )
@@ -424,6 +426,30 @@ def _rules_checked(conn: sqlite3.Connection, vid: str) -> bool:
     return any(str(r).startswith(CHECKED_REASON) for r in json.loads(reasons_json))
 
 
+def _accepted_support(conn: sqlite3.Connection, claim_id: str, vid: str) -> tuple[str, ...]:
+    """The claim's supporting items an expert accepted, in the run whose verdict `vid` is: on a
+    core assumption, on an observed record, latest decision 'accepted' (only decide_evidence
+    sets that). The same items rule 3c counts (core/audit/rules.py)."""
+    from core import pipeline  # core.pipeline imports this package
+
+    run = pipeline.view_run(conn)
+    items = (run or {}).get("manifest", {}).get(claim_id)
+    row = conn.execute("SELECT pipeline_run_id FROM verdicts WHERE id = ?", (vid,)).fetchone()
+    if run is None or items is None or row is None or row[0] != run["run_id"]:
+        return ()
+    core = {a.id for a in pipeline.load_assumptions(conn, items["assumptions"]) if a.is_core}
+    return tuple(
+        sorted(
+            x.id
+            for x in pipeline.load_evidence(conn, items["evidence"])
+            if x.assumption_id in core
+            and x.stance is Stance.SUPPORTS
+            and x.status is EvidenceStatus.ACCEPTED
+            and x.tier is ProvenanceTier.OBSERVED
+        )
+    )
+
+
 def override_verdict(
     conn: sqlite3.Connection,
     claim_id: str,
@@ -432,37 +458,70 @@ def override_verdict(
     note: str,
     clock: Clock | None = None,
 ) -> None:
-    """The expert's own verdict. The report shows it as an expert override, with the note."""
+    """The expert's own verdict. The report shows it as an expert override, with the note.
+
+    Supported needs the expert's own acceptance of the claim's support (CLAUDE.md: a claim is
+    never SUPPORTED without an expert accepting its supporting evidence; VerdictDecision: a
+    SUPPORTED verdict cites evidence). So an override to Supported is refused until the expert
+    has accepted at least one supporting item on an observed record of a core assumption, and
+    the verdict then cites those items, logged with the override so a bundle replays it. Before
+    this, an override to Supported on a verdict citing nothing was stored and then could not be
+    read, which took down every page of the case. The one exception is a verdict the rules
+    supported by code checks alone (rule 3c', rules 0.5.0): Supported there keeps the checked
+    basis and its cited checks, since the rules' own support needs no reviewer."""
+    from core import pipeline  # core.pipeline imports this package
+
     _expert(actor)
     if not note.strip():
         raise ReviewError("an override needs a note saying why")
     vid, was = _current_verdict(conn, claim_id)
     _withheld_acknowledged(conn, claim_id)
-    if verdict == Verdict.SUPPORTED:
+    payload: dict[str, object] = {"verdict_id": vid, "verdict": verdict.value, "was": was}
+    if verdict == Verdict.SUPPORTED and _rules_checked(conn, vid):
+        # The rules supported this verdict by code checks alone (rule 3c'): it cites checks and
+        # no evidence, and a confirmed basis must cite evidence, so it keeps the checked basis.
+        # The label still says expert override.
+        basis: str | None = SupportedBasis.CHECKED.value
+    elif verdict == Verdict.SUPPORTED:
+        support = _accepted_support(conn, claim_id, vid)
+        if not support:
+            raise ReviewError(
+                "Supported needs supporting evidence you accepted: accept at least one "
+                "supporting record on this claim first (under What has to be true), then "
+                "override or re-run the verdicts"
+            )
         # The verdicts table ties SUPPORTED to a supported_basis; an override records the
-        # expert as the basis, except on a verdict the rules supported by code checks alone
-        # (rule 3c'). That one cites checks and no evidence, and a confirmed basis must cite
-        # evidence, so it keeps the checked basis. The label still says expert override.
-        basis = (
-            SupportedBasis.CHECKED.value
-            if _rules_checked(conn, vid)
-            else SupportedBasis.CONFIRMED.value
-        )
+        # expert as the basis, and cites the support the expert accepted.
+        basis = SupportedBasis.CONFIRMED.value
+        payload["cited_evidence_ids"] = list(support)
     else:
         basis = None
+    payload["note"] = note
     with conn:
         conn.execute(
             "UPDATE verdicts SET verdict = ?, supported_basis = ?, confirmed_by = ?,"
             " override_note = ? WHERE id = ?",
             (verdict.value, basis, actor, note, vid),
         )
-        audit_log.append(
-            conn,
-            _now(clock),
-            actor,
-            "verdict.override",
-            {"verdict_id": vid, "verdict": verdict.value, "was": was, "note": note},
-        )
+        if "cited_evidence_ids" in payload:
+            (cited_json,) = conn.execute(
+                "SELECT cited_json FROM verdicts WHERE id = ?", (vid,)
+            ).fetchone()
+            cited = json.loads(cited_json)
+            cited["evidence"] = payload["cited_evidence_ids"]
+            conn.execute(
+                "UPDATE verdicts SET cited_json = ? WHERE id = ?", (canonical_json(cited), vid)
+            )
+        # Read it back as the contract reads it, so no override stores a verdict that cannot
+        # be loaded: a failure rolls the update back.
+        (run_id,) = conn.execute(
+            "SELECT pipeline_run_id FROM verdicts WHERE id = ?", (vid,)
+        ).fetchone()
+        try:
+            pipeline.load_verdict(conn, claim_id, run_id)
+        except pipeline.StoredVerdictInvalid as err:
+            raise ReviewError(f"not stored: {err}") from err
+        audit_log.append(conn, _now(clock), actor, "verdict.override", payload)
 
 
 # ---------------------------------------------------------------- claims
