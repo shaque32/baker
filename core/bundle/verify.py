@@ -2019,6 +2019,16 @@ def _decided_at(log: list, run: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _override_basis(decision: Any, verdict: Verdict) -> SupportedBasis | None:
+    """The basis an expert's override stores (core/review/actions.py override_verdict): the
+    expert, except that a verdict the rules supported by code checks alone keeps that basis."""
+    if verdict != Verdict.SUPPORTED:
+        return None
+    if decision.supported_basis == SupportedBasis.CHECKED:
+        return SupportedBasis.CHECKED
+    return SupportedBasis.CONFIRMED
+
+
 def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -> str | None:
     for name in (
         "id",
@@ -2039,11 +2049,11 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
             carried = Verdict(p["verdict"])
             if carried != verdict:  # the expert had overridden the rules' verdict
                 verdict = carried
-                basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
+                basis = _override_basis(decision, verdict)
             by, note = p.get("confirmed_by"), p.get("note")
         elif act == "verdict.override":
             verdict = Verdict(p["verdict"])
-            basis = SupportedBasis.CONFIRMED if verdict == Verdict.SUPPORTED else None
+            basis = _override_basis(decision, verdict)
             by, note = actor, p.get("note")
         else:
             if p.get("verdict") != verdict.value:

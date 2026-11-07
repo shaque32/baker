@@ -33,6 +33,12 @@
     (found by the Greptile review on #228). `core/db.py` `upgrade_verdicts()` now rebuilds that
     one table to the 0.8.0 definition, every row and column kept, before an audit or a verdict
     re-run writes to it. Nothing else references `verdicts`, so the copy is safe.
+  - An expert's override to Supported on a verdict the code checks supported keeps the checked
+    basis, because a confirmed basis must cite evidence and that verdict cites none (found by the
+    Greptile review on #228; before the fix the claim no longer loaded). The screen and report
+    still show "Supported (expert override)" with the note, and bundle verify expects the same
+    basis. An override to Supported on a verdict with no cited evidence that the checks did not
+    support is unchanged here (#205 handles it).
 - Where: PR #228
 - Verified: `make check` (lint, tests, eval) on this branch, run 2026-11-06 in a Linux x86_64
   cloud container (4 vCPU, Python 3.13.18, no GPU). `make eval` there is model-free: no model
@@ -42,7 +48,7 @@
   1.00 and 0 false supported, unchanged. `make eval-hostile`: none of 7 structural and 0 of 5
   model-only claims supported. case02 aggregate as `make eval` printed it is in the PR
   description. New tests in `tests/contract/test_rules_050.py` and
-  `tests/contract/test_upgrade_verdicts.py`.
+  `tests/contract/test_upgrade_verdicts.py` and `tests/test_override_checked.py`.
 - Open: B's actor is not wired yet. Nothing in the app or CLI writes a counsel review, so the
   counsel paths are reachable only from tests until the follow-up PR (counsel actor in
   `core/review/actions.py` that refuses to overwrite an expert review, activity trail, flags,
