@@ -152,6 +152,11 @@ eval or re-decided.
   under their own name (`core/review/actions.py` `require_record_opened`). That view is in the
   audit log; it shows the record was opened, not that it was read. Taking an acceptance back
   needs no view.
+- Plain guidance on every claim (`core/review/guidance.py`, report 0.39.0): the claim page and the
+  report say, in the same words, what the verdict shown means, what it does not mean, and what
+  needs an expert before anyone relies on it in court: phone ownership an expert has not
+  confirmed, and identity, role, content-meaning, absence and event claims (dropped once an expert
+  confirmed or overrode the verdict). It never changes a verdict or a label.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.
