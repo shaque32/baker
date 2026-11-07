@@ -11,13 +11,15 @@
   words, in the claim the line belongs to. A single quote counts only where no letter or digit
   touches it on the outside, so an apostrophe never opens or closes one. Double and single quotes
   are matched separately and only cited spans are kept, since a rule's reason nests one in the
-  other ('The words "..." mean ...'). The report's not-tested line goes through `Names.cite`,
+  other ('The words "..." mean ...'). Python's escapes inside a straight-quoted span (a line break printed
+  as \n, a quote mark as \') are read back before the words are compared with the claim. The report's not-tested line goes through `Names.cite`,
   and the claim page's "Why code could not set it up" through `Names.for_claim(...).html`.
   Quoted words no claim holds stay the tool's own and are still checked. Report 0.38.0.
 - Where: branch claude/project-thread-ds0ify
 - Verified: new test in `tests/test_cited_quotes_page.py` builds synthetic case01 with one claim
-  refused the same way, renders the report, runs the forbidden-word check and opens the claim
-  page; it fails without the fix. The Mac run's own case01 database (synthetic) fails the check
+  refused the same way (one line, a line break, both quote marks), renders the report, runs the
+  forbidden-word check and opens the claim page; it fails without the fix, and the line-break
+  and quote-mark cases fail without the read-back (found by Greptile on the PR). The Mac run's own case01 database (synthetic) fails the check
   without the fix and passes with it, and all 20 of its claim pages open. make check (see the PR).
 - Open: The Mac run stopped before its expert pass, so case01's 14B baseline still has to run
   again on the fixed code. Its audit took about 2 h 36 min on the MacBook Air M4 (2026-11-06,

@@ -12,6 +12,7 @@ forbidden-word check leaves it as written.
 
 from __future__ import annotations
 
+import ast
 import copy
 import re
 import sqlite3
@@ -44,8 +45,23 @@ _COUNT_WORD = {
 # single quote counts only where no letter or digit touches it on the outside, so an
 # apostrophe ("PETROV's") never opens or closes one. The kinds nest (a rule's reason holds
 # 'The words "..." mean ...'), so each is matched on its own and only cited spans are kept.
+# Python's escapes inside a straight-quoted span (a line break printed as \n) are read back
+# before the words are compared with the claim.
 _QUOTED = re.compile(r'"([^"]+)"|\u201c([^\u201d]+)\u201d')
-_SINGLE = re.compile(r"(?<![\w'])'([^']+)'(?![\w'])")
+_SINGLE = re.compile(r"(?<![\w'])'((?:[^'\\]|\\.)+)'(?![\w'])")
+
+
+def _unrepr(words: str, mark: str) -> str:
+    """The words a refusal printed with Python's escapes (\\n for a line break, \\' for a quote
+    inside single quotes) as they stand in the claim; words that are not such a literal stay as
+    they are."""
+    if "\\" not in words or mark not in "'\"":
+        return words
+    try:
+        value = ast.literal_eval(f"{mark}{words}{mark}")
+    except (SyntaxError, ValueError):
+        return words
+    return value if isinstance(value, str) else words
 
 
 def _fold(text: str) -> str:
@@ -141,7 +157,7 @@ class Names:
             (m.start(), -m.end(), m[0], words)
             for pattern in (_QUOTED, _SINGLE)
             for m in pattern.finditer(text)
-            if self._cited(words := next(g for g in m.groups() if g))
+            if self._cited(_unrepr(words := next(g for g in m.groups() if g), m[0][0]))
         )  # quoted words no claim holds stay Mabillon's own, checked whole
         out, at = [], 0
         for start, neg_end, whole, words in cited:
