@@ -4,7 +4,7 @@
   verdicts from rules only, verbatim quotes and provenance, network and privacy limits, agents
   that only propose, synthetic data only, the changelog rule and the frozen Baker names. It
   reviews once when a PR opens (drafts included), not on every push; a new review is asked for
-  by comment. case02 paths, binaries, the site and the changelog archive are excluded.
+  by comment. case02 paths, binaries, site fonts and the changelog archive are excluded.
   docs/MERGING.md now makes a clean Greptile pass the final review gate on every PR (line 8)
   in place of the clean Codex pass: Greptile's suggestions are applied by default, it wins
   where Codex or Grok disagree, and Codex and Grok findings are still answered but no merge
