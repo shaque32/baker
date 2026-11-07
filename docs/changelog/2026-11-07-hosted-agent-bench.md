@@ -1,4 +1,4 @@
-## 2026-11-07: Hosted open models as filler and testability agent, on spent case05 (eval only)
+## 2026-11-07: Hosted open models as filler and testability agent, on spent case05 (eval only) (#241)
 - Changed: `eval/bench/agent_bench.py` runs a spent testability case (case05, or case04)
   through the real pipeline with one hosted open model (DeepSeek V4.1 Flash and Kimi K3.1 Pro
   by default, through #225's `HostedModel` and routing) as both the assumption filler and the
@@ -9,7 +9,7 @@
   chose (2026-11-07 08:11Z) to save the held-out case06 for the plan C stack, which moves every
   model job, the agents included, to a self-hosted DeepSeek-class model. This says early, on
   spent data, whether that model makes the step worth the case06 run.
-- Where: branch `claude/project-thread-6i2msb-hosted-agents`, stacked on #225.
+- Where: PR #241, stacked on #225.
 - Verified: unit tests with a stand-in API (no network): only case05 and case04 may go out
   (case06, case02, case01 and case03 are refused before any model is made), one model does
   both jobs, every call is logged with its provider, no stance prompt goes out. The dry run
