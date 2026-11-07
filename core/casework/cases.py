@@ -5,7 +5,8 @@
         case.json     the case name, when it was made, the expert's claim order
         inputs/       read-only copies of every imported file
         case.key      only in an encrypted case: its wrapped key (core/encryption.py); the
-                      database and every copy in inputs/ are then encrypted too
+                      database and every copy in inputs/ are then encrypted too, and each
+                      copy imported since is named input-<random> (its name is in the database)
 
 The cases folder is $MABILLON_CASES, else ~/Mabillon/cases (core/paths.py: or the Baker-era
 $BAKER_CASES, ~/Baker/cases). `mabillon serve --db some.db` works on a single database the
@@ -47,6 +48,7 @@ from core.review.actions import ReviewError, _expert
 CASES_ENV = "MABILLON_CASES"
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
+HIDDEN_PREFIX = "input-"  # an encrypted case's copies: input-<random>, the real name encrypted
 
 GOVDOC_SUFFIXES = (".pdf",)
 
@@ -218,13 +220,29 @@ def claim_order(case: Case, conn: sqlite3.Connection) -> list[str]:
     return saved + [c for c in live if c not in saved]
 
 
-def move_claim(case: Case, conn: sqlite3.Connection, claim_id: str, delta: int) -> list[str]:
+def move_claim(
+    case: Case,
+    conn: sqlite3.Connection,
+    claim_id: str,
+    delta: int,
+    actor: str,
+    clock: Clock | None = None,
+) -> list[str]:
+    """Move one claim up or down the expert's order. A move that changes the order is written
+    to the audit log (`claim.move`: the claim and its old and new places, counted from 1) before
+    the order is saved in case.json, so the order an audit ran in can be traced to who set it."""
+    _expert(actor)
     order = claim_order(case, conn)
     if claim_id not in order:
         raise ReviewError(f"no claim {claim_id} to move")
     i = order.index(claim_id)
     j = max(0, min(len(order) - 1, i + delta))
+    if i == j:
+        return order  # already at the top or the bottom: nothing changed, nothing logged
     order.insert(j, order.pop(i))
+    _logged(
+        conn, _now(clock), actor, "claim.move", {"claim_id": claim_id, "from": i + 1, "to": j + 1}
+    )
     case.save_settings(claim_order=order)
     return order
 
@@ -390,6 +408,9 @@ def import_upload(
     except BaseException:
         _forget(conn, path, {upload_sha256, stored_sha})
         raise
+    shown = path.name  # the name the case database keeps and the screen and report show
+    if encryption.is_encrypted_case(case.db):
+        path = _hide_name(case, path)
     _logged(
         conn,
         _now(clock),
@@ -403,7 +424,21 @@ def import_upload(
             "sha256": src.sha256,
         },
     )
-    return Imported(src.id, path.name, src.sha256, path, summary)
+    return Imported(src.id, shown, src.sha256, path, summary)
+
+
+def _hide_name(case: Case, path: Path) -> Path:
+    """In an encrypted case, give an imported copy a random name once its import is stored, so
+    inputs/ shows no file name that could identify a client or an exhibit. The real name stays
+    in the encrypted database (sources.file_name, and the import's audit-log entry, which also
+    records the copy's new name). Nothing reads a copy by its name: removing a file finds it
+    through that log entry, and a bundle matches copies by hash."""
+    target = case.inputs / f"{HIDDEN_PREFIX}{secrets.token_hex(12)}"
+    try:
+        os.replace(path, target)
+    except OSError:
+        return path  # the import is stored and logged either way; the copy keeps its name
+    return target
 
 
 def _free_source_id(conn: sqlite3.Connection, path: Path, sha256: str) -> str:

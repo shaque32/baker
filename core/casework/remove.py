@@ -295,6 +295,30 @@ def _copy_path(case: Case, conn: sqlite3.Connection, source_id: str, file_name: 
         p = json.loads(payload)
         if p.get("source_id") == source_id and isinstance(p.get("copied_to"), str):
             path = case.folder / p["copied_to"]
-            return path if path.is_file() else None
+            if path.is_file():
+                return path
+            break
     path = case.inputs / file_name
-    return path if path.is_file() else None
+    if path.is_file():
+        return path
+    return _copy_by_hash(case, conn, source_id)
+
+
+def _copy_by_hash(case: Case, conn: sqlite3.Connection, source_id: str) -> Path | None:
+    """The copy whose plain bytes hash to the source's SHA-256: found when the import stopped
+    after an encrypted case's copy was renamed (core/casework/cases.py _hide_name) but before
+    its log entry recorded the new name."""
+    from core import encryption
+
+    row = conn.execute("SELECT sha256 FROM sources WHERE id = ?", (source_id,)).fetchone()
+    if row is None or not case.inputs.is_dir():
+        return None
+    for f in sorted(case.inputs.iterdir()):
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        try:
+            if encryption.plain_sha256(f) == row[0]:
+                return f
+        except (OSError, encryption.EncryptionError, encryption.CaseLocked):
+            continue
+    return None
