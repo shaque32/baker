@@ -3,7 +3,8 @@
   named defense lawyer's acceptance support a claim as "Supported (reviewed by counsel)", but
   nothing could write a counsel review. This adds the code path. No signed file changes.
   - `core/review/actions.py` `decide_counsel()`: actor `counsel:<name>`. Counsel can accept an
-    evidence item (`counsel_accepted`) or take back their own acceptance (`open`). Counsel cannot
+    evidence item (`counsel_accepted`) or take back their own acceptance (`open`); one lawyer
+    cannot take back another's (found by the Greptile review on #238). Counsel cannot
     dismiss, cannot accept as an expert, and cannot change any item an expert has decided, even
     after the expert reopened it. A reason is required. Counsel overrides the AI reviewer, as any
     human does. Each decision is a new append-only `evidence_reviews` row and an
@@ -31,7 +32,7 @@
 - Verified: `make check` (lint, tests, eval) on this branch, run 2026-11-07 in a Linux x86_64
   cloud container (4 vCPU, Python 3.13.18, no GPU); results in the PR description. `make eval` is
   model-free and nothing in it writes a counsel review, so its numbers are expected unchanged
-  from #228. New `tests/test_counsel_review.py` (25 tests) on synthetic case01 audited with the
+  from #228. New `tests/test_counsel_review.py` (26 tests) on synthetic case01 audited with the
   AI reviewer accepting everything: counsel acceptance of C05's key evidence makes it "Supported
   (reviewed by counsel)", never confirmed; an expert's later acceptance makes it confirmed and an
   expert's dismissal overrides counsel; every refusal above; a refusing hook stores and logs

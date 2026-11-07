@@ -162,6 +162,20 @@ def test_counsel_takes_back_only_their_own_acceptance(conn):
         actions.decide_counsel(conn, eid, EvidenceStatus.OPEN, COUNSEL, "Again.", at(3))
 
 
+def test_one_lawyer_cannot_take_back_anothers_acceptance(conn):
+    """Greptile on #238: the take-back checked only the last row's kind, not who wrote it."""
+    eid = key_items(conn, CLAIM)[0]
+    actions.decide_counsel(conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "Read.", at(1))
+    other = "counsel:Sam Ortiz"
+    with pytest.raises(ReviewError, match="only take back an acceptance of their own"):
+        actions.decide_counsel(conn, eid, EvidenceStatus.OPEN, other, "Undo.", at(2))
+    with pytest.raises(ReviewError, match="already accepted"):
+        actions.decide_counsel(conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, other, "Me too.", at(2))
+    assert _reviews(conn, eid)[-1] == ("counsel", "counsel_accepted")
+    actions.decide_counsel(conn, eid, EvidenceStatus.OPEN, COUNSEL, "Not sure.", at(3))
+    assert _reviews(conn, eid)[-1] == ("counsel", "open")
+
+
 def test_taking_it_back_leaves_the_claim_unproven(conn):
     for eid in _accept_key(conn):
         actions.decide_counsel(conn, eid, EvidenceStatus.OPEN, COUNSEL, "Not sure.", at(2))

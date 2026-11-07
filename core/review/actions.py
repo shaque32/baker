@@ -195,21 +195,17 @@ def decide_counsel(
     if conn.execute("SELECT 1 FROM evidence_items WHERE id = ?", (evidence_id,)).fetchone() is None:
         raise ReviewError(f"no evidence item {evidence_id}")
     rows = conn.execute(
-        "SELECT reviewer_kind, status FROM evidence_reviews WHERE evidence_id = ? ORDER BY seq",
+        "SELECT reviewer_kind, status, reviewer FROM evidence_reviews WHERE evidence_id = ?"
+        " ORDER BY seq",
         (evidence_id,),
     ).fetchall()
-    if any(kind == ReviewerKind.EXPERT.value for kind, _ in rows):
+    if any(kind == ReviewerKind.EXPERT.value for kind, _, _ in rows):
         raise ReviewError("an expert has decided this item; counsel cannot change it")
-    last = rows[-1] if rows else None
-    if status == EvidenceStatus.COUNSEL_ACCEPTED and last == (
-        ReviewerKind.COUNSEL.value,
-        EvidenceStatus.COUNSEL_ACCEPTED.value,
-    ):
-        raise ReviewError("counsel has already accepted this item")
-    if status == EvidenceStatus.OPEN and last != (
-        ReviewerKind.COUNSEL.value,
-        EvidenceStatus.COUNSEL_ACCEPTED.value,
-    ):
+    accepted = (ReviewerKind.COUNSEL.value, EvidenceStatus.COUNSEL_ACCEPTED.value)
+    last = rows[-1][:2] if rows else None
+    if status == EvidenceStatus.COUNSEL_ACCEPTED and last == accepted:
+        raise ReviewError(f"counsel has already accepted this item ({rows[-1][2]})")
+    if status == EvidenceStatus.OPEN and (last != accepted or rows[-1][2] != actor):
         raise ReviewError("counsel can only take back an acceptance of their own")
     for check in COUNSEL_CHECKS:
         check(conn, evidence_id, status, actor)
