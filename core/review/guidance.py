@@ -28,6 +28,8 @@ from html import escape
 
 from core.contracts import (
     ClaimType,
+    EvidenceStatus,
+    Stance,
     StipulationKind,
     StipulationStatus,
     SupportedBasis,
@@ -123,7 +125,29 @@ def _meaning(st: ClaimState) -> tuple[str, str]:
             "Mabillon found supporting evidence that no person has accepted yet.",
             "The claim is not supported until an expert accepts that evidence.",
         )
+    if _partly_borne_out(st):
+        return (
+            "Some core parts of this claim have support in these records, but not every core "
+            "part, so the claim as a whole is not established.",
+            NOT_FOUND,
+        )
     return "These records neither support nor contradict this claim.", NOT_FOUND
+
+
+PERSON_ACCEPTED = (EvidenceStatus.ACCEPTED, EvidenceStatus.COUNSEL_ACCEPTED)
+
+
+def _partly_borne_out(st: ClaimState) -> bool:
+    """A core part has support: the stored verdict found it covered, or a person accepted
+    supporting evidence on it (which counts once the verdict is decided again)."""
+    d = st.decision
+    if d is not None and any(cv.covered for cv in d.coverage):
+        return True
+    core = {a.id for a in st.assumptions if a.is_core}
+    return any(
+        e.stance is Stance.SUPPORTS and e.status in PERSON_ACCEPTED and e.assumption_id in core
+        for e in st.evidence
+    )
 
 
 def unconfirmed_owners(conn: sqlite3.Connection, st: ClaimState) -> list[str]:

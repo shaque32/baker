@@ -13,7 +13,7 @@ import pytest
 
 from core import db
 from core.audit.invariants import FORBIDDEN_WORDS
-from core.contracts import ClaimType, EvidenceStatus, SupportedBasis
+from core.contracts import ClaimType, EvidenceStatus, Stance, SupportedBasis
 from core.report.html import render_report
 from core.review import actions, guidance
 from core.review.redecide import redecide
@@ -137,3 +137,26 @@ def test_the_claim_page_and_the_report_show_the_same_block(conn):
     page = claim_page(conn, Page("t", "Tester"), "C06")
     assert page is not None and block in page
     assert block in render_report(conn)
+
+
+def test_partial_expert_support_is_not_called_neither(conn):
+    """An expert accepts the support for one core part of C08 while another core part has none:
+    the verdict stays unproven, and the guidance says part is supported, not "neither"."""
+    st = claim_state(conn, "C08")
+    assert st is not None
+    core = [a for a in st.assumptions if a.is_core]
+    with_support = [
+        a
+        for a in core
+        if any(e.assumption_id == a.id and e.stance == Stance.SUPPORTS for e in st.evidence)
+    ]
+    assert with_support and len(with_support) < len(core)
+    for e in st.evidence:
+        if e.stance == Stance.SUPPORTS:
+            actions.decide_evidence(conn, e.id, EvidenceStatus.ACCEPTED, EXPERT, "Matches.", at(1))
+    redecide(conn, EXPERT, at(2))
+    st = claim_state(conn, "C08")
+    assert st is not None and st.label == "Unproven" and not st.awaiting_expert
+    g = guidance.for_claim(conn, st)
+    assert g.means.startswith("Some core parts of this claim have support")
+    assert g.not_means == guidance.NOT_FOUND
