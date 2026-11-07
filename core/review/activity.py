@@ -16,7 +16,8 @@ on screen, whether a folded section was opened, or whether the examiner read it.
 page" is the time from opening a page to the next page opened in the same screen session: an
 upper bound on attention, never proof of reading. A stretch longer than IDLE is shown as such
 ("may include time away") and left out of totals. The last page of a session has no end time.
-Views never change a verdict and are not an expert decision.
+Views never change a verdict and are not an expert decision. A counsel acceptance needs a view
+of that item's Evidence item page by the same counsel (actions.require_record_opened).
 
 In the report. The report's Examiner activity table (core/report/html.py) is opt-in per case
 and off by default: the expert turns it on or off on the Activity page, and each change is an

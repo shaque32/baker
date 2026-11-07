@@ -148,6 +148,10 @@ eval or re-decided.
   checks ("Supported by the records (code checks)"). An item the local AI reviewer accepted shows
   its tier as `ai_reviewed` ("AI-reviewed, not confirmed"), and one counsel accepted shows
   `counsel_reviewed`. Only an expert's acceptance shows as `confirmed`.
+- Verify before accept: counsel can accept an item only after opening its Evidence item page
+  under their own name (`core/review/actions.py` `require_record_opened`). That view is in the
+  audit log; it shows the record was opened, not that it was read. Taking an acceptance back
+  needs no view.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.

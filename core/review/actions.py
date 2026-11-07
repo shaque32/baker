@@ -132,10 +132,38 @@ def decide_evidence(
 COUNSEL_ACTION = "evidence.decide"  # one action for every human evidence decision; actor says who
 CounselCheck = Callable[[sqlite3.Connection, str, EvidenceStatus, str], None]
 # Checks a counsel decision must pass before it is stored, each run in order with
-# (conn, evidence_id, status, actor). A check refuses by raising ReviewError. None by default;
-# the lawyer-checker work adds its "cited record opened" lock here (plans/lawyer-checker-and-
-# examiner-pilot.md).
-COUNSEL_CHECKS: list[CounselCheck] = []
+# (conn, evidence_id, status, actor). A check refuses by raising ReviewError.
+OPENED_PAGE = "/evidence"  # the page that shows an evidence item's record and where it sits
+NOT_OPENED = (
+    "open this item's record first (its Evidence item page), then accept it: counsel accepts"
+    " only what they have looked at"
+)
+
+
+def opened_record(conn: sqlite3.Connection, evidence_id: str, actor: str) -> bool:
+    """Whether `actor` opened this item's Evidence item page in this case: a `view` entry in the
+    audit log (core/review/activity.py) by that very name, on that very item. A view shows the
+    page was opened, never that it was read (activity.py, "What it cannot show")."""
+    row = conn.execute(
+        "SELECT 1 FROM audit_log WHERE action = 'view' AND actor = ?"
+        " AND json_extract(payload_json, '$.page') = ? AND json_extract(payload_json, '$.id') = ?"
+        " LIMIT 1",
+        (actor, OPENED_PAGE, evidence_id),
+    ).fetchone()
+    return row is not None
+
+
+def require_record_opened(
+    conn: sqlite3.Connection, evidence_id: str, status: EvidenceStatus, actor: str
+) -> None:
+    """Verify before accept (plans/lawyer-checker-and-examiner-pilot.md): counsel accepts an item
+    only after opening its record, so ABA Op. 512's duty to check the tool's output is part of
+    the workflow and on the record. Taking an acceptance back needs no view."""
+    if status == EvidenceStatus.COUNSEL_ACCEPTED and not opened_record(conn, evidence_id, actor):
+        raise ReviewError(NOT_OPENED)
+
+
+COUNSEL_CHECKS: list[CounselCheck] = [require_record_opened]
 
 
 def _counsel(actor: str) -> str:

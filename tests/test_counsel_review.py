@@ -59,10 +59,18 @@ def _current(conn: sqlite3.Connection, claim_id: str = CLAIM):  # noqa: ANN202
     return pipeline.load_verdict(conn, claim_id, pipeline.last_run(conn)["run_id"])
 
 
+def _open(conn: sqlite3.Connection, eid: str, hours: float = 0.5) -> None:
+    """Counsel opens the item's record, which an acceptance needs (require_record_opened)."""
+    activity.record_view(
+        conn, at(hours)(), COUNSEL, "/evidence", session="s-counsel", query={"id": eid}
+    )
+
+
 def _accept_key(conn: sqlite3.Connection, hours: float = 1) -> list[str]:
     items = key_items(conn, CLAIM)
     assert items
     for eid in items:
+        _open(conn, eid, hours - 0.5)
         actions.decide_counsel(
             conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "Read the record.", at(hours)
         )
@@ -94,6 +102,7 @@ def test_counsel_acceptance_makes_the_claim_supported_reviewed_by_counsel(conn):
 def test_counsel_overrides_the_ai_reviewer(conn):
     eid = key_items(conn, CLAIM)[0]
     assert _reviews(conn, eid)[-1] == ("ai", "ai_accepted")
+    _open(conn, eid)
     d = actions.decide_counsel(
         conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "Read it.", at(1)
     )
@@ -143,6 +152,7 @@ def test_counsel_takes_back_only_their_own_acceptance(conn):
     eid = key_items(conn, CLAIM)[0]
     with pytest.raises(ReviewError, match="only take back"):  # the AI's acceptance is not theirs
         actions.decide_counsel(conn, eid, EvidenceStatus.OPEN, COUNSEL, "Undo.", at(1))
+    _open(conn, eid)
     actions.decide_counsel(conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "Read.", at(1))
     with pytest.raises(ReviewError, match="already accepted"):
         actions.decide_counsel(conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "x", at(2))
@@ -205,7 +215,8 @@ def test_a_precondition_check_can_refuse(conn, monkeypatch):
 def test_every_counsel_decision_is_logged_and_matches(conn):
     items = _accept_key(conn)
     rows = conn.execute(
-        "SELECT actor, action FROM audit_log WHERE actor = ? ORDER BY seq", (COUNSEL,)
+        "SELECT actor, action FROM audit_log WHERE actor = ? AND action != 'view' ORDER BY seq",
+        (COUNSEL,),
     ).fetchall()
     assert rows == [(COUNSEL, "evidence.decide")] * len(items)
     assert audit_log.verify_chain(conn)
