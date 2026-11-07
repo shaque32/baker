@@ -683,6 +683,11 @@ def load_stipulations(conn: sqlite3.Connection) -> list[Stipulation]:
     ]
 
 
+class StoredVerdictInvalid(invariants.InvariantViolation):
+    """A stored verdict row the VerdictDecision contract refuses, so no page may show it.
+    The screen offers a verdict re-run (core/review/redecide.py), which replaces it."""
+
+
 def load_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str) -> VerdictDecision | None:
     r = conn.execute(
         "SELECT id, claim_id, pipeline_run_id, verdict, supported_basis, rule_version,"
@@ -693,6 +698,28 @@ def load_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str) -> Verdic
     if r is None:
         return None
     cited = json.loads(r[8])
+    try:
+        return _verdict_from_row(r, cited)
+    except ValueError as err:  # pydantic's ValidationError is a ValueError
+        raise StoredVerdictInvalid(
+            f"the stored verdict on {claim_id} in run {run_id} breaks the verdict contract "
+            f"({_first_error(err)}). An expert override to Supported could store one with no "
+            "cited evidence before overrides required accepted support. Re-run the verdicts "
+            "to replace it: the rules decide again from the stored evidence and your review "
+            "decisions, and nothing is lost from the audit log."
+        ) from err
+
+
+def _first_error(err: ValueError) -> str:
+    errors = getattr(err, "errors", None)
+    if callable(errors):
+        msgs = [str(x.get("msg", "")).removeprefix("Value error, ") for x in errors()]
+        if msgs:
+            return "; ".join(msgs)
+    return str(err)
+
+
+def _verdict_from_row(r: tuple, cited: dict) -> VerdictDecision:
     return VerdictDecision(
         id=r[0],
         claim_id=r[1],
@@ -1057,10 +1084,8 @@ class _Run:
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
         self.flush_calls()
-        stance_ = stance.subject_stance(a, text, label.stance)
-        rationale = label.rationale
-        if stance_ is not label.stance:  # the model call log keeps the raw label
-            rationale = stance.NOT_THE_MESSAGE + rationale
+        stance_, note = stance.subject_label(a, text, label.stance)
+        rationale = note + label.rationale  # the model call log keeps the raw label
         if cand.record_id in self.forwarded and stance_ in (Stance.SUPPORTS, Stance.CONTRADICTS):
             # fail closed: forwarded words can neither support nor contradict (forwarded.py)
             rationale = f"{forwarded.STANCE_NOTE}{stance_.value}. {rationale}"
@@ -1437,8 +1462,10 @@ def run_audit(
         **({"cloud": components.cloud} if components.cloud is not None else {}),
         **(config or {}),
         "quote_check": quote_check_version(components),  # a caller's config cannot restate it
+        "subject_stance": stance.SUBJECT_VERSION,  # how code rewrites a label on another record
         "build": build.build_info(),  # release and git commit; nor this
     }
+    db.upgrade_verdicts(conn)  # a case made before 0.8.0 cannot store a checked verdict
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

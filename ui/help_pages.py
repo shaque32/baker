@@ -6,6 +6,7 @@ examiner reads exactly what would leave the computer. Mabillon sends nothing its
 
 from __future__ import annotations
 
+from core.report.html import TIER_WORDS
 from core.support import bug_report
 from core.support.contact import SUPPORT_EMAIL, SUPPORT_IS_PLACEHOLDER
 from ui.pages import Page, e
@@ -17,7 +18,8 @@ DOES = (
     "Checks each claim against the extraction and shows the records it rests on, so you do "
     "the reading of the evidence, not the scrolling.",
     "Marks each claim supported, contradicted or unproven from fixed, versioned rules. "
-    "Nothing is supported until you accept its evidence.",
+    "A claim is supported only when you accept its evidence, or, for a message, timing or "
+    "count claim, when every part of it passed Mabillon's code checks against the records.",
     "Runs on this computer. Cloud AI is used only when your case allows it and you opt in.",
 )
 DOES_NOT = (
@@ -81,5 +83,70 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         f"{body}</section>"
     )
     return page.wrap(
-        "Help", "<div class='pg-help'><h1>Help</h1>" + contact + report + about + "</div>"
+        "Help",
+        "<div class='pg-help'><h1>Help</h1>" + contact + report + about + WORDS + "</div>",
     )
+
+
+# The screen's own words, defined once (first-time-user review, 2026-11-04). Definitions follow
+# the verdict rules (core/audit/rules.py) and the provenance tiers in CLAUDE.md.
+_VERDICTS = (
+    (
+        "Supported",
+        "Every core part of the claim is covered and an expert accepted the records "
+        "that support it.",
+    ),
+    (
+        "Contradicted",
+        "The phone records contradict a core part of the claim: a check on the "
+        "records failed, or an expert accepted records that contradict it.",
+    ),
+    ("Unproven", "Not established either way. It does not mean the claim is false."),
+    (
+        "Supported by the records (code checks)",
+        "Every part of the claim passed Mabillon's code checks against the records. No model "
+        "label and no reviewer was used, and no expert has confirmed it.",
+    ),
+    (
+        "Supported (reviewed by counsel)",
+        "Defense counsel, not an expert, accepted some of the support. Work product, not an "
+        "expert's opinion.",
+    ),
+    (
+        "Support found: do you agree?",
+        "Unproven until you accept the records Mabillon read as support.",
+    ),
+    ("Unproven, not tested", "Mabillon could not set up what to check, so no record was searched."),
+)
+_TIERS = TIER_WORDS  # the same words as the report's Limitations
+_TERMS = (
+    (
+        "supports, contradicts, complicates, irrelevant",
+        "How one record bears on one thing the "
+        "claim needs. Each is a proposal until an expert accepts or dismisses it.",
+    ),
+    ("core", "A part the claim cannot be true without."),
+    (
+        "Stipulated",
+        "A fact the expert sets once for the case, such as who used each phone. "
+        "The report lists each one as a limitation. It is not a concession by either side.",
+    ),
+    (
+        "Untested export format",
+        "Mabillon has not been tested on this export format or version. "
+        "Check results against the source tool.",
+    ),
+)
+
+
+def _dl(rows: tuple[tuple[str, str], ...]) -> str:
+    return "<dl>" + "".join(f"<dt>{e(t)}</dt><dd>{e(d)}</dd>" for t, d in rows) + "</dl>"
+
+
+WORDS = (
+    "<section class='hs words' id='words'><h2>Words on the screen</h2>"
+    "<h3>Verdicts</h3>" + _dl(_VERDICTS)
+    + "<h3>Where an item comes from</h3>" + _dl(_TIERS)
+    + "<h3>Other words</h3>" + _dl(_TERMS)
+    + "</section>"
+)  # fmt: skip

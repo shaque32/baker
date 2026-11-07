@@ -69,8 +69,20 @@ class Driver:
             return None
 
     def click(self, el: str) -> None:
-        self.s("POST", f"/element/{el}/click")
+        refused = self.try_click(el)
+        if refused:
+            raise RuntimeError(f"safaridriver refused a click: {refused}")
+
+    def try_click(self, el: str) -> str | None:
+        """Click as a person would; return safaridriver's refusal instead of raising it."""
+        try:
+            self.s("POST", f"/element/{el}/click")
+        except urllib.error.HTTPError as err:
+            body = err.read().decode()[:300]
+            print(json.dumps({"click": el, "error": str(err), "body": body}), flush=True)
+            return body or str(err)
         time.sleep(1.2)
+        return None
 
     def type(self, el: str, text: str) -> None:
         self.s("POST", f"/element/{el}/value", {"text": text})
@@ -152,36 +164,55 @@ def main() -> int:
             card = d.js("const a = document.getElementById('agent'); return a && a.innerText")
             note("D03 testability card", False, error="no undecided card", card=card)
         else:
-            d.click(box)
-            before = note("D03 click the reason box")
+            refused = d.try_click(box)
+            before = note("D03 click the reason box", False if refused else None, error=refused)
             d.type(box, "Safari check: the names match")
             time.sleep(0.5)
             note("D03 typed a reason", lambda s, y=before["y"]: abs(s["y"] - y) < 40)
-            d.click(d.find("#agent button[name=decision][value=accept]"))
-            note("D03 accepted (redirect to #agent)", lambda s: s["y"] > 0)
+            accept = d.find("#agent button[name=decision][value=accept]")
+            refused = d.try_click(accept) if accept else "no accept button"
+            if refused:
+                note("D03 accepted (redirect to #agent)", False, error=refused)
+            else:
+                note("D03 accepted (redirect to #agent)", lambda s: s["y"] > 0)
 
         # 3. The claim page's side ledger: open C10 from it.
         d.get(demo + "/claim?id=C01")
         link = d.find("aside.side .ledger a[href^='/claim?id=C10']")
         if link:
-            d.js("document.querySelector('aside.side').scrollTop = 900; return 1")
-            d.click(link)
-            note(
-                "C10 from the side ledger",
-                lambda s: s["ledger"] and s["ledger"] > 0 and s["y"] < 40,
+            # Scroll the ledger as a person would before clicking: C10's row in the middle of
+            # it. A fixed scrollTop left the row under the ledger's top edge, and safaridriver
+            # refuses a click on an element it cannot see (HTTP 400).
+            scrolled = d.js(
+                "const a = document.querySelector('aside.side'),"
+                " l = a.querySelector(\".ledger a[href^='/claim?id=C10']\");"
+                " a.scrollTop += l.getBoundingClientRect().top - a.getBoundingClientRect().top"
+                " - a.clientHeight / 2; return Math.round(a.scrollTop)"
             )
+            refused = d.try_click(link)
+            if refused:
+                note("C10 from the side ledger", False, scrolled=scrolled, error=refused)
+            else:
+                note(
+                    "C10 from the side ledger",
+                    lambda s: s["ledger"] and s["ledger"] > 0 and s["y"] < 40,
+                    scrolled=scrolled,
+                )
 
         # 4. Confirm a verdict from far down the page (POST, 303 to #verdict).
         d.get(demo + "/claim?id=C09")
         d.js("document.querySelectorAll('#verdict details').forEach(x => x.open = true); return 1")
         btn = d.find("form[action='/verdict'] button")
         if btn:
-            d.click(btn)
-            note("C09 confirm verdict (redirect to #verdict)", lambda s: s["y"] > 0)
-            note(
-                "C09's row shows in the ledger after the form",
-                lambda s: 0 <= s["open_row"] and s["open_row"] + 40 <= s["ledger_h"],
-            )
+            refused = d.try_click(btn)
+            if refused:
+                note("C09 confirm verdict (redirect to #verdict)", False, error=refused)
+            else:
+                note("C09 confirm verdict (redirect to #verdict)", lambda s: s["y"] > 0)
+                note(
+                    "C09's row shows in the ledger after the form",
+                    lambda s: 0 <= s["open_row"] and s["open_row"] + 40 <= s["ledger_h"],
+                )
     finally:
         d.quit()
     print(json.dumps({"summary": {"steps": len(out), "landed_wrong": bad}}), flush=True)

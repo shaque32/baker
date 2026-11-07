@@ -22,7 +22,9 @@ from dataclasses import dataclass
 
 from core.ingest import coverage
 
-VERSION = "1.0.0"  # the tested set and the notice wording; recorded with every import
+# 1.1.0: the notice for an untested source leads with "Untested export format", so it is not
+# read as the claim-level "Unproven, not tested" (first-time-user review, 2026-11-04).
+VERSION = "1.1.0"  # the tested set and the notice wording; recorded with every import
 ACTION = "import.format"  # the audit-log entry each import writes
 
 # (importer, stated version exactly as the export writes it)
@@ -34,7 +36,7 @@ TESTED_NOTICE = {
         "7.48). Counts not yet compared with Cellebrite Reader. Not tested on your case data."
     ),
 }
-NOT_TESTED = "Not tested: {format} {version} has not been tested with Mabillon."
+NOT_TESTED = "Untested export format: {format} {version} has not been tested with Mabillon."
 CHECK_STEP = " Check results against the source tool."
 
 # importer -> (the format as the notice names it, what its stated version is called)

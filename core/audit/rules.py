@@ -6,12 +6,12 @@ back on an assumption. Every number of a rule below is cited by the reasons it p
 
 Inputs are filtered first: assumptions, evidence and checks that belong to another claim are
 ignored (and the reasons say how many). An evidence item's status is its latest review
-(open, ai_accepted, accepted, dismissed); its tier is the tier of the record and never says
-whether it was reviewed.
+(open, ai_accepted, counsel_accepted, accepted, dismissed); its tier is the tier of the
+record and never says whether it was reviewed.
 
 Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
     (a) a deterministic check that failed, or
-    (b) a contradicting evidence item that an expert accepted.
+    (b) a contradicting evidence item that an expert or counsel accepted.
     A failed check on an assumption an agent proposed (agent_proposed: the testability step's,
     core/audit/testability.py, in the claim only because an examiner accepted the proposal)
     counts under (a) only once an expert confirms that failure (confirmed_fails) (rules 0.4.0,
@@ -25,7 +25,7 @@ Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
     0.3.0, Arsh, 2026-10-19, PR #90 URGENT FIX: on the signed probe set the local 14B scored 58%
     contradicts precision against a bar of 90%). The claim stays UNPROVEN, the item blocks
     SUPPORTED until the expert dismisses it (rule 3d), and the screen and the report say
-    "Contradiction found, confirm to finalize". It counts once the expert accepts it.
+    "Contradiction found, confirm to finalize". It counts once the expert (or counsel) accepts it.
     The one way back for an unaccepted label is _AUTO_CONTRADICT, a versioned set of claim
     types, EMPTY in 0.3.0. For a claim type in it, an item not dismissed whose record is
     observed or derived, or that the AI reviewer accepted, counts again (the 0.2.2 rule), except
@@ -44,6 +44,9 @@ Rule 2. Coverage of one core assumption. It is covered when, and only when, one 
     (a) every deterministic check on it passed (at least one ran) -> tier derived;
     (b) an expert accepted a supporting item on it whose record is observed or derived
         -> tier confirmed;
+    (b') counsel (a named defense lawyer, reviewer 'counsel:<name>') accepted a supporting item
+        on it whose record is observed or derived -> tier counsel_reviewed (rules 0.5.0,
+        Arsh, 2026-11-06, option B: work product, never shown as expert-confirmed);
     (c) the AI reviewer accepted a supporting item on it whose record is observed or derived,
         and its kind is in _AI_MAY_COVER -> tier ai_reviewed. For the alpha that set is EMPTY,
         so AI review alone covers nothing (Arsh, 2026-10-07, decision 6: on his signed probe
@@ -65,9 +68,14 @@ Rule 3. SUPPORTED needs all of:
     (a) the claim has at least one core assumption;
     (b) every core assumption is covered (rule 2);
     (c) at least one supporting item on a core assumption, whose record is observed and whose
-        label an expert accepted (CLAUDE.md: never SUPPORTED on a model label alone, nor
-        without one). An AI acceptance does not satisfy this while _AI_MAY_COVER is empty
-        (decision 6): in the alpha the expert accepts the key evidence for every SUPPORTED;
+        label an expert or counsel accepted (CLAUDE.md: never SUPPORTED on a model label
+        alone). An AI acceptance does not satisfy this while _AI_MAY_COVER is empty
+        (decision 6). Or, for a claim type in _CODE_MAY_SUPPORT only (rule 3c', 0.5.0, Arsh,
+        2026-11-06, option C): every core assumption is covered by passing checks (tier
+        derived, rule 2a), at least one passing check on a core assumption names the records
+        it rests on, and no core assumption is an "exactly N" count (the count check passes
+        one on a curated report, which may leave records out; Greptile review, #228). No model
+        label and no reviewer is used, and the basis is checked;
     (d) no complicating item that is not dismissed, no counting contradiction and no failed
         check on any assumption of the claim, core or not;
     (e) the core assumptions include the kind the claim type turns on: identity for a
@@ -78,11 +86,19 @@ Rule 3. SUPPORTED needs all of:
     (f) for identity, role and content-meaning claims, no core assumption is covered by AI
         review alone (a role template may be an event assumption, but who directed whom is
         interpretation). Rules 2c, 3e and 3f: Arsh, 2026-10-07, decision 5.
-    supported_basis is confirmed only when no coverage and no cited support rests on the AI
-    reviewer alone; otherwise ai_reviewed, and the reasons say so. Under decision 6 every
-    SUPPORTED is confirmed; the ai_reviewed path stays for when AI coverage returns. Reports
-    show the two differently. A human decision always overrides the AI reviewer, through the
-    item's latest review.
+    supported_basis, in this order (0.5.0):
+        confirmed         an expert accepted the cited support, and no core assumption is
+                          covered by counsel or the AI reviewer alone;
+        checked           rule 3c' holds: the claim rests on code checks, and no item
+                          accepted by counsel or the AI reviewer is cited;
+        counsel_reviewed  some cited support or coverage rests on counsel, none on the AI
+                          reviewer alone;
+        ai_reviewed       otherwise. Under decision 6 nothing reaches it; the path stays for
+                          when AI coverage returns.
+    Reports show each basis differently, and counsel_reviewed never shows or exports as
+    confirmed. A human decision always overrides the AI reviewer, and an expert's decision
+    overrides counsel's (core/review/actions.py refuses a counsel review over an expert one),
+    through the item's latest review.
 
 Rule 4. Otherwise UNPROVEN, with a reason naming each core assumption left uncovered.
 
@@ -98,6 +114,11 @@ unaccepted label is UNPROVEN under 0.3.0 until the expert confirms the contradic
 proposed counts only once an expert confirms the failure. A call that passes no agent_proposed
 decides exactly as 0.3.0 did. A claim decided CONTRADICTED under 0.3.0 on such a failed check
 alone is UNPROVEN under 0.4.0 until the expert confirms it.
+0.5.0 (Arsh, 2026-11-06, options B and C of the checker plan) adds rule 2b' and counsel
+acceptance under rules 1b and 3c (option B), and rule 3c' with the checked basis (option C).
+A case with no counsel review decides as 0.4.0 did, except that a COMMUNICATION, TIMING or
+COUNT claim whose core assumptions all passed their checks, with nothing blocking, is
+SUPPORTED (checked) under 0.5.0 where 0.4.0 left it UNPROVEN awaiting an expert.
 """
 
 from __future__ import annotations
@@ -128,16 +149,24 @@ from core.contracts import (
     verdict_id,
 )
 
-RULE_VERSION = "0.4.0"
+RULE_VERSION = "0.5.0"
 
 _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
+# rules 1b, 2b, 2b', 3c: human acceptances (an expert's or counsel's)
+_HUMAN_ACCEPTED = frozenset({EvidenceStatus.ACCEPTED, EvidenceStatus.COUNSEL_ACCEPTED})
 # rule 2(c): assumption kinds AI review alone may cover. Empty for the alpha (decision 6);
 # 0.1.0 had {EVENT}. Refill only after a local model accepts 0 traps on the signed probe set.
 _AI_MAY_COVER: frozenset[AssumptionKind] = frozenset()
 # rule 3(c): review statuses whose supporting label can carry a SUPPORTED. AI_ACCEPTED counts
 # only while AI review may cover something.
-_SUPPORT_ACCEPTED = _REVIEWED if _AI_MAY_COVER else frozenset({EvidenceStatus.ACCEPTED})
+_SUPPORT_ACCEPTED = _HUMAN_ACCEPTED | _REVIEWED if _AI_MAY_COVER else _HUMAN_ACCEPTED
+# rule 3c' (0.5.0, option C): claim types code checks alone may make SUPPORTED. Each turns on an
+# identity, time or completeness assumption that a deterministic check tests against records.
+# Never CONTENT_MEANING, IDENTITY, ROLE or ABSENCE: meaning and roles are interpretation, an
+# identity claim rests on links only an expert confirms, and an absence needs an expert to
+# judge coverage. A change to this set bumps RULE_VERSION and needs Arsh's sign-off.
+_CODE_MAY_SUPPORT = frozenset({ClaimType.COMMUNICATION, ClaimType.TIMING, ClaimType.COUNT})
 # rule 1(b): claim types whose unaccepted model "contradicts" may count, each mapped to the
 # recorded probe run that qualified it (its results file). EMPTY in 0.3.0: every model
 # contradiction waits for an expert. An entry needs Arsh's sign-off and a RULE_VERSION bump.
@@ -197,7 +226,7 @@ def _counts_as_contradiction(
     claim_type: ClaimType, a: Assumption, e: EvidenceItem, checks_passed: bool
 ) -> bool:
     """Rule 1b, for an item whose stance is contradicts and which is not dismissed."""
-    if e.status is EvidenceStatus.ACCEPTED:
+    if e.status in _HUMAN_ACCEPTED:
         return True
     if claim_type not in _AUTO_CONTRADICT or a.kind is AssumptionKind.MEANING or checks_passed:
         return False
@@ -240,6 +269,7 @@ def _cover(
     )
     support = [e for e in evidence if e.stance is Stance.SUPPORTS and e.tier in _CITABLE_RECORD]
     expert = sorted(e.id for e in support if e.status is EvidenceStatus.ACCEPTED)
+    counsel = sorted(e.id for e in support if e.status is EvidenceStatus.COUNSEL_ACCEPTED)
     ai = sorted(e.id for e in support if e.status is EvidenceStatus.AI_ACCEPTED)
 
     if checks and all(c.outcome is CheckOutcome.PASS for c in checks):
@@ -248,6 +278,9 @@ def _cover(
     elif expert:
         f.covered_tier = ProvenanceTier.CONFIRMED
         f.covering_evidence = expert
+    elif counsel:  # rule 2b', 0.5.0
+        f.covered_tier = ProvenanceTier.COUNSEL_REVIEWED
+        f.covering_evidence = counsel
     elif ai and a.kind in _AI_MAY_COVER:
         f.covered_tier = ProvenanceTier.AI_REVIEWED
         f.covering_evidence = ai
@@ -270,7 +303,8 @@ def _uncovered_reason(f: _Finding) -> str:
     if f.assumption.kind not in _AI_MAY_COVER:
         return (
             f"Rule 2: '{text}' is not covered: {_a(f.assumption.kind.value)} assumption needs a "
-            "passing check or an expert's acceptance; AI review alone does not cover it."
+            "passing check or an expert's or counsel's acceptance; AI review alone does not "
+            "cover it."
         )
     return f"Rule 2: '{text}' is not covered by a passing check or an accepted supporting item."
 
@@ -278,6 +312,8 @@ def _uncovered_reason(f: _Finding) -> str:
 def _how(e: EvidenceItem) -> str:
     if e.status is EvidenceStatus.ACCEPTED:
         return "accepted by an expert"
+    if e.status is EvidenceStatus.COUNSEL_ACCEPTED:
+        return "accepted by counsel, not an expert"
     if e.status is EvidenceStatus.AI_ACCEPTED:
         return "accepted by the AI reviewer"
     return f"model label on an {e.tier.value} record, not reviewed"
@@ -397,7 +433,20 @@ def decide_verdict(
             if f.covered_tier is ProvenanceTier.AI_REVIEWED
         ]
     supports = sorted((e for f in core for e in f.supports), key=lambda e: e.id)
-    if core and not supports:
+    # rule 3c' (0.5.0): code checks alone, for the claim types in _CODE_MAY_SUPPORT
+    code_checks = sorted(
+        (c for f in core for c in ck_by[f.assumption.id] if c.outcome is CheckOutcome.PASS),
+        key=lambda c: c.id,
+    )
+    by_code = (
+        claim.claim_type in _CODE_MAY_SUPPORT
+        and bool(core)
+        and all(f.covered_tier is ProvenanceTier.DERIVED for f in core)
+        and any(c.record_ids for c in code_checks)
+        # an "exactly N" count can pass on a curated report that leaves records out
+        and not any(f.assumption.params.count_op == "eq" for f in core)
+    )
+    if core and not supports and not by_code:
         waiting = sum(
             1
             for f in core
@@ -407,13 +456,20 @@ def decide_verdict(
         if _AI_MAY_COVER:
             blockers.append(
                 "Rule 3c: no supporting item on an observed record has been accepted by the AI "
-                "reviewer or an expert."
+                "reviewer, counsel or an expert."
             )
         else:
             blockers.append(
                 "Rule 3c: no supporting item on an observed record has been accepted by an "
-                "expert. AI review sorts evidence but cannot make a claim supported (decision 6)"
-                + (f"; {waiting} AI-accepted item(s) await an expert." if waiting else ".")
+                "expert or counsel. AI review sorts evidence but cannot make a claim supported "
+                "(decision 6)"
+                + (f"; {waiting} AI-accepted item(s) await review." if waiting else ".")
+                + (
+                    ""
+                    if claim.claim_type not in _CODE_MAY_SUPPORT
+                    else " Rule 3c': code checks alone do not cover every core assumption, or "
+                    "an exact count needs an expert."
+                )
             )
     for f in findings:
         if not f.assumption.is_core:
@@ -434,7 +490,8 @@ def decide_verdict(
             ]
             blockers += [
                 f"Rule 1b: {e.record_id} contradicts '{f.assumption.text}' ({_how(e)}). "
-                "Contradiction found, confirm to finalize: it counts once an expert accepts it."
+                "Contradiction found, confirm to finalize: it counts once an expert or counsel "
+                "accepts it."
                 for e in f.unconfirmed
             ]
         else:
@@ -452,13 +509,41 @@ def decide_verdict(
         return decide(Verdict.UNPROVEN)
 
     expert_supports = [e for e in supports if e.status is EvidenceStatus.ACCEPTED]
+    counsel_supports = [e for e in supports if e.status is EvidenceStatus.COUNSEL_ACCEPTED]
     ai_covered = any(f.covered_tier is ProvenanceTier.AI_REVIEWED for f in core)
-    if expert_supports and not ai_covered:
+    counsel_covered = any(f.covered_tier is ProvenanceTier.COUNSEL_REVIEWED for f in core)
+    if expert_supports and not ai_covered and not counsel_covered:
         basis = SupportedBasis.CONFIRMED
         cited_support = expert_supports
         reasons.append(
             "Rule 3: every core assumption is covered and the supporting evidence was accepted "
             "by an expert (expert-confirmed)."
+        )
+    elif by_code:
+        # rule 3c': the checks carry the claim; no reviewed label is cited
+        reasons.append(
+            "Rule 3c': every core assumption passed its code checks against the records "
+            "(supported by the records, code checks). No model label and no reviewer was used; "
+            "an expert can confirm or override it."
+        )
+        for f in core:
+            reasons.append(
+                f"Rule 2: '{f.assumption.text}' covered at tier derived by "
+                f"{', '.join(f.coverage().cited_ids)}."
+            )
+        return decide(
+            Verdict.SUPPORTED,
+            supported_basis=SupportedBasis.CHECKED,
+            cited_check_ids=tuple(sorted({i for f in core for i in f.covering_checks})),
+            cited_stipulation_ids=tuple(sorted({i for f in core for i in f.covering_stipulations})),
+        )
+    elif (expert_supports or counsel_supports) and not ai_covered:
+        basis = SupportedBasis.COUNSEL_REVIEWED
+        cited_support = expert_supports + counsel_supports
+        reasons.append(
+            "Rule 3: every core assumption is covered, and some of the support was accepted by "
+            "counsel, not an expert (reviewed by counsel, work product). An expert can confirm "
+            "or override it."
         )
     else:
         basis = SupportedBasis.AI_REVIEWED

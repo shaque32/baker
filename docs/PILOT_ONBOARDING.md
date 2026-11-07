@@ -70,8 +70,9 @@ so it opens in seconds. Run it before you open anything real.
    Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
-3. Open claim **C05** ("need 2 more by friday"). The model-side label says "supports", but the
-   verdict is **Unproven**: nothing is supported until you accept its evidence.
+3. Open claim **C05** ("need 2 more by friday"). It reads **Supported by the records (code
+   checks)**: its sender and time checks passed against the records, with no model label used. No
+   expert has confirmed it yet.
 4. Enter your name, type a short reason, click **Accept** on both items, then **Re-run verdicts**.
    C05 becomes "Supported (expert-confirmed)", with your name in the audit log.
 5. Open two contradicted claims (C10 and C04 are good ones) and read "Why (reasons from the verdict
@@ -159,9 +160,16 @@ What to do:
    only a consistency check, since that case's database may have been changed.
 5. Tell the Mabillon team what happened, with the `verify-log` output.
 
-Mabillon does not make backups for you. After each review session, wait until no audit is running,
-stop Mabillon (close the window that started it), then copy the whole case folder. A copy taken while
-Mabillon is writing may not restore. An encrypted case stays encrypted in the copy.
+Mabillon backs up only when you ask. After each review session, open **Set up and run** and press
+**Back up this case** (or run `mabillon backup --db <case folder>/case.db --by expert:<name>`).
+It makes a new folder, by default under `~/Mabillon/backups`, named after the case and the time,
+copies the database, its audit log anchors, its settings and every file copy, and opens the copy
+to check its audit log before it says it is done. Then copy that folder to a drive kept off this
+computer. An encrypted case stays encrypted in the backup and opens with the same passphrase or
+recovery key. To restore, copy the backup folder whole into your cases folder; it opens as a case.
+Restore the whole folder, never the database alone: an older database beside newer anchors is
+blocked. Copying the case folder by hand also works if Mabillon is stopped first; a copy taken
+while Mabillon is writing may not restore.
 
 A case can also refuse to open because it is **locked**: enter its passphrase or recovery key. A
 case that says **Encryption did not finish** finishes when you repeat the encryption step with the

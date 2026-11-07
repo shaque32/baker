@@ -84,8 +84,12 @@ the claim's results are rolled back and the run stops.
 
 ## 3. The expert gate
 
-Nothing is Supported on a model's label. Under the rules, a claim becomes Supported only after the
-examiner accepts its supporting evidence. Until then the screen asks "Support found: do you agree?". An optional
+Nothing is Supported on a model's label. Under rules 0.5.0 a claim becomes Supported when the
+examiner accepts its supporting evidence, when defense counsel does ("Supported (reviewed by
+counsel)", work product, never shown as confirmed), or, for communication, timing and count
+claims only, when every core assumption passed all its deterministic checks against the records
+("Supported by the records (code checks)", no model label and no reviewer). Otherwise the screen
+asks "Support found: do you agree?". An optional
 local AI reviewer may sort evidence for the examiner, but in this version its acceptance covers
 nothing and never makes a claim Supported. Identity links between accounts and people stay
 proposed until the examiner confirms them. Every examiner action (accept, dismiss, reopen, confirm,

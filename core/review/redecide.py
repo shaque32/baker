@@ -22,7 +22,8 @@ reviews evidence, so this re-decides instead:
   rules give that claim exactly the verdict they gave before (same verdict, reasons, coverage
   and cited records): nothing the expert signed off on changed. It is logged as verdict.carry,
   naming the verdict it came from. When anything changed, it lapses and the claim waits for
-  the expert again (result.lapsed lists them).
+  the expert again (result.lapsed lists them). An override to Supported always lapses: it
+  cites the support the expert accepted on the old run, which the expert checks again.
 - The run's audit-log entry has the same shape as a full run's, plus mode, from_run,
   evidence_from_run and requested_by, so reports and predictions read it the same way. A run
   re-decided from a test run with stand-in components stays marked as a test run.
@@ -38,7 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core import build, pipeline
+from core import build, db, pipeline
 from core.audit import invariants, rules, testability
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -133,6 +134,12 @@ def _priors(conn: sqlite3.Connection, run_id: str) -> dict[str, _Prior]:
 def _same_decision(prior: _Prior, d: VerdictDecision) -> bool:
     """The rules decided the claim exactly as before, so an expert's sign-off still applies."""
     if d.verdict.value != prior.rules_verdict:
+        return False
+    if prior.verdict == Verdict.SUPPORTED.value and prior.rules_verdict != prior.verdict:
+        # An override to Supported cites the support the expert had accepted on the old run
+        # (core/review/actions.py override_verdict). Carrying it would keep Supported on review
+        # state the rules' reasons need not reflect, or store Supported citing nothing, so it
+        # lapses: the expert overrides again on the new run if it still holds.
         return False
     if prior.verdict == prior.rules_verdict:  # not overridden: the basis must match too
         if (d.supported_basis.value if d.supported_basis else None) != prior.basis:
@@ -229,6 +236,7 @@ def redecide(
     }
     if isinstance(src["config"].get("cloud"), dict):
         cfg["cloud"] = src["config"]["cloud"]  # the reused labels' cloud decision, for the report
+    db.upgrade_verdicts(conn)  # a case made before 0.8.0 cannot store a checked verdict
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

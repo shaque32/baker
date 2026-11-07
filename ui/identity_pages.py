@@ -19,6 +19,9 @@ from core.identity import aliases
 from core.identity import links as L
 from ui.pages import Page, _folded, e, link, q
 
+# a pick list starts here, so nothing is linked or named by a default the expert did not choose
+CHOOSE = "<option value='' selected disabled>Choose…</option>"
+
 STATUS_LABEL = {
     "proposed": "Proposed",
     "unresolved": "Unresolved",
@@ -262,11 +265,14 @@ def _unplaced(page: Page, names: list[L.UnplacedName], persons: list[L.Person]) 
             else ""
         )
         if u.matches == 0 and persons:
-            opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in persons)
+            # starts on "Choose…": a name joins a person only by the expert's own pick
+            opts = CHOOSE + "".join(
+                f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in persons
+            )
             add += page.form(
                 "/person/alias/add",
                 f"<input type='hidden' name='alias' value='{e(u.name)}'>"
-                f"<select name='id' aria-label='Person'>{opts}</select> "
+                f"<select name='id' aria-label='Person' required>{opts}</select> "
                 "<button type='submit'>Add as another name</button>",
                 "inline",
                 "/identities",
@@ -329,7 +335,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         "a limitation. Proposed, unresolved and rejected links stay unknown. A proposed or "
         "unresolved link only widens what the audit searches for that person. Adding a name "
         "ties it to nothing; Mabillon then proposes links for you to decide.</p></details>",
-        "<div class='idbar'><div class='counts'>"
+        "<div class='idbar'><div class='counts'><span class='muted'>Account links</span> "
         + "".join(
             f"<span class='stpill st-{s}{' zero' if not n else ''}'>{e(STATUS_LABEL[s])} "
             f"<b>{n}</b></span>"
@@ -376,18 +382,21 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         out.append(_person_card(conn, page, case, p, rows_by_person.get(p.id, [])))
     if case.persons and case.groups:
         accounts = sorted(case.groups.values(), key=lambda g: g.label.casefold())
-        acc_opts = "".join(
+        acc_opts = CHOOSE + "".join(
             f"<option value='{e(g.account_ids[0])}'>{e(g.label)}"
             f"{' · ' + e(g.names[0].text) if g.names else ''}</option>"
             for g in accounts
         )
-        per_opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in case.persons)
+        per_opts = CHOOSE + "".join(
+            f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in case.persons
+        )
         out.append(
             "<h2 id='link-yourself'>Link an account yourself</h2>"
             + page.form(
                 "/identity/link",
-                f"<p class='pick'><label>Account <select name='account'>{acc_opts}</select>"
-                f"</label> <label>Person <select name='person'>{per_opts}</select></label></p>"
+                "<p class='pick'><label>Account "
+                f"<select name='account' required>{acc_opts}</select></label> <label>Person "
+                f"<select name='person' required>{per_opts}</select></label></p>"
                 "<p><label>Why (one sentence, recorded with your name)<input type='text' "
                 "name='note' required maxlength='300' class='wide'></label></p>"
                 "<p class='go'><button type='submit' class='primary'>Link and confirm</button> "
