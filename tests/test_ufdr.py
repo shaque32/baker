@@ -568,7 +568,7 @@ def test_an_encrypted_case_imports_a_ufdr_through_decryption(case01, tmp_path):
     assert case is not None and encryption.is_encrypted_case(case.db)
     assert _send(app, pkg).status == 303
     assert "Imported item2.ufdr" in _setup(app)
-    copy = case.inputs / "item2.ufdr"
+    (copy,) = case.inputs.iterdir()  # named input-<random>; the real name is encrypted
     assert encryption.is_encrypted_file(copy) and not zipfile.is_zipfile(copy)
     conn = connect(case.db)
     plain = _db()
