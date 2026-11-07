@@ -1,4 +1,4 @@
-## 2026-11-07: plain guidance on every claim (#PR)
+## 2026-11-07: plain guidance on every claim (#240)
 - Changed: `core/review/guidance.py`, shown in the same block on the claim page and in the report
   (report 0.39.0). Every claim says what its verdict means, what it does not mean, and the
   judgment calls the records cannot settle. The calls are phone ownership that is proposed but not
@@ -9,7 +9,7 @@
   status can and cannot carry and which calls to raise with the examiner. Read-only: it never
   changes a verdict, a label or the review queue. Kept from closed #239 after Arsh dropped the
   lawyer-without-expert path on 2026-11-07; the counsel lock in #239 was not kept.
-- Where: PR #PR
+- Where: PR #240
 - Verified: `tests/test_guidance.py` (7 tests) on synthetic case01: every claim gets guidance with
   no forbidden word, labels are unchanged, type calls appear on the right claim types, an
   unconfirmed ownership stipulation adds the ownership call and confirming it removes it, an
