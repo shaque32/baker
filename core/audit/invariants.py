@@ -19,9 +19,13 @@ Every decision:
   decided an item no AI row comes after it.
 
 Every SUPPORTED decision, re-derived here from CLAUDE.md:
-- cites at least one supporting item, every cited supporting item is observed and accepted by
-  the AI reviewer or an expert, and supported_basis is 'confirmed' only if an expert accepted
-  every one of them;
+- with supported_basis 'checked' (rules 0.5.0, rule 3c'): is a communication, timing or count
+  claim, cites passing checks and no evidence, at least one cited check names its records, and
+  every check on every core assumption passed;
+- otherwise cites at least one supporting item, every cited supporting item is observed and
+  accepted by the AI reviewer, counsel or an expert, and supported_basis is 'confirmed' only if
+  an expert accepted every one of them (ai_reviewed if any is only AI-accepted, else
+  counsel_reviewed);
 - every core assumption is covered: its stored tier is above inferred, a check on it passed,
   an accepted observed or derived supporting item stands on it, or a confirmed stipulation
   matches its params (coverage is computed, never written back);
@@ -46,6 +50,7 @@ from core.contracts import (
     CheckOutcome,
     CheckResult,
     Claim,
+    ClaimType,
     EvidenceItem,
     EvidenceStatus,
     ProvenanceTier,
@@ -61,7 +66,13 @@ from core.contracts import (
 )
 from core.enrich import records
 
-ACCEPTED_STATUSES = (EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED)
+# rule 3c' claim types, re-stated here so the invariant does not trust rules.py's own set
+CODE_SUPPORT_TYPES = frozenset({ClaimType.COMMUNICATION, ClaimType.TIMING, ClaimType.COUNT})
+ACCEPTED_STATUSES = (
+    EvidenceStatus.AI_ACCEPTED,
+    EvidenceStatus.COUNSEL_ACCEPTED,
+    EvidenceStatus.ACCEPTED,
+)
 
 WORDS = ("guilty", "innocent", "leader", "deleted")
 FORBIDDEN_WORDS = re.compile(rf"\b({'|'.join(WORDS)})\b", re.IGNORECASE)
@@ -204,6 +215,11 @@ def check_evidence(
             first_expert = kinds.index(ReviewerKind.EXPERT.value)
             if ReviewerKind.AI.value in kinds[first_expert:]:
                 raise InvariantViolation(f"{e.id}: an AI review came after an expert decision")
+            if ReviewerKind.COUNSEL.value in kinds[first_expert:]:  # an expert overrides counsel
+                raise InvariantViolation(f"{e.id}: a counsel review came after an expert decision")
+        counsel = ReviewerKind.COUNSEL.value
+        if e.status == EvidenceStatus.COUNSEL_ACCEPTED and rows[-1][0] != counsel:
+            raise InvariantViolation(f"{e.id}: counsel_accepted without a counsel review row")
 
 
 def check_challenge(items: list[EvidenceItem]) -> None:
@@ -250,6 +266,34 @@ def covered(
 # ---------------------------------------------------------------- decisions
 
 
+def _check_checked(
+    claim: Claim,
+    decision: VerdictDecision,
+    assumptions: list[Assumption],
+    checks: list[CheckResult],
+) -> None:
+    """A checked SUPPORTED cites passing checks and no evidence, every core assumption has
+    checks and all of them passed, at least one cited check names its records, and the claim
+    type is one rule 3c' allows."""
+    who = claim.id
+    if claim.claim_type not in CODE_SUPPORT_TYPES:
+        raise InvariantViolation(f"{who}: a {claim.claim_type.value} claim cannot be checked")
+    if decision.cited_evidence_ids or not decision.cited_check_ids:
+        raise InvariantViolation(f"{who}: a checked SUPPORTED cites checks, not evidence")
+    by_id = {c.id: c for c in checks}
+    cited = [by_id[i] for i in decision.cited_check_ids]
+    if any(c.outcome != CheckOutcome.PASS for c in cited):
+        raise InvariantViolation(f"{who}: a checked SUPPORTED cites a check that did not pass")
+    if not any(c.record_ids for c in cited):
+        raise InvariantViolation(f"{who}: a checked SUPPORTED cites no records")
+    for a in assumptions:
+        if not a.is_core:
+            continue
+        mine = [c for c in checks if c.assumption_id == a.id]
+        if not mine or any(c.outcome != CheckOutcome.PASS for c in mine):
+            raise InvariantViolation(f"{who}: checked SUPPORTED but {a.id} lacks passing checks")
+
+
 def check_decision(
     conn: sqlite3.Connection,
     claim: Claim,
@@ -289,6 +333,9 @@ def check_decision(
     cited_support = [
         by_id[i] for i in decision.cited_evidence_ids if by_id[i].stance == Stance.SUPPORTS
     ]
+    if decision.supported_basis == SupportedBasis.CHECKED:  # rules 0.5.0, rule 3c'
+        _check_checked(claim, decision, assumptions, checks)
+        return
     if not cited_support:
         raise InvariantViolation(f"{claim.id}: SUPPORTED cites no supporting item")
     weak = [
@@ -301,10 +348,13 @@ def check_decision(
             f"{claim.id}: SUPPORTED cites supporting items that are not observed and accepted: "
             f"{weak}"
         )
+    statuses = {e.status for e in cited_support}
     basis = (
         SupportedBasis.CONFIRMED
-        if all(e.status == EvidenceStatus.ACCEPTED for e in cited_support)
+        if statuses == {EvidenceStatus.ACCEPTED}
         else SupportedBasis.AI_REVIEWED
+        if EvidenceStatus.AI_ACCEPTED in statuses
+        else SupportedBasis.COUNSEL_REVIEWED
     )
     if decision.supported_basis != basis:
         raise InvariantViolation(

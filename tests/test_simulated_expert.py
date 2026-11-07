@@ -135,11 +135,16 @@ def test_every_supported_verdict_is_expert_confirmed(gate_run):
     assert all(p.supported_basis is SupportedBasis.CONFIRMED for p in supported)
 
 
-def test_unreviewed_run_has_nothing_supported(gate_run):
+def test_unreviewed_run_supports_only_on_code_checks(gate_run):
+    """Rules 0.5.0, rule 3c': with no review at all, a claim is supported only when its code
+    checks carry it, and each such claim is one gold calls supported."""
     out, _ = gate_run
     unreviewed = load_jsonl(out / "unreviewed" / "predictions.jsonl", Prediction)
     assert len(unreviewed) == 20
-    assert not [p for p in unreviewed if p.verdict is Verdict.SUPPORTED]
+    gold = {g.claim_id: g for g in load_jsonl(GOLD, GoldClaim)}
+    supported = [p for p in unreviewed if p.verdict is Verdict.SUPPORTED]
+    assert all(p.supported_basis is SupportedBasis.CHECKED for p in supported)
+    assert all(gold[p.claim_id].gold_verdict is Verdict.SUPPORTED for p in supported)
 
 
 def test_expert_decisions_go_through_the_expert_actions_and_the_log(gate_db):
@@ -180,7 +185,9 @@ def test_run_summary_reports_readiness_and_sheet_status(gate_run):
     assert r["key_evidence"] == sum(len(g.key_evidence) for g in load_jsonl(GOLD, GoldClaim))
     assert 0 < r["key_evidence_recall_retrieved"] <= 1
     assert r["key_evidence_recall_surfaced"] <= r["key_evidence_recall_retrieved"]
-    assert s["unreviewed_verdicts"].get("supported", 0) == 0
+    unreviewed = load_jsonl(out / "unreviewed" / "predictions.jsonl", Prediction)
+    checked = sum(1 for p in unreviewed if p.supported_basis is SupportedBasis.CHECKED)
+    assert s["unreviewed_verdicts"].get("supported", 0) == checked  # rule 3c' only
 
 
 def test_sheet_people_resolve_to_the_stipulated_owners(gate_db):

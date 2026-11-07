@@ -130,7 +130,7 @@ def ai_events(monkeypatch):
 
 def test_decision_6_ai_review_alone_covers_nothing():
     assert rules._AI_MAY_COVER == frozenset()
-    assert rules._SUPPORT_ACCEPTED == frozenset({S.ACCEPTED})
+    assert rules._SUPPORT_ACCEPTED == frozenset({S.ACCEPTED, S.COUNSEL_ACCEPTED})
 
 
 def test_decision_6_ai_accepted_event_waits_for_an_expert():
@@ -139,7 +139,7 @@ def test_decision_6_ai_accepted_event_waits_for_an_expert():
     d = decide([EVENT, TIME], [ev(1, EVENT)], [chk(TIME)])
     assert d.verdict is Verdict.UNPROVEN
     reasons = " ".join(d.reasons)
-    assert "decision 6" in reasons and "1 AI-accepted item(s) await an expert" in reasons
+    assert "decision 6" in reasons and "1 AI-accepted item(s) await review" in reasons
     d = decide([EVENT, TIME], [ev(1, EVENT, status=S.ACCEPTED)], [chk(TIME)])
     assert d.verdict is Verdict.SUPPORTED
     assert d.supported_basis is c.SupportedBasis.CONFIRMED
@@ -218,8 +218,8 @@ def agent(assumptions, evidence=(), checks=(), proposed=(), confirmed=(), claim=
     )
 
 
-def test_version_0_4_0():
-    assert rules.RULE_VERSION == "0.4.0"
+def test_version_0_5_0():
+    assert rules.RULE_VERSION == "0.5.0"
 
 
 def test_a_failed_check_on_an_agents_assumption_waits_for_the_expert():

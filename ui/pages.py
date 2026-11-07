@@ -769,7 +769,7 @@ def _verdict_group(st: ClaimState) -> str:
         return "not"  # no verdict was decided: not a gap in the data
     if st.css == "v-con":
         return "con"
-    if st.css in ("v-sup", "v-supai"):
+    if st.css in ("v-sup", "v-supai", "v-supchk", "v-supcou"):
         return "sup"
     return "unp"
 

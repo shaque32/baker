@@ -1438,6 +1438,7 @@ def run_audit(
         "subject_stance": stance.SUBJECT_VERSION,  # how code rewrites a label on another record
         "build": build.build_info(),  # release and git commit; nor this
     }
+    db.upgrade_verdicts(conn)  # a case made before 0.8.0 cannot store a checked verdict
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

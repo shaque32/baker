@@ -24,17 +24,25 @@ with the reason and the exact diff you want, then finish the rest of your task w
 ## Evidence rules
 - The LLM never decides verdicts. It only labels individual pieces of evidence.
   Verdicts come from `core/audit/rules.py`.
-- A claim is never SUPPORTED on a model's stance label alone. In the alpha (rules 0.2.0) an expert
-  must accept its supporting evidence (accepted). An AI reviewer acceptance (ai_accepted) only sorts
-  evidence for the expert and never makes a claim SUPPORTED; such a claim stays UNPROVEN, awaiting
-  expert review. AI-only coverage of event assumptions can return only after a local model accepts
-  zero overreach traps on the signed probe set, and only through a change to `core/audit/rules.py`
-  that bumps RULE_VERSION.
+- A claim is never SUPPORTED on a model's stance label alone. Under rules 0.5.0 a SUPPORTED rests on
+  one of three things, and the report names which:
+  - confirmed: an expert accepted its supporting evidence (accepted).
+  - counsel_reviewed: a named defense lawyer accepted some of it (counsel_accepted). This is work
+    product for the lawyer, never expert opinion: it never displays or exports as confirmed, and
+    an expert's decision always overrides counsel's. Counsel never dismisses items, confirms
+    stipulations or identity links, or overrides verdicts.
+  - checked: for communication, timing and count claims only, every core assumption passed its
+    deterministic checks against the records, and no model label or reviewer was used.
+  An AI reviewer acceptance (ai_accepted) only sorts evidence for the reviewer and never makes a
+  claim SUPPORTED; such a claim stays UNPROVEN, awaiting review. AI-only coverage of event
+  assumptions can return only after a local model accepts zero overreach traps on the signed probe
+  set, and only through a change to `core/audit/rules.py` that bumps RULE_VERSION.
 - Every derived record carries a `source_ref` back to the original artifact.
-- Every displayed item carries a provenance tier: observed, derived, inferred, ai_reviewed or confirmed.
-  ai_reviewed means the local AI reviewer accepted it. confirmed means a human expert accepted it.
-  Under rules 0.2.0 every SUPPORTED verdict is confirmed.
-  ai_reviewed never displays or exports as confirmed, and a human decision always overrides it.
+- Every displayed item carries a provenance tier: observed, derived, inferred, ai_reviewed,
+  counsel_reviewed or confirmed. ai_reviewed means the local AI reviewer accepted it.
+  counsel_reviewed means a named defense lawyer accepted it. confirmed means a human expert
+  accepted it. Neither ai_reviewed nor counsel_reviewed ever displays or exports as confirmed. A
+  human decision always overrides the AI reviewer, and an expert's decision overrides counsel's.
 - The AI reviewer only reviews evidence items. It never confirms identity links or claims.
 - The AI reviewer runs on the local model in core/. Only the stance labeler may use a cloud model
   in core/. The AI reviewer, claim proposal and assumption filling stay local.
