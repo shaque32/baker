@@ -2656,6 +2656,7 @@ def setup_page(
     cloud_key_from: str | None = None,  # core.llm.cloud.key_source
     model_ok: bool | None = None,  # the last model check passed, failed, or none ran
     audited: str | None = None,  # the date of the last finished audit, if one finished
+    backup_root: str | None = None,  # where a backup goes by default; None: no backup here
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
@@ -2964,6 +2965,8 @@ def setup_page(
             )
         )
     out.append(encryption_section(page, protection, busy, recovery_key is not None))
+    if backup_root is not None:
+        out.append(backup_section(page, busy, backup_root, protection))
     # No refresh while the recovery key is on screen: it must not vanish mid-copy.
     refresh = 10 if busy and recovery_key is None else None
     return page.wrap("Set up and run", "".join(out), refresh=refresh)
@@ -3095,6 +3098,33 @@ def recovery_box(page: Page, key: str | None, unconfirmed: bool = False) -> str:
             back="/setup",
         )
         + "</div>"
+    )
+
+
+def backup_section(page: Page, busy: bool, root: str, protection: str) -> str:
+    """Back up this case (core/casework/backup.py): a verified copy of the whole folder."""
+    off = " disabled" if busy else ""
+    wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
+    kept = (
+        "The backup stays encrypted and opens with the same passphrase or recovery key."
+        if protection != "plain"
+        else "This case is not encrypted, so neither is its backup."
+    )
+    return (
+        "<h2 id='backup'>Backup</h2>"
+        "<p>Makes a new folder with a verified copy of this case: its database, audit log, "
+        f"settings and file copies. {e(kept)} Copy that folder to a drive kept off this "
+        "computer. To restore, copy the backup folder whole into the cases folder; it opens as a "
+        "case.</p>"
+        + wait
+        + page.form(
+            "/case/backup",
+            "<label>Folder to make the backup in <input type='text' name='to' size='40' "
+            f"placeholder='{e(root)}' aria-label='Folder to make the backup in'></label> "
+            f"<button type='submit'{off}>Back up this case</button>",
+            back="/setup",
+            anchor="backup",
+        )
     )
 
 
