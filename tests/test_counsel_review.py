@@ -165,6 +165,7 @@ def test_counsel_takes_back_only_their_own_acceptance(conn):
 def test_one_lawyer_cannot_take_back_anothers_acceptance(conn):
     """Greptile on #238: the take-back checked only the last row's kind, not who wrote it."""
     eid = key_items(conn, CLAIM)[0]
+    _open(conn, eid)
     actions.decide_counsel(conn, eid, EvidenceStatus.COUNSEL_ACCEPTED, COUNSEL, "Read.", at(1))
     other = "counsel:Sam Ortiz"
     with pytest.raises(ReviewError, match="only take back an acceptance of their own"):
