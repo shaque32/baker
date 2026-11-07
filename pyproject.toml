@@ -4,15 +4,15 @@ version = "0.0.1"
 description = "Local-first audit of government claims about phone evidence"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic>=2.7,<3",
-    "pypdfium2>=4.30,<6",  # PDF text (Apache-2.0 / BSD-3)
-    "pillow>=10",  # page images for OCR; OCR itself needs a local Tesseract install
-    "openpyxl>=3.1,<4",  # Cellebrite Excel reports (MIT)
-    "pdfplumber>=0.11,<0.12",  # Cellebrite PDF report tables (MIT; pulls pdfminer.six, MIT)
-    "tzdata>=2024.1",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
-    "cryptography>=42,<51",  # AES-256-GCM for encrypted cases' copied files (Apache-2.0 / BSD)
-    "sqlcipher3-wheels>=0.5.5,<0.6",  # SQLCipher 4 for encrypted case databases (zlib; SQLCipher BSD-3)
-    "reportlab>=4",  # `mabillon demo` renders the synthetic affidavit PDF (BSD); a bare install crashed without it
+    "pydantic>=2.14.2,<3",
+    "pypdfium2>=5.14.0,<6",  # PDF text (Apache-2.0 / BSD-3)
+    "pillow>=13.0.0",  # page images for OCR; OCR itself needs a local Tesseract install
+    "openpyxl>=3.1.5,<4",  # Cellebrite Excel reports (MIT)
+    "pdfplumber>=0.11.10,<0.12",  # Cellebrite PDF report tables (MIT; pulls pdfminer.six, MIT)
+    "tzdata>=2026.6",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
+    "cryptography>=50.0.2,<51",  # AES-256-GCM for encrypted cases' copied files (Apache-2.0 / BSD)
+    "sqlcipher3-wheels>=0.5.7,<0.6",  # SQLCipher 4 for encrypted case databases (zlib; SQLCipher BSD-3)
+    "reportlab>=5.1.0",  # `mabillon demo` renders the synthetic affidavit PDF (BSD); a bare install crashed without it
 ]
 
 [project.scripts]
@@ -21,26 +21,26 @@ baker = "cli.main:baker_alias"  # the development name, kept for a release
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "ruff>=0.6",
-    "reportlab>=4",  # synthetic fixture PDFs only (eval/synthetic, tests)
-    "jinja2>=3.1",  # renders chat templates in tests (llama-cpp-python brings it at run time)
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+    "reportlab>=5.1.0",  # synthetic fixture PDFs only (eval/synthetic, tests)
+    "jinja2>=3.1.6",  # renders chat templates in tests (llama-cpp-python brings it at run time)
 ]
 synthetic = [
-    "reportlab>=4",  # renders the synthetic case PDFs; the Windows installer ships it for the eval gate
+    "reportlab>=5.1.0",  # renders the synthetic case PDFs; the Windows installer ships it for the eval gate
 ]
 local = [
-    "llama-cpp-python>=0.3.16",  # local GGUF runtime (MIT); install the CUDA build on the GPU PC
+    "llama-cpp-python>=0.3.36",  # local GGUF runtime (MIT); install the CUDA build on the GPU PC
 ]
 cloud = [
-    "anthropic>=1.0,<2",  # the cloud stance labeler (core/llm/cloud.py), the expert's own key (MIT)
+    "anthropic>=2.4.0,<3",  # the cloud stance labeler (core/llm/cloud.py), the expert's own key (MIT)
 ]
 bench = [
-    "anthropic>=1.0,<2",  # eval/bench: the cloud benchmark (MIT)
+    "anthropic>=2.4.0,<3",  # eval/bench: the cloud benchmark (MIT)
 ]
 
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
