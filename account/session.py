@@ -101,7 +101,10 @@ class SignIn:
             stored = self.server.exchange(code, pending.verifier)
         except Exception as err:  # noqa: BLE001 - every failure is shown, none is fatal
             return False, f"Not signed in: {_message(err)}"
-        lic.save(stored, self.home)
+        try:
+            lic.save(stored, self.home)
+        except OSError as err:
+            return False, f"Not signed in: the license could not be saved here ({_message(err)})"
         got = lic.status(stored, self.clock(), self.keys)
         if got.license is None:
             return False, f"Not signed in: {got.message}"
@@ -125,7 +128,10 @@ class SignIn:
             except Exception as err:  # noqa: BLE001 - offline is normal; the grace covers it
                 return f"The license was not renewed: {_message(err)}"
             # Signed out or signed in again meanwhile (maybe in another process): keep that.
-            lic.replace_if_unchanged(stored, renewed, self.home)
+            try:
+                lic.replace_if_unchanged(stored, renewed, self.home)
+            except OSError as err:  # the license already here still counts, inside its grace
+                return f"The renewed license could not be saved: {_message(err)}"
             return None
 
     def sign_out(self) -> str:

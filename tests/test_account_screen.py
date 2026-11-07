@@ -214,6 +214,18 @@ def test_a_renewal_never_brings_back_a_license_signed_out_meanwhile(tmp_path, on
     assert lic.load(tmp_path) is None
 
 
+def test_a_renewal_that_cannot_be_saved_keeps_the_license_here(tmp_path, on, monkeypatch):
+    s = signin(tmp_path, clock=lambda: NOW + timedelta(days=2))
+    lic.save(lic.Stored(make(), "t" * 30), tmp_path)
+
+    def read_only(*a: object, **k: object) -> bool:
+        raise PermissionError("read-only folder")
+
+    monkeypatch.setattr(lic, "replace_if_unchanged", read_only)
+    assert "could not be saved" in (s.renew_if_due() or "")
+    assert s.may_start_audit() == (True, "")  # the saved license is still inside its grace
+
+
 def test_sign_out_offline_still_signs_out_here(tmp_path, on):
     s = signin(tmp_path, FakeServer(fail=OSError("offline")))
     lic.save(lic.Stored(make(), "t" * 30), tmp_path)
