@@ -107,6 +107,32 @@ def test_every_package_a_shipped_file_imports_is_installed():
     assert not missing, f"add to pyproject dependencies or the synthetic extra: {missing}"
 
 
+def test_every_module_a_shipped_file_imports_is_shipped():
+    """The installed copy runs the speed and repeat checks (packaging/windows/speedtest.ps1), so a
+    shipped file must not import a module the installer leaves out (eval/bench/, for one). The
+    only exception is case02's generator, which only the held-out case's own branch imports."""
+    tracked = stage.tracked_files(ROOT)
+    shipped = {f for f in tracked if stage.shipped(f)}
+    missing: dict[str, str] = {}
+    for f in sorted(shipped):
+        if not f.endswith(".py"):
+            continue
+        for node in ast.walk(ast.parse((ROOT / f).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                if name.split(".")[0] not in {"cli", "core", "ui", "eval"} or "case02" in name:
+                    continue
+                path = name.replace(".", "/")
+                if f"{path}.py" not in shipped and f"{path}/__init__.py" not in shipped:
+                    missing.setdefault(name, f)
+    assert not missing, f"a shipped file imports a module the installer leaves out: {missing}"
+
+
 def test_pins_are_complete():
     pins = json.loads((WIN / "pins.json").read_text(encoding="utf-8"))
     assert HEX64.fullmatch(pins["python"]["sha256"])

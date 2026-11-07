@@ -305,6 +305,13 @@ jobs:
           if ($LASTEXITCODE) { throw 'pipeline failed' }
           & $py -X utf8 -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
           if ($LASTEXITCODE) { throw 'gate failed on the installed copy' }
+      - name: The repeat check runs from the installed copy (speedtest.ps1 -Repeat; no model)
+        run: |
+          Set-Location "$env:LOCALAPPDATA\Programs\Mabillon\baker"
+          & ..\python\python.exe -X utf8 -c "import eval.probe.repeat_check, eval.probe.model_entry, eval.probe.time_case, eval.probe.run_probe"
+          if ($LASTEXITCODE) { throw 'a speed or repeat check module does not import from the installed copy' }
+          & ..\python\python.exe -X utf8 -m eval.probe.repeat_check --dry-run
+          if ($LASTEXITCODE) { throw 'repeat_check --dry-run failed' }
       - name: The demo case, built by the installed copy
         run: |
           & "$env:LOCALAPPDATA\Programs\Mabillon\mabillon.cmd" demo --build-only
@@ -358,6 +365,35 @@ jobs:
           if ($p.ExitCode) { throw "uninstall exit code $($p.ExitCode)" }
           Start-Sleep -Seconds 3
           if (Test-Path "$app\python") { throw 'python folder left behind' }
+
+  wizard:
+    # Setup the way a person runs it: every wizard page clicked through and saved as a picture
+    # (artifact windows-setup-wizard), so its look and wording can be checked without a PC.
+    needs: installer
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging/windows/wizard_shots.ps1
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: mabillon-installer
+          path: dist
+      - name: Click through the wizard
+        # Windows PowerShell 5.1: the script uses .NET Framework's UI Automation.
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          powershell -ExecutionPolicy Bypass -File packaging/windows/wizard_shots.ps1 -Installer $exe.FullName -Out "$env:RUNNER_TEMP\wizard"
+          if ($LASTEXITCODE) { throw 'wizard walk-through failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-setup-wizard
+          path: ${{ runner.temp }}/wizard
+          retention-days: 30
 
   cpu-timing:
     # The 14B on 4 CPU cores and 16 GB, no GPU: the slowest machine an expert might use.
