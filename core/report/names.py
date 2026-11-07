@@ -45,8 +45,9 @@ _COUNT_WORD = {
 # single quote counts only where no letter or digit touches it on the outside, so an
 # apostrophe ("PETROV's") never opens or closes one. The kinds nest (a rule's reason holds
 # 'The words "..." mean ...'), so each is matched on its own and only cited spans are kept.
-# Python's escapes inside a straight-quoted span (a line break printed as \n) are read back
-# before the words are compared with the claim.
+# The words are compared with the claim as printed first (a template prints a quote raw, so a
+# path such as C:\temp stays as it is), then with Python's escapes read back (a refusal prints
+# a line break as \n).
 _QUOTED = re.compile(r'"([^"]+)"|\u201c([^\u201d]+)\u201d')
 _SINGLE = re.compile(r"(?<![\w'])'((?:[^'\\]|\\.)+)'(?![\w'])")
 
@@ -157,7 +158,8 @@ class Names:
             (m.start(), -m.end(), m[0], words)
             for pattern in (_QUOTED, _SINGLE)
             for m in pattern.finditer(text)
-            if self._cited(_unrepr(words := next(g for g in m.groups() if g), m[0][0]))
+            if self._cited(words := next(g for g in m.groups() if g))
+            or self._cited(_unrepr(words, m[0][0]))
         )  # quoted words no claim holds stay Mabillon's own, checked whole
         out, at = [], 0
         for start, neg_end, whole, words in cited:
