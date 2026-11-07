@@ -68,7 +68,12 @@ class Driver:
             print(json.dumps({"find": css, "error": str(err), "body": body}), flush=True)
             return None
 
-    def click(self, el: str) -> str | None:
+    def click(self, el: str) -> None:
+        refused = self.try_click(el)
+        if refused:
+            raise RuntimeError(f"safaridriver refused a click: {refused}")
+
+    def try_click(self, el: str) -> str | None:
         """Click as a person would; return safaridriver's refusal instead of raising it."""
         try:
             self.s("POST", f"/element/{el}/click")
@@ -159,13 +164,17 @@ def main() -> int:
             card = d.js("const a = document.getElementById('agent'); return a && a.innerText")
             note("D03 testability card", False, error="no undecided card", card=card)
         else:
-            d.click(box)
-            before = note("D03 click the reason box")
+            refused = d.try_click(box)
+            before = note("D03 click the reason box", False if refused else None, error=refused)
             d.type(box, "Safari check: the names match")
             time.sleep(0.5)
             note("D03 typed a reason", lambda s, y=before["y"]: abs(s["y"] - y) < 40)
-            d.click(d.find("#agent button[name=decision][value=accept]"))
-            note("D03 accepted (redirect to #agent)", lambda s: s["y"] > 0)
+            accept = d.find("#agent button[name=decision][value=accept]")
+            refused = d.try_click(accept) if accept else "no accept button"
+            if refused:
+                note("D03 accepted (redirect to #agent)", False, error=refused)
+            else:
+                note("D03 accepted (redirect to #agent)", lambda s: s["y"] > 0)
 
         # 3. The claim page's side ledger: open C10 from it.
         d.get(demo + "/claim?id=C01")
@@ -180,7 +189,7 @@ def main() -> int:
                 " a.scrollTop += l.getBoundingClientRect().top - a.getBoundingClientRect().top"
                 " - a.clientHeight / 2; return Math.round(a.scrollTop)"
             )
-            refused = d.click(link)
+            refused = d.try_click(link)
             if refused:
                 note("C10 from the side ledger", False, scrolled=scrolled, error=refused)
             else:
@@ -195,7 +204,7 @@ def main() -> int:
         d.js("document.querySelectorAll('#verdict details').forEach(x => x.open = true); return 1")
         btn = d.find("form[action='/verdict'] button")
         if btn:
-            refused = d.click(btn)
+            refused = d.try_click(btn)
             if refused:
                 note("C09 confirm verdict (redirect to #verdict)", False, error=refused)
             else:
