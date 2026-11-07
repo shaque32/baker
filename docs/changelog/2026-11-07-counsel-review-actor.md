@@ -1,4 +1,4 @@
-## 2026-11-07: counsel review actor, the B follow-up to rules 0.5.0 (#PR)
+## 2026-11-07: counsel review actor, the B follow-up to rules 0.5.0 (#238)
 - Changed: PR 3 of `/mnt/project-files/baker/plans/confirm-rule-b-c.md`. Rules 0.5.0 (#228) let a
   named defense lawyer's acceptance support a claim as "Supported (reviewed by counsel)", but
   nothing could write a counsel review. This adds the code path. No signed file changes.
@@ -27,7 +27,7 @@
     "Accepted by counsel:<name> ... Reviewed by counsel, not an expert.", and the verdict trace
     says "Counsel accepted, not an expert". The banner now reads "evidence decisions by the
     expert or counsel were made after this run".
-- Where: branch claude/project-thread-qw0rxu
+- Where: PR #238
 - Verified: `make check` (lint, tests, eval) on this branch, run 2026-11-07 in a Linux x86_64
   cloud container (4 vCPU, Python 3.13.18, no GPU); results in the PR description. `make eval` is
   model-free and nothing in it writes a counsel review, so its numbers are expected unchanged
