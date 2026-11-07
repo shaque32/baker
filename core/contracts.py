@@ -19,7 +19,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Bump on every change to this file or core/schema.sql. pipeline_runs records it.
-CONTRACTS_VERSION = "0.7.0"
+CONTRACTS_VERSION = "0.8.0"
 
 # ---------------------------------------------------------------- enums
 
@@ -29,6 +29,7 @@ class ProvenanceTier(StrEnum):
     DERIVED = "derived"  # computed deterministically from observed data
     INFERRED = "inferred"  # produced by a model; always shown with uncertainty
     AI_REVIEWED = "ai_reviewed"  # accepted by the local AI reviewer; never shown as confirmed
+    COUNSEL_REVIEWED = "counsel_reviewed"  # a named lawyer accepted it; never shown as confirmed
     CONFIRMED = "confirmed"  # an expert explicitly accepted it (logged)
 
 
@@ -106,12 +107,14 @@ class ClaimStatus(StrEnum):
 class EvidenceStatus(StrEnum):
     OPEN = "open"
     AI_ACCEPTED = "ai_accepted"  # local AI reviewer accepted; a human decision overrides it
-    ACCEPTED = "accepted"
+    COUNSEL_ACCEPTED = "counsel_accepted"  # a named lawyer accepted; an expert overrides it
+    ACCEPTED = "accepted"  # an expert accepted
     DISMISSED = "dismissed"
 
 
 class ReviewerKind(StrEnum):
     AI = "ai"  # the local AI reviewer (core/audit/review.py)
+    COUNSEL = "counsel"  # a named defense lawyer reviewing for work product, not an expert
     EXPERT = "expert"  # a human expert
 
 
@@ -119,6 +122,8 @@ class SupportedBasis(StrEnum):
     """What a SUPPORTED verdict rests on. Reports show the two differently."""
 
     AI_REVIEWED = "ai_reviewed"  # at least one supporting item is only AI-accepted
+    COUNSEL_REVIEWED = "counsel_reviewed"  # rests on an item a lawyer, not an expert, accepted
+    CHECKED = "checked"  # every core assumption passed its code checks; no label, no reviewer
     CONFIRMED = "confirmed"  # every supporting item it cites was accepted by an expert
 
 
@@ -454,6 +459,8 @@ def display_tier(item: EvidenceItem) -> ProvenanceTier:
     """The tier a report shows for an evidence item. The one place this mapping lives."""
     if item.status is EvidenceStatus.ACCEPTED:
         return ProvenanceTier.CONFIRMED
+    if item.status is EvidenceStatus.COUNSEL_ACCEPTED:
+        return ProvenanceTier.COUNSEL_REVIEWED
     if item.status is EvidenceStatus.AI_ACCEPTED:
         return ProvenanceTier.AI_REVIEWED
     return item.tier
@@ -469,7 +476,7 @@ class ReviewDecision(Model):
     evidence_id: str
     seq: int = Field(ge=1)  # 1 for the first review of this item, then 2, 3, ...
     reviewer_kind: ReviewerKind
-    reviewer: str  # 'ai:<model_name>' or 'expert:<name>'
+    reviewer: str  # 'ai:<model_name>', 'counsel:<name>' or 'expert:<name>'
     status: EvidenceStatus
     reason: str = Field(min_length=1)  # one sentence; shown in the report
     model_run_id: str | None  # required for AI, None for an expert
@@ -484,6 +491,13 @@ class ReviewDecision(Model):
                 raise ValueError("the AI reviewer sets only ai_accepted or dismissed")
             if self.model_run_id is None or not self.reviewer.startswith("ai:"):
                 raise ValueError("an AI review needs a model_run_id and an 'ai:' reviewer")
+        elif self.reviewer_kind is ReviewerKind.COUNSEL:
+            # no dismissal in 0.8.0: a lawyer's dismissal would unblock rule 3d on an
+            # expert-confirmed claim with nothing in the verdict to show it
+            if self.status not in (EvidenceStatus.COUNSEL_ACCEPTED, EvidenceStatus.OPEN):
+                raise ValueError("counsel sets only counsel_accepted or open (to undo)")
+            if self.model_run_id is not None or not self.reviewer.startswith("counsel:"):
+                raise ValueError("a counsel review has no model_run_id and a 'counsel:' reviewer")
         else:
             if self.status not in (
                 EvidenceStatus.ACCEPTED,
@@ -565,8 +579,13 @@ class VerdictDecision(Model):
     def _basis_iff_supported(self) -> VerdictDecision:
         _aware(self.decided_at_utc, "decided_at_utc")
         if self.verdict is Verdict.SUPPORTED:
-            if self.supported_basis is None or not self.cited_evidence_ids:
-                raise ValueError("SUPPORTED needs a supported_basis and cited evidence")
+            if self.supported_basis is None:
+                raise ValueError("SUPPORTED needs a supported_basis")
+            if self.supported_basis is SupportedBasis.CHECKED:
+                if self.cited_evidence_ids or not self.cited_check_ids:
+                    raise ValueError("a checked SUPPORTED cites passed checks and no evidence")
+            elif not self.cited_evidence_ids:
+                raise ValueError("SUPPORTED needs cited evidence")
         elif self.supported_basis is not None:
             raise ValueError("supported_basis is only for SUPPORTED")
         return self
