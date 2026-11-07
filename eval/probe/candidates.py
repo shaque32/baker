@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -167,9 +168,11 @@ def _misses(row: dict[str, Any]) -> str:
     return ", ".join(out) or "none"
 
 
-def verdict(out: Path) -> str:
+def verdict(out: Path, names: Sequence[str] | None = None, swap_note: str | None = None) -> str:
     """RESULTS.md for a finished screen: one row per model and prompt, stage 1, the items each
-    run got wrong, and what each run ran on."""
+    run got wrong, and what each run ran on. `names` are the models screened (default: this
+    file's CANDIDATES; eval/bench/open_bench.py passes its own); `swap_note` replaces the
+    closing line when nothing passes."""
     lines = [
         "Supports recall and contradicts precision on signed, undisputed items: rate, of n,"
         " [Wilson 95% interval].",
@@ -182,12 +185,12 @@ def verdict(out: Path) -> str:
     unfinished: list[str] = []
     misses: list[str] = []
     runs: list[str] = []
-    for c in CANDIDATES:
+    for name in names if names is not None else [c.name for c in CANDIDATES]:
         for version in PROMPTS:
-            summary = out / c.name / version / "summary.json"
+            summary = out / name / version / "summary.json"
             if not summary.is_file():
-                lines.append(f"| {c.name} | {version} | not run | | | | | | | |")
-                unfinished.append(f"{c.name} {version}")
+                lines.append(f"| {name} | {version} | not run | | | | | | | |")
+                unfinished.append(f"{name} {version}")
                 continue
             for row in json.loads(summary.read_text(encoding="utf-8")):
                 ok, missed = stage1(row)
@@ -211,16 +214,16 @@ def verdict(out: Path) -> str:
                     str(row.get("tokens_per_second") or "n/a"),
                     "pass" if ok else "misses: " + "; ".join(missed),
                 ]
-                lines.append(f"| {c.name} | {version} | " + " | ".join(cells) + " |")
+                lines.append(f"| {name} | {version} | " + " | ".join(cells) + " |")
                 if ok:
-                    passed.setdefault(c.name, []).append(version)
+                    passed.setdefault(name, []).append(version)
                 if row.get("load_error"):
-                    unfinished.append(f"{c.name} {version}")
+                    unfinished.append(f"{name} {version}")
                 else:
-                    misses.append(f"- {c.name} {version}: {_misses(row)}")
+                    misses.append(f"- {name} {version}: {_misses(row)}")
                     params = row.get("params") or {}
                     runs.append(
-                        f"- {c.name} {version}: sha256 {row.get('sha256')}, seed"
+                        f"- {name} {version}: sha256 {row.get('sha256')}, seed"
                         f" {params.get('seed')}, temperature {params.get('temperature')},"
                         f" n_ctx {params.get('n_ctx')}, chat template"
                         f" {params.get('chat_template', 'gguf')}, prompt"
@@ -241,7 +244,7 @@ def verdict(out: Path) -> str:
             " ran passes. No decision until those runs finish."
         )
     else:
-        lines.append("Stage 1: no candidate passes. The 14B stays the local model.")
+        lines.append(swap_note or "Stage 1: no candidate passes. The 14B stays the local model.")
     lines += ["", "## Items each run got wrong (gated)", "", *misses]
     lines += ["", "## What each run ran on", "", *runs]
     return "\n".join(lines) + "\n"
