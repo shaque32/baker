@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Python embeddable package (python.org MD5, pinned SHA-256)
         run: |
           url=$(jq -r .python.url packaging/windows/pins.json)
@@ -82,8 +82,8 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - id: key
@@ -94,7 +94,7 @@ jobs:
           scripts=$(cat packaging/windows/build_llama.ps1 packaging/windows/install_cuda.ps1)
           echo "hash=$(printf '%s\n%s' "$pins" "$scripts" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/wheels/${{ matrix.variant }}
           key: llama-${{ matrix.variant }}-${{ steps.key.outputs.hash }}
@@ -104,7 +104,7 @@ jobs:
       - name: Build the wheel
         if: steps.cache.outputs.cache-hit != 'true'
         run: packaging/windows/build_llama.ps1 -Variant ${{ matrix.variant }} -OutDir build/wheels/${{ matrix.variant }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llama-${{ matrix.variant }}
           path: |
@@ -127,11 +127,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: llama-*
           path: build/wheels
@@ -197,7 +197,7 @@ jobs:
           }
       - name: Azure login (OIDC, no stored password)
         if: steps.signing.outputs.sign == 'true'
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -242,7 +242,7 @@ jobs:
           Copy-Item build/stage/BUILD_INFO.json, packaging/windows/speedtest.ps1 build/installer/
           "### Installer`n`n``$($exe.Name)`` ($([math]::Round($exe.Length / 1MB)) MB, $signed)`n`nSHA-256 ``$sha``" |
             Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mabillon-installer
           path: build/installer/*
@@ -258,7 +258,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mabillon-installer
           path: dist
@@ -317,12 +317,12 @@ jobs:
           & "$env:LOCALAPPDATA\Programs\Mabillon\mabillon.cmd" demo --build-only
           if ($LASTEXITCODE) { throw 'mabillon demo --build-only failed' }
       # The browser test's own Python and Chromium, set up only after Mabillon has run without them.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: packaging/smoke_ui.py
           sparse-checkout-cone-mode: false
           path: src
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # One step: Windows ends the processes a step started when that step ends.
@@ -352,7 +352,7 @@ jobs:
           Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
             Where-Object { $_.CommandLine -match '-m cli (serve|demo)' } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-clean-install-screens
@@ -373,11 +373,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: packaging/windows/wizard_shots.ps1
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mabillon-installer
           path: dist
@@ -388,7 +388,7 @@ jobs:
           $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
           powershell -ExecutionPolicy Bypass -File packaging/windows/wizard_shots.ps1 -Installer $exe.FullName -Out "$env:RUNNER_TEMP\wizard"
           if ($LASTEXITCODE) { throw 'wizard walk-through failed' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-setup-wizard
@@ -409,8 +409,8 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: mabillon-installer
           path: dist
@@ -422,7 +422,7 @@ jobs:
         if: always()
         run: |
           if (Test-Path speedtest/RESULTS.md) { Get-Content speedtest/RESULTS.md | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: cpu-timing

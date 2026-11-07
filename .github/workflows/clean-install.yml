@@ -44,7 +44,7 @@ jobs:
       # A pilot's Mac has only Apple's tools: no Homebrew, and Apple's bash 3.2.
       PILOT_PATH: /usr/bin:/bin:/usr/sbin:/sbin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: The Mabillon folder as a pilot gets it (GitHub's zip, unzipped by macOS)
         run: |
@@ -140,7 +140,7 @@ jobs:
           test -f ~/Baker/models/stub-model.gguf && test ! -e ~/Mabillon/models/stub-model.gguf
           ~/Mabillon/app/.venv/bin/mabillon model-check
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -170,7 +170,7 @@ jobs:
         if: always()
         run: tail -n 40 "$RUNNER_TEMP"/ui/*.log || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         # The logs are a convenience: a full artifact storage quota must not fail the install test.
         continue-on-error: true
