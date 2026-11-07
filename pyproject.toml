@@ -12,6 +12,7 @@ dependencies = [
     "tzdata>=2024.1",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
     "cryptography>=42,<51",  # AES-256-GCM for encrypted cases' copied files (Apache-2.0 / BSD)
     "sqlcipher3-wheels>=0.5.5,<0.6",  # SQLCipher 4 for encrypted case databases (zlib; SQLCipher BSD-3)
+    "reportlab>=4",  # `mabillon demo` renders the synthetic affidavit PDF (BSD); a bare install crashed without it
 ]
 
 [project.scripts]
@@ -33,6 +34,12 @@ local = [
 ]
 cloud = [
     "anthropic>=1.0,<2",  # the cloud stance labeler (core/llm/cloud.py), the expert's own key (MIT)
+]
+app = [
+    # Mabillon's own window (ui/window.py) on the system's web view: WebKit on a Mac, Edge WebView2
+    # on Windows (BSD-3; brings pyobjc on a Mac and pythonnet on Windows, both MIT)
+    "pywebview>=6.2.1,<7",
+    "pythonnet>=3.0.5,<4; sys_platform == 'win32'",  # named here too: see stage.py
 ]
 bench = [
     "anthropic>=1.0,<2",  # eval/bench: the cloud benchmark (MIT)

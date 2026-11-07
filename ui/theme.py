@@ -57,14 +57,16 @@ THEME_CSS = """
    the wordmark (Instrument Serif); IBM Plex Mono only for ids and hashes (.mono), so they
    compare by eye. Labels are never monospace or uppercase. Unproven stays a neutral gray, not
    the site's amber. The report keeps its own palette (core/report/html.py). */
-:root { --fg: #141414; --bg: #f7f5f0; --card: #fdfcfa; --side: #f7f5f0; --panel: #efece5;
-  --line: #e4e0d8; --line-strong: #cfc9bd; --muted: #5f5a51; --hover: #f5f2ec;
-  --ink-2: #3d3a34;
+:root { --fg: #141414; --bg: #f7f5f0; --card: #fdfcfa; --panel: #efece5;
+  --line: #e4e0d8; --line-strong: #cfc9bd; --muted: #5f5a51;
+  /* One gray per job: text, muted text, page, surface, tint, line, control edge. The older
+     names below are aliases, so no page keeps a near-copy of a gray of its own. */
+  --side: var(--bg); --hover: var(--bg); --ink-2: var(--fg); --field: var(--card);
+  --unp: var(--muted); --unp-bg: var(--panel); --unp-line: var(--line-strong);
   --wordmark: "Instrument Serif", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  --ring: rgb(29 53 87 / 0.16); --accent-bg: #e9edf3; --unp: #5f5a51; --unp-bg: #efece5;
-  --unp-line: #dcd7cc; --await: #1d3557;
-  --field: #fff; --amber: #b7862c; --radius: 8px; --sidebar: 232px;
+  --ring: rgb(29 53 87 / 0.16); --accent-bg: #e9edf3; --await: #1d3557;
+  --amber: #b7862c; --radius: 8px; --sidebar: 232px;
   /* controls (site/styles.css): 8px buttons, 7px fields, one navy primary */
   --accent-fg: #fff; --accent-hover: #142842; --line-hover: #b5ae9f; --ctl-radius: 8px;
   --field-radius: 7px; --ease: cubic-bezier(.22, 1, .36, 1); }
@@ -77,7 +79,7 @@ main > p, section > p, main > ul:not([class]), section > ul:not([class]), .lede 
   max-width: 78ch; }
 
 /* Type: one sans face; sizes and weight, not a second font, make the hierarchy */
-h1 { font: 600 24px/1.3 var(--sans); letter-spacing: -0.01em; margin: 0 0 8px;
+h1 { font: 600 24px/1.3 var(--sans); letter-spacing: 0; margin: 0 0 8px;
   text-wrap: balance; }
 h1 + p, .lede { color: var(--muted); }
 h2 { font: 600 16px/1.4 var(--sans); letter-spacing: 0; margin: 40px 0 12px;
@@ -105,13 +107,14 @@ header.top { position: fixed; inset: 0 auto 0 0; z-index: 5; width: var(--sideba
   color: var(--fg); padding: 20px 20px 0; }
 .brand span { font: 400 22px/1 var(--wordmark); letter-spacing: -0.01em; }
 .casename { display: flex; flex-direction: column; gap: 2px; font-weight: 600;
-  font-size: 13px; line-height: 1.35; margin: 18px 12px 4px; padding: 10px 12px;
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+  font-size: 13px; line-height: 1.35; margin: 18px 12px 4px; padding: 8px 10px;
+  border-radius: 6px; }
 a.casename { color: var(--fg); text-decoration: none; }
-a.casename:hover, a.casename.on { border-color: var(--line-strong); }
-a.casename.on { box-shadow: 0 1px 2px rgb(20 20 20 / 0.05); }
+a.casename:hover { background: rgb(20 20 20 / 0.045); }
+a.casename.on { color: var(--accent); background: var(--card);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(20 20 20 / 0.05); }
 .bar .right { order: 3; margin-top: auto; display: flex; flex-direction: column;
-  align-items: flex-start; gap: 6px; padding: 16px 20px 20px; border-top: 1px solid var(--line); }
+  align-items: flex-start; gap: 6px; padding: 16px 20px 20px; }
 .pill { display: inline-flex; align-items: center; gap: 7px; border: 0; padding: 0;
   font: 500 12px/1.4 var(--sans); color: var(--muted); background: none;
   text-decoration: none; }
@@ -129,7 +132,7 @@ nav.tabs a { color: var(--ink-2); text-decoration: none; padding: 6px 10px; bord
 nav.tabs a:hover { color: var(--fg); background: rgb(20 20 20 / 0.045); }
 nav.tabs a.on { color: var(--accent); font-weight: 600; background: var(--card);
   box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(20 20 20 / 0.05); }
-nav.tabs .sep { flex: none; height: 1px; margin: 8px 10px; background: var(--line); }
+nav.tabs .sep { flex: none; height: 14px; }
 .casestatus { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px 18px; margin: 0 0 12px; }
@@ -148,7 +151,7 @@ nav.tabs .sep { flex: none; height: 1px; margin: 8px 10px; background: var(--lin
 .casestatus .findings .t-unp::before { background: var(--card);
   box-shadow: inset 0 0 0 1.5px var(--unp); }
 .casestatus .findings b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.banner + .banner { margin-top: -12px; }
+.banner + .banner { margin-top: -10px; }
 .banner details > summary { cursor: pointer; }
 .banner details[open] > summary { margin-bottom: 6px; }
 .banner details p { margin: 0 0 4px; }
@@ -167,14 +170,14 @@ dl.record dd { margin: 0; max-width: 78ch; }
 details.custody { margin: 16px 0; }
 details.custody > summary { font-size: 13.5px; color: var(--muted); }
 
-/* Notices: a gray note, not a colored box. The demo and "not tested" notices stay visible. */
-.banner, p.warn { background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 10px 14px 10px 16px; margin: 0 0 20px; color: var(--ink-2); font-size: 13px;
-  line-height: 1.55; max-width: 92ch; box-shadow: inset 3px 0 0 var(--line-strong); }
+/* Notices: one quiet line behind a thin rule, not a box. A warning's rule is amber. The demo
+   and "not tested" notices stay visible. */
+.banner, p.warn { background: none; border: 0; border-left: 2px solid var(--line-strong);
+  border-radius: 0; padding: 2px 0 2px 14px; margin: 0 0 20px; color: var(--fg);
+  font-size: 13px; line-height: 1.55; max-width: 92ch; box-shadow: none; }
+p.warn { border-left-color: var(--amber); }
 .banner strong, p.warn strong { font-size: inherit; font-weight: 600; color: var(--fg); }
-.banner .banner { background: var(--card); margin: 8px 0 0;
-  box-shadow: inset 2px 0 0 var(--amber); }
+.banner .banner { margin: 8px 0 0; border-left-color: var(--amber); }
 .caution { border: 0; border-left: 2px solid var(--amber); background: var(--panel);
   padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 13px; }
 .flash { padding: 10px 14px; margin: 0 0 16px; border: 1px solid var(--line);
@@ -197,7 +200,6 @@ p.format-notice::before { content: ""; position: absolute; left: 2px; top: 0.55e
   height: 6px; border-radius: 50%; background: var(--sup); }
 p.format-notice.warn::before { background: var(--amber); }
 p.format-notice strong { font-weight: 500; color: var(--fg); }
-#formats.banner { background: var(--card); border: 1px solid var(--line); padding: 10px 16px; }
 td p.format-notice { font-size: 12.5px; margin: 6px 0 0; }
 
 /* coming back to the item a form acted on: mark it briefly */
@@ -230,98 +232,6 @@ td:has(> form.inline) details { white-space: normal; margin-top: 4px; }
 td form.inline button { min-height: 28px; padding: 0 9px; font-size: 12.5px;
   margin: 2px 4px 2px 0; }
 tr.target td { font-weight: 600; background: var(--accent-bg); }
-
-/* Set up's tables: words stay whole (a cell wraps only between words), controls sit on one
-   row, and the claims table's wording column takes the room. */
-table.tidy td { overflow-wrap: break-word; }
-table.tidy td.nowrap { white-space: nowrap; }
-table.tidy td .mono { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
-table.tidy td.controls { width: 1%; white-space: nowrap; }
-table.tidy .row-actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; }
-table.tidy .row-actions form.inline { display: flex; gap: 6px; align-items: center; }
-table.tidy .row-actions input[type=text] { min-width: 0; width: 170px; margin: 0; }
-table.tidy .row-actions button { margin: 0; }
-table.tidy td.controls details { margin-top: 6px; }
-table.tidy td.controls details > summary { font-size: 13px; }
-table.tidy td.controls details[open] > summary { margin-bottom: 6px; }
-table.claim-order td.brief { padding-right: 8px; }
-table.claim-order td .where, table.claim-order td .kind { display: block;
-  white-space: nowrap; color: var(--muted); font-size: 12.5px; }
-table.claim-order td .where { margin-top: 2px; }
-table.claim-order td.decide { width: 1%; white-space: nowrap; overflow-wrap: normal; }
-table.claim-order .claim-actions { display: flex; flex-wrap: nowrap; gap: 6px;
-  align-items: center; }
-table.claim-order .claim-actions form.inline { display: flex; gap: 6px; }
-table.claim-order .claim-actions button { margin: 0; }
-/* Quiet controls on every row: the arrows and Remove show a border only on hover or focus */
-table.claim-order .claim-actions button:not([value=accepted]) { background: transparent;
-  border-color: transparent; box-shadow: none; }
-table.claim-order .claim-actions button:not([value=accepted]):hover,
-table.claim-order .claim-actions button:not([value=accepted]):focus-visible {
-  border-color: var(--line-strong); background: var(--card); }
-table.claim-order .claim-actions button[name=delta] { min-width: 30px; padding: 0 6px;
-  font-size: 15px; color: var(--muted); }
-table.claim-order td.decide details > summary { color: var(--muted); }
-/* Remove stays apart from the reorder buttons, so a slip on Down does not land on it */
-table.claim-order .claim-actions form:last-child { margin-left: 14px; }
-table.claim-order td.decide details { margin-top: 6px; white-space: normal; }
-table.claim-order td.decide details > summary { white-space: nowrap; font-size: 13px; }
-table.claim-order td.decide textarea { width: 100%; min-width: 260px; margin: 6px 0; }
-
-/* Set up and run: a step strip, one row of actions per step, long text folded away */
-ol.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px;
-  padding: 0; counter-reset: none; }
-ol.steps li { margin: 0; }
-ol.steps a { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
-  color: var(--fg); text-decoration: none; font-size: 13px; }
-ol.steps a:hover { border-color: var(--line-strong); }
-ol.steps .n { display: inline-grid; place-items: center; width: 22px; height: 22px;
-  border-radius: 50%; background: var(--panel); color: var(--muted); font-size: 12px;
-  font-weight: 600; font-variant-numeric: tabular-nums; }
-ol.steps .ok .n { background: var(--accent); color: var(--card); }
-ol.steps .todo .n { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--card);
-  color: var(--accent); }
-ol.steps .state { color: var(--muted); font-size: 12px; }
-ol.steps .todo .state { color: var(--accent); font-weight: 500; }
-.inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
-  margin: 0 0 8px; }
-.inline-actions button, .inline-actions input { margin: 0; }
-.inline-actions .muted { font-size: 12.5px; flex: 1 1 260px; }
-.inline-actions a.button { border: 1px solid var(--line-strong); background: var(--card);
-  color: var(--fg); }
-.inline-actions a.button:hover { border-color: var(--muted); }
-form.plain { margin: 8px 0 16px; }
-form.plain > p.muted { font-size: 12.5px; max-width: 78ch; }
-table.files .coverage { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-table.files .coverage ul { margin: 4px 0 0; padding-left: 18px; }
-table.hashes td.hash { white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
-details.add-files { margin: 4px 0 8px; }
-details.add-files > summary { font-size: 13.5px; cursor: pointer; }
-details.add-files[open] > summary { margin-bottom: 10px; }
-.uploads { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
-.uploads form.box { margin: 0; }
-.uploads form.box p .muted { display: block; margin-top: 6px; font-size: 12.5px; }
-.uploads form.box label:has(> select) { margin: 0; }
-details.fold > p { max-width: 78ch; }
-.removed ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px;
-  padding: 0; }
-.removed li { display: inline-flex; align-items: center; gap: 8px; padding: 2px 4px 2px 10px;
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
-.removed li form.inline button { margin: 0; }
-ul.ready { list-style: none; margin: 0 0 14px; padding: 0; max-width: 78ch; }
-ul.ready li { position: relative; padding: 3px 0 3px 24px; }
-ul.ready li::before { content: ""; position: absolute; left: 3px; top: 9px; width: 10px;
-  height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
-ul.ready li.ok::before { background: var(--accent); box-shadow: none; }
-ul.ready li.todo::before { box-shadow: inset 0 0 0 1.5px var(--accent); }
-.checks { display: grid; gap: 10px; margin: 0 0 14px; }
-.checks label { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-weight: 400;
-  line-height: 1.5; cursor: pointer; }
-.checks input[type=checkbox] { margin: 3px 0 0; flex: none; }
-details.options { margin: 0 0 14px; }
-details.options > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
-details.options[open] > summary { margin-bottom: 10px; }
 
 /* Forms: labels above fields, 36px controls, one clear focus ring */
 form.inline { display: inline; }
@@ -466,12 +376,13 @@ details > summary::before { content: ""; display: inline-block; width: 5px; heig
 details[open] > summary::before { transform: rotate(45deg); vertical-align: 0.28em; }
 details > summary:hover::before { border-color: currentColor; }
 
-/* evidence cards and tier badges: small square-cornered labels, color only in the text */
+/* evidence cards and tier badges. One badge shape across the app (.badge, .verdict, .stpill
+   and the claim page's tags): 4px corners, a tint, no outline; the words carry the meaning. */
 .item { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px 18px; margin: 10px 0; }
 .item blockquote { background: none; border-left: 2px solid var(--line-strong);
   border-radius: 0; font-size: 14px; }
-.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
   margin: 0 6px 4px 0; border: 0; border-radius: 4px;
   font: 500 12px var(--sans); letter-spacing: 0; text-transform: none;
   color: var(--ink-2); background: var(--panel); }
@@ -479,12 +390,9 @@ details > summary:hover::before { border-color: currentColor; }
 .b-conf { color: var(--accent); background: var(--accent-bg); }
 .b-open { color: var(--fg); }
 .b-against { color: var(--con); background: var(--con-bg); }
-.b-flag { color: var(--muted); background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.b-flag { color: var(--muted); background: var(--panel); }
 .b-withheld { color: var(--muted); background: var(--panel); }
-.b-challenge { color: var(--muted); background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line-strong); }
-.b-agent { color: var(--muted); background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line-strong); }
+.b-challenge, .b-agent { color: var(--muted); background: var(--panel); }
 section.agent { background: var(--card); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 20px; margin: 16px 0; }
 section.agent ul.proposed { margin: 8px 0 12px; padding-left: 20px; max-width: 78ch; }
@@ -501,6 +409,7 @@ body .verdict::before { content: none; }
 .v-await { color: var(--accent); background: var(--accent-bg); }
 .v-confirm { color: var(--con); background: var(--con-bg); }
 .v-supai { color: var(--supai); background: var(--sup-bg); }
+.v-supchk, .v-supcou { color: var(--supai); background: var(--sup-bg); }
 body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 
 /* claims ledger: the queue, and the column beside a claim */
@@ -527,7 +436,7 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
    then the groups */
 .overview-head { display: flex; flex-wrap: wrap; align-items: center;
   justify-content: space-between; gap: 12px 40px; }
-.overview-head h1 { font: 600 24px/1.3 var(--sans); letter-spacing: -0.01em; margin: 0; }
+.overview-head h1 { font: 600 24px/1.3 var(--sans); letter-spacing: 0; margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px; margin: 24px 0 28px; }
 .tile { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px;
@@ -543,7 +452,7 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .tile.t-con .name::before { background: var(--con); }
 .tile.t-sup .name::before { background: var(--sup); }
 .tile.t-unp .name::before { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--unp); }
-.tile .n { font: 600 30px/1.25 var(--sans); letter-spacing: -0.01em;
+.tile .n { font: 600 30px/1.25 var(--sans); letter-spacing: 0;
   font-variant-numeric: tabular-nums; }
 .tile.t-you .n { color: var(--accent); }
 .nextup { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -608,7 +517,7 @@ aside.side .ledger li.on { box-shadow: inset 2px 0 0 var(--accent); background: 
 .claim-head h1 { font: 500 12.5px var(--sans); letter-spacing: 0; color: var(--muted);
   margin: 0; }
 .claim-head h1 .muted { color: var(--muted); }
-blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em;
+blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: 0;
   background: none; border-left: 2px solid var(--accent); border-radius: 0;
   padding: 0 0 0 18px; margin: 14px 0 10px; text-wrap: pretty; max-width: 72ch; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -624,7 +533,7 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
   padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .msg { max-width: 72%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
   background: var(--card); align-self: flex-start; }
-.msg.out { align-self: flex-end; background: var(--accent-bg); border-color: #d9e1ec; }
+.msg.out { align-self: flex-end; background: var(--accent-bg); border-color: var(--accent-bg); }
 .msg .who2 { font-size: 12.5px; color: var(--muted); }
 .msg .body { font-size: 14px; }
 .msg .t { font: 400 11px var(--sans); color: var(--muted); text-align: right; margin-top: 2px;
@@ -636,8 +545,8 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
 
 /* identities: a person, and each link with its records for and against */
 .lede { font-size: 14px; line-height: 1.6; }
-section.person { margin: 36px 0; padding-top: 24px; border-top: 1px solid var(--line); }
-h2.pname { font: 600 18px/1.35 var(--sans); letter-spacing: -0.005em; margin: 2px 0 8px; }
+section.person { margin: 48px 0; }
+h2.pname { font: 600 18px/1.35 var(--sans); letter-spacing: 0; margin: 2px 0 8px; }
 .idhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
   gap: 6px; }
 .idpair { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
@@ -683,7 +592,7 @@ details.case-settings form.settings { margin: 0; }
 main .gap > .meta:last-child { display: none; }
 /* Unpicked messages recede by tint, not opacity, so their metadata keeps its contrast. */
 main .bub.dim { opacity: 1; background: var(--panel); }
-main .bub.dim .body { color: #4a4740; }
+main .bub.dim .body { color: var(--muted); }
 main .bub .who2, main .bub .t, main .divider { font-size: 12px; }
 main > p, main > .flash, main .banner { max-width: 66ch; text-wrap: pretty; }
 

@@ -31,6 +31,7 @@ from core.contracts import (
     ModelRun,
     Stance,
     StanceLabel,
+    SupportedBasis,
     Verdict,
 )
 from core.db import connect
@@ -354,6 +355,15 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     order = cases.claim_order(case, conn)
     assert order.index("C05") == 2 and not set(proposed) & set(order)
     assert json.loads(case.settings_path.read_text())["claim_order"][2] == "C05"
+    moves = [
+        (actor, json.loads(p))
+        for actor, p in conn.execute(
+            "SELECT actor, payload_json FROM audit_log WHERE action = 'claim.move' ORDER BY seq"
+        )
+    ]
+    assert [m["claim_id"] for _, m in moves] == ["C05", "C05"]
+    assert [m["to"] for _, m in moves] == [m["from"] - 1 for _, m in moves]
+    assert moves[-1][1]["to"] == 3 and {a for a, _ in moves} == {"expert:Test Expert"}
 
 
 # ---------------------------------------------------------------- the background audit
@@ -390,7 +400,12 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     assert finished == order  # one log entry per claim, in the order they ran
 
     states = {cid: claim_state(conn, cid) for cid in order}
-    assert all(st.decision.verdict != Verdict.SUPPORTED for st in states.values())
+    # nobody reviewed anything: supported only where code checks carry it (rules 0.5.0, 3c')
+    assert all(
+        st.decision.verdict != Verdict.SUPPORTED
+        or st.decision.supported_basis is SupportedBasis.CHECKED
+        for st in states.values()
+    )
     page = get(app, "/run").text
     assert "Finished" in page and LABELING_INCOMPLETE not in page
     queue_page = get(app, "/claims").text

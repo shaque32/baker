@@ -637,6 +637,17 @@ def test_a_rewritten_rationale_must_match_exactly():
         item("complicates", stance_mod.NOT_THE_MESSAGE + "Invented. Sent at 9."), answer
     )
     assert not _same_label(item("complicates", "Invented. " + note), answer)
+    # a "supports" on a record that is not the quoted message (core/audit/stance.subject_label)
+    support = SimpleNamespace(stance="supports", quote="q", rationale="Same words.")
+    assert _same_label(item("complicates", stance_mod.NEAR_MISS + "Same words."), support)
+    assert _same_label(
+        item("irrelevant", stance_mod.NOT_THE_MESSAGE_SUPPORT + "Same words."), support
+    )
+    assert not _same_label(item("irrelevant", "Same words."), support)
+    assert not _same_label(item("complicates", stance_mod.NOT_THE_MESSAGE + "Same words."), support)
+    assert not _same_label(
+        item("irrelevant", stance_mod.NOT_THE_MESSAGE_SUPPORT + "Sent at 9."), answer
+    )
 
 
 # ------------------------------------------------------------ malformed bundles fail, not crash
@@ -1256,7 +1267,12 @@ def test_a_bundle_by_default_holds_only_what_the_verdicts_rest_on(scoped):
     shipped = {r["id"] for r in _member(path, f"{export.TABLES}evidence_items.jsonl")}
     withheld = _member(path, export.WITHHELD)
     left = {w["id"] for w in withheld if w["kind"] == "evidence"}
-    assert left and left <= dismissed and not left & shipped
+    # items no verdict rests on: dismissed ones, and labels code stored as irrelevant (a
+    # "supports" on a record that is not the quoted message, core/audit/stance.subject_label)
+    irrelevant = {
+        e for (e,) in conn.execute("SELECT id FROM evidence_items WHERE stance = 'irrelevant'")
+    }
+    assert left and left <= dismissed | irrelevant and not left & shipped
     # every item a verdict cites ships
     cited = {
         e

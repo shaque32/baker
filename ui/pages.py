@@ -24,6 +24,7 @@ from core import pipeline
 from core.audit import challenge, testability
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
+    AssumptionKind,
     CheckOutcome,
     ClaimType,
     EvidenceItem,
@@ -42,6 +43,8 @@ from core.report import why
 from core.report.fmt import e, q
 from core.report.html import (
     COVERAGE,
+    EXTRACTION,
+    SOURCE_KIND,
     STANCE_LABEL,
     audit_log_summary,
     build_label,
@@ -67,7 +70,7 @@ from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
-from core.report.selection import claim_note
+from core.report.selection import claim_note, direction_words, sender_words, shows_side
 from core.report.timeline import CSS as TIMELINE_CSS
 from core.review import activity, device_names
 from core.review import flags as F
@@ -124,6 +127,7 @@ class Page:
         path: str = "",
         cloud: bool = False,
         case_key: str = "",
+        stand_in: str = "",
     ):
         self.token = token
         self.case_key = case_key  # names the open case in every form, so a stale tab's post
@@ -136,6 +140,8 @@ class Page:
         self.many_cases = many_cases  # the screen was started on a cases folder
         self.path = path  # the page's own path, to mark its tab
         self.cloud = cloud  # the open case sends stance questions to the cloud model
+        # the folded demo or test-run banner (stand_in_note), on every page of the case
+        self.stand_in = stand_in
 
     def form(
         self, action: str, body: str, cls: str = "box", back: str = "", anchor: str = ""
@@ -213,7 +219,8 @@ class Page:
             )
             + f"{who}<a href='/help' class='help'>Help</a></div></div>"
             f"<nav class='tabs'>{links}</nav></header>"
-            f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
+            f"<main{' class=wide' if wide else ''}>"
+            f"{notice}{flash}{self.stand_in}{banner}{body}</main>"
             "</body></html>"
         )
 
@@ -227,6 +234,7 @@ TAB_GROUPS = [
         ("/selection", "Selection"),
         ("/timeline", "Timeline"),
         ("/gaps", "Gaps"),
+        ("/request-letter", "Request letter"),
     ],
     [
         ("/setup", "Set up and run"),
@@ -241,7 +249,7 @@ def _tab(path: str) -> str:
     """The tab a page sits under: a claim and its evidence under the queue."""
     if path in ("/claim", "/evidence", "/claim/new"):
         return "/claims"
-    if path in ("/exhibit", "/exhibit/match", "/request-letter"):
+    if path in ("/exhibit", "/exhibit/match"):
         return "/exhibits"
     if path == "/selection/context":
         return "/selection"
@@ -263,8 +271,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     out = []
     if run.get("partial"):
         out.append(partial_banner(conn, run))
-    if run.get("fake"):
-        out.append(_folded(stand_in_banner(run)))  # every word stays, under its first sentence
+    # a stand-in run's banner (demo or test run) is on every page: Page.stand_in
     later = conn.execute(
         "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         " AND decided_at_utc > ?",
@@ -299,11 +306,20 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     return "".join(out)
 
 
+def stand_in_note(conn: sqlite3.Connection) -> str:
+    """The demo's or a test run's banner, folded to its first sentence, for every page of the
+    case (Page.stand_in), so no page shows scripted decisions without saying so."""
+    run = pipeline.view_run(conn)
+    if run is None or not run.get("fake"):
+        return ""
+    return _folded(stand_in_banner(run))  # every word stays, under its first sentence
+
+
 def _folded(banner: str) -> str:
     """A notice banner folded to its bold first sentence; the rest opens under it. Every word
-    stays on the page."""
+    stays on the page. The first sentence reads as the fold's title, so it drops its period."""
     head, rest = banner.split("</strong>", 1)
-    head = head.replace("<div class='banner'>", "", 1)
+    head = head.replace("<div class='banner'>", "", 1).removesuffix(".")
     rest = rest.removesuffix("</div>")
     return (
         f"<div class='banner'><details><summary>{head}</strong></summary>"
@@ -381,8 +397,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
 def _case_status(states: list[ClaimState]) -> str:
     """One action (the claims waiting on the expert), then the counts grouped as the Claims
     screen groups them, each linking to its section there."""
-    by = Counter(_group(st) for st in states)
-    waiting = by["you"]
+    by = Counter(_verdict_group(st) for st in states)
+    waiting = sum(1 for st in states if needs_you(st))
     action = (
         f"{waiting} {'claim needs' if waiting == 1 else 'claims need'} you"
         if waiting
@@ -410,8 +426,10 @@ def _case_setup(conn: sqlite3.Connection) -> str:
     rows = []
     for dev_id, label, _model, source_id in devices:
         st = stips.get(dev_id)
+        # the stipulation in words: the device's id is in its name's hover title, not the text
         who = (
-            f"Stipulated: {q(st.statement)}"
+            f"<span title='{e(dev_id)}'>Stipulated: "
+            f"{q(st.statement.replace(f' ({dev_id})', ''))}</span>"
             if st is not None and st.status == StipulationStatus.CONFIRMED
             else "<span class='ov-none'>no stipulated user</span>"
         )
@@ -420,7 +438,7 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         # the device on the left, with its source id under it; who used it on the right
         rows.append(
             f"<li id='dev-{e(dev_id)}'><span class='ov-dev'><b>{q(label)}</b> "
-            f"<span class='mono'>{e(source_id)}</span></span>"
+            f"<span class='src'>From {e(source_id)}</span></span>"
             f"<span class='ov-who'>{who}{called}</span></li>"
         )
     if not rows:
@@ -515,10 +533,10 @@ def _format_notices(conn: sqlite3.Connection) -> str:
     untested = sum(1 for c in checks if not c.tested)
     n = len(checks)
     head = (
-        f"{untested} of {n} file{'' if n == 1 else 's'} come from an export version not tested "
-        "with Mabillon. Check results against the source tool."
+        f"{untested} of {n} file{'' if n == 1 else 's'} come from an untested export format. "
+        "Check results against the source tool."
         if untested
-        else f"Format notices for {n} file{'' if n == 1 else 's'}."
+        else f"Format notices for {n} file{'' if n == 1 else 's'}"
     )
     notices = "".join(format_notice(c) for c in checks)
     return (
@@ -738,13 +756,20 @@ def needs_you(st: ClaimState) -> bool:
 
 
 def _group(st: ClaimState) -> str:
-    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
-        return "not"  # no verdict was decided: not a gap in the data
+    """Where the claim's row sits: waiting on the expert first, else under its verdict."""
     if needs_you(st):
         return "you"
+    return _verdict_group(st)
+
+
+def _verdict_group(st: ClaimState) -> str:
+    """The claim's verdict group, whether or not it waits on the expert. The counts use this,
+    so the verdict counts add up to every claim and "Needs you" is a count across them."""
+    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
+        return "not"  # no verdict was decided: not a gap in the data
     if st.css == "v-con":
         return "con"
-    if st.css in ("v-sup", "v-supai"):
+    if st.css in ("v-sup", "v-supai", "v-supchk", "v-supcou"):
         return "sup"
     return "unp"
 
@@ -759,6 +784,8 @@ def _claim_row(st: ClaimState, group: str) -> str:
     if group == "you":  # why it waits on the expert: the most urgent need, in its words
         lines = _you_lines(st)
         note = f"<div class='needs'>{e(lines[0])}</div>" if lines else ""
+    elif needs_you(st):  # listed under its verdict too: say it is also in the to-do above
+        note = "<span class='gap you'>Needs you</span>"
     if group in ("you", "unp"):  # why it is unproven: the topics; the claim page says the rest
         note += "".join(f"<span class='gap'>{e(topic)}</span>" for topic, _ in st.explain_lines())
     # a status that repeats its group's heading word for word is left to the heading
@@ -829,20 +856,22 @@ def claims_queue(conn: sqlite3.Connection, page: Page, next_step: str | None = N
     says so instead of "Nothing waits on you")."""
     states = queue(conn)
     by: dict[str, list[ClaimState]] = {g: [] for g, _ in GROUPS}
-    for st in states:
-        by[_group(st)].append(st)
+    for st in states:  # each claim under its verdict; one that waits on you is also under "you"
+        if needs_you(st):
+            by["you"].append(st)
+        by[_verdict_group(st)].append(st)
     you, total = len(by["you"]), len(states)
     proposed = conn.execute("SELECT COUNT(*) FROM claims WHERE status = 'proposed'").fetchone()[0]
     if not total:
         head = "No claims yet"
     elif you:
-        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you."
+        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you"
     elif proposed:
-        head = f"{proposed} proposed claim{'s' if proposed != 1 else ''} wait for your decision."
+        head = f"{proposed} proposed claim{'s' if proposed != 1 else ''} wait for your decision"
     elif next_step:
-        head = "Not audited yet."
+        head = "Not audited yet"
     else:
-        head = "Nothing waits on you."
+        head = "Nothing waits on you"
     lede = ""
     if proposed:
         lede = (
@@ -855,7 +884,8 @@ def claims_queue(conn: sqlite3.Connection, page: Page, next_step: str | None = N
     out = [
         "<div class='pg-claims'>"
         f"<div class='overview-head'><h1>{e(head)}</h1>"
-        "<a class='button' href='/claim/new'>Add a claim</a></div>" + lede,
+        "<span class='head-acts'><a href='/help#words'>What the words mean</a> "
+        "<a class='button' href='/claim/new'>Add a claim</a></span></div>" + lede,
         "<nav class='tiles' aria-label='Claims by finding'>"
         + "".join(_tile(g, name, len(by[g])) for g, name in GROUPS if by[g] or g != "not")
         + "</nav>",
@@ -869,7 +899,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page, next_step: str | None = N
         if not by[g]:
             continue
         title = "Also waiting on you" if g == "you" else name
-        folded = g in ("con", "sup") and bool(by["you"])
+        folded = g == "sup" and bool(by["you"])  # contradicted stays open: the key findings
         # the heading keeps only the count; a folded group leaves it to its "Show N claims" line
         count = "" if folded else f"{len(rows)} claim{'s' if len(rows) != 1 else ''}"
         out.append(
@@ -963,8 +993,11 @@ def evidence_card(
     threads: dict[str, list[str]] | None = None,
     challenged: frozenset[str] = frozenset(),
     around_link: bool = True,
+    same_as: str | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
+    same_as: the card above on the page for the same record (another assumption's item); this
+    card then shows the verified quote and points up, rather than drawing the messages again.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
     around: messages shown either side of the record, as a conversation (0: the quote only).
     threads: the page's cache of thread orders, so many cards read each thread once.
@@ -982,7 +1015,12 @@ def evidence_card(
         if confirm
         else _decide_form(page, item, last_kind == "expert", back)
     )
-    shown, thread = _conversation(conn, item, around, threads, folded=settled)
+    shown, thread = _conversation(conn, item, 0 if same_as else around, threads, folded=settled)
+    if same_as:
+        shown += (
+            f"<p class='ev-same'>The same message as <a href='#{e(same_as)}'>the item above</a>, "
+            "judged here for this assumption.</p>"
+        )
     folds = ""  # a settled item's disclosures open on the card's last line
     if settled:
         folds = (
@@ -1009,7 +1047,9 @@ def evidence_card(
         )
         + "</div>"
         + shown
-        + f"<p class='ev-rec'>{record_line(conn, item.record_id, found)}</p>"
+        # the time above is the case's zone; this line keeps the export's own values
+        + "<p class='ev-rec'><span class='ev-asx'>As exported:</span> "
+        + f"{record_line(conn, item.record_id, found)}</p>"
         + f"<p class='ev-src muted'>{source_line(conn, item.ref.source_id, item.ref.locator)}</p>"
         + (
             f"<p>{rationale_html(item, withheld)}</p>"
@@ -1087,7 +1127,7 @@ def _conversation(
     lines = build_context(conn, item.record_id, around, threads=threads) if around else []
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
         return quote, ""
-    thread = f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
+    thread = f"<div class='thread mini'>{_msgs(lines)}</div>"
     whole = any(ln.is_target and ln.body.strip() == item.quote.strip() for ln in lines)
     # the quote is the whole highlighted message: the bubble already shows it, word for word
     quoted = (
@@ -1102,17 +1142,43 @@ def _conversation(
     return thread + quoted, ""
 
 
-def _msg(ln: ContextLine) -> str:
-    """One message as a chat bubble; the record under review is highlighted."""
-    shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
+def _msgs(lines: list[ContextLine]) -> str:
+    """Messages as chat bubbles. As a chat app does, a sender is named again only when the
+    account on that side of the conversation changes, and always on the record under review;
+    the bubble's side gives the direction, which also sits in the sender's hover title."""
+    others = {ln.sender for ln in lines if ln.direction != "outgoing"}
+    out: list[str] = []
+    last: dict[str, tuple[str, str | None, str, str]] = {}
+    for ln in lines:
+        # an outgoing message to the one account seen answering here needs no "to"
+        to = "" if others == {ln.to} else ln.to
+        key = (ln.sender, ln.shown_as, to, ln.direction)
+        side = "out" if ln.direction == "outgoing" else "in"  # as _msg draws it
+        same = last.get(side) == key and shows_side(ln.direction) and not ln.is_target
+        out.append(_msg(ln, to, same=same))
+        last[side] = key
+    return "".join(out)
+
+
+def _msg(ln: ContextLine, to: str, same: bool = False) -> str:
+    """One message as a chat bubble; the record under review is highlighted. same: the last
+    bubble on this side has the same sender, so this one leaves the sender line off. to: the
+    recipients, when the conversation shown does not already make them plain."""
     side = " out" if ln.direction == "outgoing" else ""
     tag = "<span class='cited'>This record</span>" if ln.is_target else ""
-    return (
-        f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
-        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}"
-        + (f" · to {q(ln.to)}" if ln.to else "")
+    who = (
+        ""
+        if same
+        else f"<div class='who2' title='{e(ln.direction)}'>"
+        + sender_words(ln.sender, ln.shown_as)
+        + (f" to {q(to)}" if to else "")
+        + direction_words(ln.direction)
         + "</div>"
-        f"<div class='body'>{q(ln.body)}</div>"
+    )
+    return (
+        f"<div class='msg{side}{' target' if ln.is_target else ''}{' cont' if same else ''}'>"
+        + who
+        + f"<div class='body'>{q(ln.body)}</div>"
         f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
     )
 
@@ -1285,11 +1351,15 @@ def flags_overview(conn: sqlite3.Connection) -> str:
     return (
         "<section class='logflags'>"
         "<h2 id='flags'>Flags</h2>"
+        "<p class='muted'>A flag is your note that a label or verdict looks wrong. Flags never "
+        "change a verdict. The summary below is a download of counts only, for you to share "
+        "with the Mabillon team if you choose.</p>"
         f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}"
         "</p>"
         "<form method='get' action='/flags/summary.json' class='flagform'>"
-        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)' "
-        "aria-label='Pilot name (optional)'> "
+        "<input type='text' name='pilot' maxlength='60' "
+        "placeholder='Pilot name, if you are in a pilot (optional)' "
+        "aria-label='Pilot name, if you are in a pilot (optional)'> "
         "<button type='submit'>Download the redacted summary</button>"
         "<p class='muted'>Counts, labels and versions only: no case text, names or ids. Nothing "
         "is sent.</p></form></section>"
@@ -1383,6 +1453,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     if needs:
         out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for t in needs) + "</ul>")
     out.append(_gap_lines(st))  # the same lines as the report
+    out.append(_coverage_lines(conn, st))
     out.append(_claim_notices(conn, st))
     out.append(forwarded_warning(conn, st))
     out.append(mixed_app_note(conn, st))
@@ -1415,10 +1486,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             "so the verdict rules contradict it whatever the evidence says. The records that "
             "check cites are the evidence; the model was not asked to label any.</p>"
         )
+        out.append(_failed_check_records(conn, st))
     elif st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
-        out.append(f"<p class='warn'><strong>{e(st.not_tested or '')}</strong></p>")
+        out.append(_not_tested_block(conn, st))
         if "matches no person" in (st.not_tested or ""):
             out.append(
                 "<p><a href='/identities'>Add the name on Identities</a>; the next audit can then "
@@ -1431,12 +1503,16 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
         )
     groups = _groups(st)
-    if not groups and not st.untested:  # an untested claim searched nothing, as it says above
+    failed_cited = any(ch.outcome is CheckOutcome.FAIL and ch.record_ids for ch in st.checks)
+    if not groups and not st.untested and not (st.unlabeled and failed_cited):
+        # an untested claim searched nothing, as it says above; a failed check's records show
+        # above as that check's evidence
         out.append("<p class='muted'>No relevant evidence items.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     challenged = challenge.found_items(conn, pipeline.view_run(conn))
+    drawn: dict[str, str] = {}  # record id -> the first card on the page that draws it
     for title, group in groups:
         out.append(f"<h3 class='ev-group'>{e(title)} <span>({len(group)})</span></h3>")
         shown_on = None
@@ -1461,8 +1537,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     around=AROUND,
                     threads=threads,
                     challenged=challenged,
+                    same_as=drawn.get(x.record_id),
                 )
             )
+            drawn.setdefault(x.record_id, x.id)
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     out.append("<div class='claim-more'>")
     if hidden:
@@ -1484,6 +1562,86 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _coverage_lines(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """For a records-coverage gap (an absence claim), what the check searched and what each
+    source's coverage allows, in the verdict box: "not found" never reads as "did not happen".
+    The same text stays in Rules' working."""
+    if AssumptionKind.COMPLETENESS not in st.gaps():
+        return ""
+    kinds = {a.id: a.kind for a in st.assumptions}
+    out = [
+        f"<p class='gap-detail'><b>Searched</b> {plain_ids(conn, ch.searched)}</p>"
+        f"<p class='gap-detail'><b>Found</b> {plain_ids(conn, ch.detail)}</p>"
+        for ch in st.checks
+        if kinds.get(ch.assumption_id) is AssumptionKind.COMPLETENESS
+        and ch.outcome is not CheckOutcome.PASS
+    ]
+    return "".join(out)
+
+
+def _not_tested_block(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """An untested claim: the plain sentence first, code's refusals folded under it as written,
+    and the other claims read from the same paragraph, which may have been tested."""
+    text = st.not_tested or ""
+    head, sep, refused = text.partition(" Refused: ")
+    out = [f"<p class='warn'><strong>{e(head)}</strong></p>"]
+    if sep:
+        out.append(
+            "<details class='why-tech'><summary>Why code could not set it up</summary>"
+            f"<p class='muted'>Refused: {Names(conn).for_claim(st.claim.text).html(refused)}</p>"
+            "</details>"
+        )
+    para = st.claim.paragraph_id
+    same = [
+        o
+        for o in claim_states(conn)
+        if o.claim.id != st.claim.id and o.claim.paragraph_id == para and not o.untested
+    ]
+    if same:
+        out.append(
+            "<p>Other claims from the same paragraph: "
+            + ", ".join(
+                f"<a href='{e(link('/claim', id=o.claim.id))}'>{e(o.name)}</a> ({e(o.label)})"
+                for o in same
+            )
+            + ". Their records may answer this one.</p>"
+        )
+    return "".join(out)
+
+
+FAILED_CITED_SHOWN = 12  # records listed per failed check; the rest are counted
+
+
+def _failed_check_records(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """The records each failed check cites, as the evidence of a claim the rules contradict on
+    that check, so the page never says "no evidence" beside a contradiction. Display only: the
+    check, its records and the verdict are as stored."""
+    by_assumption = {a.id: a for a in st.assumptions}
+    out = []
+    for ch in st.checks:
+        if ch.outcome is not CheckOutcome.FAIL or not ch.record_ids:
+            continue
+        a = by_assumption.get(ch.assumption_id)
+        n = len(ch.record_ids)
+        head = f"Records the failed check cites ({n})" + (
+            f" · Assumption: {plain_ids(conn, a.text)}" if a is not None else ""
+        )
+        items = []
+        for rid in ch.record_ids[:FAILED_CITED_SHOWN]:
+            href = e(link("/selection/context", id=rid))
+            ctx = (
+                f" · <a href='{href}'>See it in its conversation</a>"
+                if rid.startswith("msg:")
+                else ""
+            )
+            items.append(f"<li>{record_line(conn, rid)}{ctx}</li>")
+        more = n - FAILED_CITED_SHOWN
+        if more > 0:
+            items.append(f"<li class='muted'>and {more} more, listed under Rules' working</li>")
+        out.append(f"<h3 class='ev-group'>{head}</h3><ul class='cited'>{''.join(items)}</ul>")
+    return "".join(out)
 
 
 def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
@@ -1524,9 +1682,9 @@ def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
         return notices
     untested = notices.count("<p class='format-notice warn'")
     head = (
-        f"{untested} of {n} files come from an export version not tested with Mabillon."
+        f"{untested} of {n} files come from an untested export format"
         if untested
-        else f"Format notices for {n} files."
+        else f"Format notices for {n} files"
     )
     return f"<details class='fmt'><summary><strong>{e(head)}</strong></summary>{notices}</details>"
 
@@ -1816,7 +1974,8 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
             anchor="verdict",
         )
         + "<p class='muted'>A confirmation or override applies to this run's verdict. After "
-        "re-running the verdicts, confirm again.</p></details>"
+        "re-running the verdicts, confirm again. Supported needs supporting evidence you "
+        "accepted on this claim, which the verdict then cites.</p></details>"
     )
 
 
@@ -1913,7 +2072,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:
         out.append("<div class='thread'>")
-        out.extend(_msg(ln) for ln in lines)
+        out.append(_msgs(lines))
         out.append("</div>")
     else:
         out.append("<p class='muted'>No surrounding messages for this kind of record.</p>")
@@ -1939,6 +2098,19 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
 # ---------------------------------------------------------------- add a claim
 
 
+# what each claim type covers, in a few words, on the Add a claim form
+CLAIM_TYPE_HINT = {
+    ClaimType.COMMUNICATION: "someone sent, received or said something",
+    ClaimType.IDENTITY: "who is behind an account, number or name",
+    ClaimType.TIMING: "when something happened, or in what order",
+    ClaimType.CONTENT_MEANING: "what words in a message mean",
+    ClaimType.COUNT: "how many messages, calls or contacts",
+    ClaimType.ABSENCE: "something did not happen, or no contact took place",
+    ClaimType.ROLE: "what part a person played",
+    ClaimType.EVENT: "an act or event outside the phone records",
+}
+
+
 def new_claim_page(
     conn: sqlite3.Connection, page: Page, draft: dict[str, str] | None = None
 ) -> str:
@@ -1961,8 +2133,9 @@ def new_claim_page(
         groups.setdefault(title or "", []).append(
             f"<label class='para-pick'><input type='radio' name='paragraph' value='{e(pid)}'"
             + (" checked" if pid == chosen else "")
-            + f" required><span class='where'>Page {pg}, paragraph "
-            f"{e(label or '#' + str(no))}</span><span class='text'>{q(text)}</span></label>"
+            + " required><span class='where'>Page "
+            + (f"{pg}, paragraph {e(label)}" if label else f"{pg}, unnumbered text {no}")
+            + f"</span><span class='text'>{q(text)}</span></label>"
         )
     opts = "".join(
         f"<fieldset class='paras'><legend>{e(title or 'The document')}</legend>"
@@ -1972,7 +2145,7 @@ def new_claim_page(
     types = "".join(
         f"<option value='{t.value}'"
         + (" selected" if draft.get("type") == t.value else "")
-        + f">{e(t.value.replace('_', ' '))}</option>"
+        + f">{e(t.value.replace('_', ' '))}: {e(CLAIM_TYPE_HINT[t])}</option>"
         for t in ClaimType
     )
     body = "<h1>Add a claim</h1>"
@@ -2052,6 +2225,9 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
     out = [
         "<div class='pg-log'>",
         "<h1>Audit log</h1>",
+        "<p class='lede'>Every step taken in this case, by Mabillon and by you, in order. Each "
+        "entry is chained to the one before, so a changed or missing entry shows. Page views "
+        "are entries too, so the count grows as you look around.</p>",
         status,
         f"<p class='chainmeta'>{summary['entries']} entries · last hash <span class='mono'>"
         f"{e(summary['last_hash'])}</span></p>",
@@ -2155,6 +2331,9 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     out = [
         "<div class='pg-activity'>",
         "<h1>Activity</h1>",
+        "<p class='lede'>Which claims and evidence you opened, and for how long. It stays out "
+        "of the report unless you include it below; once included, anyone who reads the report "
+        "sees it.</p>",
         "<details class='howcounted'><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
@@ -2248,6 +2427,24 @@ def error_page(page: Page, status: int, message: str) -> str:
         "Error",
         f"<div class='pg-error'><h1>{status}</h1><p class='lede'>{e(message)}</p>"
         f"<p class='actions'>{back}<a href='/help'>Help</a></p></div>",
+    )
+
+
+def stored_verdict_page(page: Page, message: str, back: str) -> str:
+    """A stored verdict the contract refuses (core/pipeline.py StoredVerdictInvalid): no page
+    of the case can show it, so this says why and offers the one repair, a verdict re-run
+    (core/review/redecide.py), which decides every claim again under the rules."""
+    return page.wrap(
+        "A stored verdict needs a re-run",
+        "<div class='pg-error'><h1>A stored verdict cannot be shown</h1>"
+        f"<p class='lede'>{e(message[:1].upper() + message[1:])}</p>"
+        + page.form(
+            "/redecide",
+            "<button type='submit'>Re-run the verdicts</button> <span class='muted'>No model "
+            "runs. Confirm or override the verdicts again afterwards.</span>",
+            back=back,
+        )
+        + "<p class='actions'><a href='/help'>Help</a></p></div>",
     )
 
 
@@ -2460,6 +2657,7 @@ def setup_page(
     cloud_key_from: str | None = None,  # core.llm.cloud.key_source
     model_ok: bool | None = None,  # the last model check passed, failed, or none ran
     audited: str | None = None,  # the date of the last finished audit, if one finished
+    backup_root: str | None = None,  # where a backup goes by default; None: no backup here
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
@@ -2471,7 +2669,7 @@ def setup_page(
     out.append(_step_strip(ready, audit_busy, model_ok))
 
     # 1. files
-    out.append("<h2 id='files'>1. Files</h2>")
+    out.append("<h2 id='files'>Files</h2>")
     srcs = sources(conn)
     hashes: list[str] = []
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
@@ -2491,7 +2689,14 @@ def setup_page(
                 ).fetchone()[0]
                 recs = f"{n} paragraphs"
             else:
-                what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
+                ext = {"unknown": ", extraction type not known", "not_applicable": ""}.get(
+                    extraction, f", {EXTRACTION.get(extraction, extraction).lower()} extraction"
+                )
+                what = (
+                    f"{e(SOURCE_KIND.get(kind, kind))}{e(ext)}"
+                    f"<div class='coverage made-by' title='{e(kind)}, {e(extraction)}'>Made by "
+                    f"{e(tool)} {e(tver or '')}</div>"
+                )
                 fc = tested.for_source(conn, sid)
                 what += format_notice(fc) if fc is not None else ""
                 cov = e(COVERAGE.get(fidelity, fidelity)) + _import_coverage(conn, sid)
@@ -2566,7 +2771,7 @@ def setup_page(
     )
 
     # 2. claims
-    out.append("<h2 id='claims'>2. Claims</h2>")
+    out.append("<h2 id='claims'>Claims</h2>")
     claims = {c.id: c for c in pipeline.load_claims(conn, include_removed=True)}
     has_paras = conn.execute("SELECT 1 FROM govdoc_paragraphs LIMIT 1").fetchone() is not None
     if not has_paras:
@@ -2653,12 +2858,12 @@ def setup_page(
         out.append(_events_box(conn, page, audit_busy))
 
     # 3. owners, then the other people the document names
-    out.append("<h2 id='owners'>3. Who used each phone</h2>")
+    out.append("<h2 id='owners'>Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
     out.append(_identities_step(conn))
 
     # 4. model and run: the local model first, since every case needs it
-    out.append("<h2 id='model'>4. The model</h2>")
+    out.append("<h2 id='model'>The model</h2>")
     if cloud is not None:
         out.append("<h3>The local model</h3>")
     if model_lines:
@@ -2701,7 +2906,7 @@ def setup_page(
             "the cloud.</p>"
         )
 
-    out.append("<h2 id='run'>5. Run the audit</h2>")
+    out.append("<h2 id='run'>Run the audit</h2>")
     blocking = [r for r in ready if not r.ok and r.blocks and r.acknowledge is None]
     out.append(
         "<ul class='ready'>"
@@ -2761,6 +2966,8 @@ def setup_page(
             )
         )
     out.append(encryption_section(page, protection, busy, recovery_key is not None))
+    if backup_root is not None:
+        out.append(backup_section(page, busy, backup_root, protection))
     # No refresh while the recovery key is on screen: it must not vanish mid-copy.
     refresh = 10 if busy and recovery_key is None else None
     return page.wrap("Set up and run", "".join(out), refresh=refresh)
@@ -2892,6 +3099,33 @@ def recovery_box(page: Page, key: str | None, unconfirmed: bool = False) -> str:
             back="/setup",
         )
         + "</div>"
+    )
+
+
+def backup_section(page: Page, busy: bool, root: str, protection: str) -> str:
+    """Back up this case (core/casework/backup.py): a verified copy of the whole folder."""
+    off = " disabled" if busy else ""
+    wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
+    kept = (
+        "The backup stays encrypted and opens with the same passphrase or recovery key."
+        if protection != "plain"
+        else "This case is not encrypted, so neither is its backup."
+    )
+    return (
+        "<h2 id='backup'>Backup</h2>"
+        "<p>Makes a new folder with a verified copy of this case: its database, audit log, "
+        f"settings and file copies. {e(kept)} Copy that folder to a drive kept off this "
+        "computer. To restore, copy the backup folder whole into the cases folder; it opens as a "
+        "case.</p>"
+        + wait
+        + page.form(
+            "/case/backup",
+            "<label>Folder to make the backup in <input type='text' name='to' size='40' "
+            f"placeholder='{e(root)}' aria-label='Folder to make the backup in'></label> "
+            f"<button type='submit'{off}>Back up this case</button>",
+            back="/setup",
+            anchor="backup",
+        )
     )
 
 
@@ -3129,7 +3363,7 @@ def run_page(
 ) -> str:
     running = job is not None and getattr(job, "running", False)
     check_failed = False  # the job's model check failed: its lines already say what to do
-    out = ["<h1>Audit progress</h1>"]
+    out = ["<h1>Audit progress</h1>"]  # under Set up and run
     if job is not None:
         if running:
             out.append(
@@ -3187,8 +3421,14 @@ def run_page(
         )
     view = pipeline.view_run(conn)
     labels = {}
-    if view is not None and view["run_id"] == run["id"]:
+    # the verdicts on screen come from this audit, or from a verdict re-run on its labels
+    if view is not None and run["id"] in (view["run_id"], view.get("from_run")):
         labels = {st.claim.id: st for st in claim_states(conn, run=view)}
+        if view["run_id"] != run["id"]:
+            out.append(
+                "<p class='muted'>Findings are from the verdicts re-run after expert review "
+                f"(<span class='mono'>{e(view['run_id'])}</span>) on this audit's labels.</p>"
+            )
     if not labels:
         out.append(
             "<p class='muted'>Findings show here and on Claims once this run is the one on "

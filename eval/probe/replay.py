@@ -684,7 +684,7 @@ def _load_model(models: Path, name: str | None, n_ctx: int) -> Any:
         ModelSpec,
         with_runtime,
     )
-    from eval.bench.fair_steps import pick_entry
+    from eval.probe.model_entry import pick_entry
 
     entry = pick_entry(json.loads(models.read_text(encoding="utf-8")), name)
     spec = ModelSpec(name=entry["name"], path=Path(entry["path"]).expanduser(),

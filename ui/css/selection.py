@@ -24,16 +24,13 @@ CSS = (
 .pg-selection details.terms[open] > summary { margin-bottom: 8px; }
 .pg-selection details.terms > p { max-width: 64ch; font-size: 13px; }
 .pg-selection > .banner { max-width: 64ch; }
-.pg-selection > ul { list-style: none; padding: 0; margin: 4px 0 8px; max-width: 860px;
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-.pg-selection > ul > li { padding: 10px 16px; border-top: 1px solid var(--line);
+.pg-selection > ul { list-style: none; padding: 0; margin: 4px 0 8px; max-width: 860px; }
+.pg-selection > ul > li { padding: 8px 0; border-bottom: 1px solid var(--line);
   font-size: 13.5px; line-height: 1.5; }
-.pg-selection > ul > li:first-child { border-top: 0; }
 
 /* section headings read as headings, not small labels */
 .pg-selection > h3.eyebrow, .pg-selection > h3#paired-audit { font: 600 18px/1.35 var(--sans);
-  letter-spacing: -0.005em; color: var(--fg); margin: 56px 0 8px; padding-top: 24px;
-  border-top: 1px solid var(--line); }
+  letter-spacing: 0; color: var(--fg); margin: 72px 0 8px; }
 .pg-selection > h4 { font: 600 15px/1.4 var(--sans); margin: 36px 0 8px; }
 
 /* one paragraph, exhibit or tag set */
@@ -62,22 +59,22 @@ CSS = (
   border-radius: var(--radius); }
 .pg-selection .sel-passage .sel-passage > .foot { border-top: 0; padding: 8px 0 0; }
 
-/* messages: flat tinted shapes. The chip text names each state; the ring only repeats it.
-   A picked message keeps the report's soft yellow fill. */
+/* messages: flat tinted shapes, no outlines. Messages left out of the exchange take the page
+   tint and muted text. The chip text names each state; a picked message keeps the report's
+   soft yellow fill and its ring. */
 .pg-selection .bub { border: 0; border-radius: 12px; padding: 8px 12px; box-shadow: none; }
 .pg-selection .bub:not(.pick) { background: var(--card); }
 .pg-selection .bub.out:not(.pick) { background: var(--accent-bg); }
-.pg-selection .bub.dim:not(.pick) { background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line-strong); }
-.pg-selection .bub.dim .body { color: var(--ink-2); }
+.pg-selection .bub.dim:not(.pick) { background: var(--bg); }
+.pg-selection .bub.dim .body { color: var(--muted); }
 .pg-selection .bub.pick { border: 0; box-shadow: inset 0 0 0 1.5px var(--amber); }
 .pg-selection .bub.left { border: 0; outline: 1.5px dashed var(--con); outline-offset: -1.5px; }
 .pg-selection .bub .who2 { font-size: 12px; }
 .pg-selection .bub .body { font-size: 14px; line-height: 1.5; margin: 1px 0 2px; }
 .pg-selection .bub .t { font-size: 12px; gap: 4px 8px; }
 .pg-selection .tag { border-radius: 4px; padding: 2px 7px; font-weight: 500; font-size: 12px; }
-.pg-selection .divider { border: 0; background: var(--card); padding: 2px 10px;
-  border-radius: 999px; font-size: 12px; }
+.pg-selection .divider { border: 0; background: none; padding: 2px 0; border-radius: 0;
+  font-size: 12px; color: var(--muted); }
 
 /* the paired check: a ruled section, its tables keep their own frame */
 .pg-selection .pair { background: none; border: 0; border-top: 1px solid var(--line);
@@ -94,7 +91,7 @@ CSS = (
 @media (max-width: 600px) {
   .pg-selection .sel-passage > .in { padding: 12px 14px; }
   .pg-selection .sel-convo { padding: 12px 10px; }
-  .pg-selection > ul > li { padding: 10px 12px; }
+  .pg-selection > ul > li { padding: 8px 0; }
 }
 """
     + context_table_css(".pg-context")

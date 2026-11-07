@@ -166,12 +166,35 @@ jobs:
           python packaging/safari_scroll.py --demo http://127.0.0.1:8766 --driver http://127.0.0.1:4444 \
             2>&1 | tee "$RUNNER_TEMP/ui/safari-scroll.log"
 
+      # The Mac app: Mabillon in its own window (WebKit through pywebview). Report only until it has
+      # been seen working on a real Mac.
+      - name: The Mabillon Demo app opens the demo in its own window
+        continue-on-error: true
+        run: |
+          set -x
+          test -f ~/Applications/"Mabillon Demo.app"/Contents/Info.plist
+          test -x ~/Applications/"Mabillon Demo.app"/Contents/MacOS/Mabillon
+          pkill -f "mabillon (serve|demo)" || true  # the launchers' screens, so the app starts its own
+          sleep 3
+          open ~/Applications/"Mabillon Demo.app"
+          for i in $(seq 90); do grep -q "GET /cases" ~/Library/Logs/Mabillon.log 2>/dev/null && break; sleep 1; done
+          sleep 5
+          screencapture -x "$RUNNER_TEMP/ui/mac-app-window.png" || true
+          cp ~/Library/Logs/Mabillon.log "$RUNNER_TEMP/ui/mac-app.log" || true
+          grep -q "opening its own window" ~/Library/Logs/Mabillon.log
+          grep -q "GET /open" ~/Library/Logs/Mabillon.log
+          grep -q "GET /cases" ~/Library/Logs/Mabillon.log
+          if grep -q "browser instead" ~/Library/Logs/Mabillon.log; then exit 1; fi
+          pkill -f "demo --window" || true
+
       - name: Logs
         if: always()
         run: tail -n 40 "$RUNNER_TEMP"/ui/*.log || true
 
       - uses: actions/upload-artifact@v4
         if: always()
+        # The logs are a convenience: a full artifact storage quota must not fail the install test.
+        continue-on-error: true
         with:
           name: mac-clean-install
           path: ${{ runner.temp }}/ui

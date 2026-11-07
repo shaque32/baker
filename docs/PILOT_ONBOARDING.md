@@ -64,14 +64,14 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 The demo is a ready-made, fully synthetic case (two phones, seven planted traps). No model runs,
 so it opens in seconds. Run it before you open anything real.
 
-1. Start it. Mac: double-click **Mabillon demo**. Windows: in **Mabillon command prompt**, run
-   `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer, and only the
-   browser Mabillon opened, can use that address. Closing the window that started it stops
+1. Start it. Mac: open **Mabillon Demo** from Applications. Windows: **Mabillon demo** in the Start
+   menu. It opens in its own window, which only your computer can open, and closing it stops
    Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
-3. Open claim **C05** ("need 2 more by friday"). The model-side label says "supports", but the
-   verdict is **Unproven**: nothing is supported until you accept its evidence.
+3. Open claim **C05** ("need 2 more by friday"). It reads **Supported by the records (code
+   checks)**: its sender and time checks passed against the records, with no model label used. No
+   expert has confirmed it yet.
 4. Enter your name, type a short reason, click **Accept** on both items, then **Re-run verdicts**.
    C05 becomes "Supported (expert-confirmed)", with your name in the audit log.
 5. Open two contradicted claims (C10 and C04 are good ones) and read "Why (reasons from the verdict
@@ -84,7 +84,8 @@ demo to a clean copy.
 
 ## 4. Your first case
 
-1. Start Mabillon (Mac: **Mabillon** on the Desktop; Windows: `mabillon serve --open`). It opens
+1. Start Mabillon (Mac: **Mabillon** in Applications; Windows: **Mabillon** in the Start menu or on
+   the desktop). It opens in its own window; in a browser, `mabillon serve --open` opens
    `http://127.0.0.1:8765`.
 2. **New case.** Leave **Encrypt this case with a passphrase** ticked. Mabillon shows a recovery key
    **once**: write it down and keep it away from the computer. If you lose both the passphrase and
@@ -159,9 +160,16 @@ What to do:
    only a consistency check, since that case's database may have been changed.
 5. Tell the Mabillon team what happened, with the `verify-log` output.
 
-Mabillon does not make backups for you. After each review session, wait until no audit is running,
-stop Mabillon (close the window that started it), then copy the whole case folder. A copy taken while
-Mabillon is writing may not restore. An encrypted case stays encrypted in the copy.
+Mabillon backs up only when you ask. After each review session, open **Set up and run** and press
+**Back up this case** (or run `mabillon backup --db <case folder>/case.db --by expert:<name>`).
+It makes a new folder, by default under `~/Mabillon/backups`, named after the case and the time,
+copies the database, its audit log anchors, its settings and every file copy, and opens the copy
+to check its audit log before it says it is done. Then copy that folder to a drive kept off this
+computer. An encrypted case stays encrypted in the backup and opens with the same passphrase or
+recovery key. To restore, copy the backup folder whole into your cases folder; it opens as a case.
+Restore the whole folder, never the database alone: an older database beside newer anchors is
+blocked. Copying the case folder by hand also works if Mabillon is stopped first; a copy taken
+while Mabillon is writing may not restore.
 
 A case can also refuse to open because it is **locked**: enter its passphrase or recovery key. A
 case that says **Encryption did not finish** finishes when you repeat the encryption step with the

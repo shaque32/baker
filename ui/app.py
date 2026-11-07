@@ -52,7 +52,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
-from core.casework import cases, jobs, protect
+from core.casework import backup, cases, jobs, protect
 from core.casework import cloud as cloud_policy
 from core.casework.model_check import ModelCheck, check_model
 from core.contracts import (
@@ -95,6 +95,23 @@ CSP = (
     "frame-ancestors 'none'; base-uri 'none'"
 )
 FONT_PREFIX = "/static/fonts/"
+REPORT_SAID_CSS = (
+    ".screen-said{margin:0 0 12px;font-size:.9em}.screen-said.err{color:#b3261e}"
+    "@media print{.screen-said{display:none}}"
+)
+
+
+def report_said(flash: tuple[str, bool] | None) -> str:
+    """On the on-screen report, what the last action said: in Mabillon's own window, where
+    "Save this report" put the file, or why it was not saved. Never printed or saved."""
+    if flash is None:
+        return ""
+    message, error = flash
+    role = "alert" if error else "status"
+    cls = "screen-said err" if error else "screen-said"
+    return f"<p class='{cls}' role='{role}'>{html.escape(message)}</p>"
+
+
 MAX_BODY = 1_000_000
 TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
@@ -133,13 +150,14 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/case/open": ("audit", "propose", "model_check"),
     "/case/encrypt": ("audit", "propose", "model_check"),
     "/case/lock": ("audit", "propose", "model_check"),
+    "/case/backup": ("audit", "propose", "model_check"),
 }
 NO_CASE_GET = {"/cases"}
 HELP_GET = {"/help", "/help/bug-report.json"}  # with or without a case open
 NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 # Posts that must not have the case database open while they run: encrypting replaces the
 # database file (Windows cannot replace an open file), and locking forgets its key.
-OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
+OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done", "/case/backup"}
 
 
 _EVIDENCE_HREF = re.compile(r"""href=['"](/evidence\?[^'"]*)['"]""")
@@ -239,6 +257,7 @@ class App:
         self.flash: tuple[str, bool] | None = None
         self.port = port
         self.path = ""  # the request being answered, so a page can mark its tab
+        self._stand_in = ""  # the open case's demo or test-run banner, set per request
         self._added: str | None = None
         self.jobs = jobs.Jobs()
         self._reported: jobs.Job | None = None  # the finished job whose result Set up showed
@@ -344,6 +363,7 @@ class App:
 
     def handle(self, req: Request) -> Response:
         self.path = req.path
+        self._stand_in = ""
         if req.headers.get("host") not in self.allowed_hosts():
             return self._plain(400, "This screen only answers requests from this computer.")
         if req.method not in ("GET", "POST"):
@@ -398,6 +418,12 @@ class App:
             self.flash = (f"{what}: {err}", True)
             return self._redirect("/cases")
         try:
+            self._stand_in = pages.stand_in_note(conn)
+        except (*db.Error, InvariantViolation):
+            # the banner never stops a request: a run the case cannot read shows none here, and
+            # the page the request opens says what is wrong with it
+            self._stand_in = ""
+        try:
             if req.method == "GET":
                 if req.path in activity.RECORD_FIRST:  # it shows the trail up to itself
                     self._note_view(conn, req, None)
@@ -406,6 +432,10 @@ class App:
                 self._note_view(conn, req, resp)
                 return self._unrecorded_warning(resp)
             return self._post(conn, req)
+        except pipeline.StoredVerdictInvalid as err:  # a GET only: _post flashes it
+            self._last_view = None  # not a view of the page asked for
+            back = pages.link(req.path, **req.query) if req.path in activity.PAGES else "/"
+            return self._html(pages.stored_verdict_page(self._page(), str(err), back), 409)
         finally:
             conn.close()
 
@@ -546,6 +576,7 @@ class App:
             path=self.path,
             cloud=self._case_uses_cloud(),
             case_key="" if self.case is None else _case_key(self.case),
+            stand_in=self._stand_in if self.case is not None else "",
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -638,13 +669,13 @@ class App:
             body = render_report(conn, timeline=self._timeline(), header=header)
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
-                body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+                body = body.replace("<style>", f"<style>{theme.FONT_CSS}{REPORT_SAID_CSS}", 1)
                 # On screen only: a way back into the app and a way to save it.
                 body = body.replace(
                     "<h1>Mabillon claims report</h1>",
                     "<p class='screen-only' style='margin:0 0 12px'><a href='/'>Back to the "
                     "case</a> · <a href='/report?download=1'>Save this report (HTML)</a></p>"
-                    "<h1>Mabillon claims report</h1>",
+                    f"{report_said(page.flash)}<h1>Mabillon claims report</h1>",
                     1,
                 )
             resp = self._html(body)
@@ -667,6 +698,7 @@ class App:
             "/case/open": lambda: self._open_case(f),
             "/case/encrypt": lambda: self._encrypt(f),
             "/case/lock": lambda: self._lock(),
+            "/case/backup": lambda: self._backup(f),
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
             "/case/recovery/new": lambda: self._new_recovery(f),
@@ -1214,6 +1246,15 @@ class App:
             "its recovery key, shown at the top of this page."
         )
 
+    def _backup(self, f: dict[str, str]) -> str:
+        case = self._open()
+        to = f.get("to", "").strip()
+        done = backup.back_up(case, self.actor, root=Path(to) if to else None)
+        return (
+            f"Backed up {case.name} to {done.folder} ({done.files} files, verified). Copy that "
+            "folder to a drive kept off this computer."
+        )
+
     def _lock(self) -> str:
         case = self._open()
         if protect.state(case) == "plain":
@@ -1341,6 +1382,7 @@ class App:
             cloud_key=self._cloud_key_state(),
             cloud_key_from=self._cloud_key_source(),
             audited=_audited(conn),
+            backup_root=str(backup.default_root(case)) if case.db.name == cases.DB_NAME else None,
             model_ok=None
             if check is None or (job is not None and job.running and job.kind == "model_check")
             else check.ok,
@@ -1348,7 +1390,7 @@ class App:
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         delta = -1 if f.get("delta") == "-1" else 1
-        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta)
+        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta, self.actor)
         cid = f.get("claim", "")
         return f"{_named(conn, cid)} now runs at position {order.index(cid) + 1}."
 

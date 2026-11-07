@@ -125,11 +125,12 @@ DRAFT_GOLD = {
     "case03": Path("eval/synthetic/case03/draft_gold.jsonl"),  # challenge-step case, ungated
     "case04": Path("eval/synthetic/case04/draft_gold.jsonl"),  # testability held-out set, ungated
     "case05": Path("eval/synthetic/case05/draft_gold.jsonl"),  # testability held-out set, ungated
+    "case06": Path("eval/synthetic/case06/draft_gold.jsonl"),  # testability held-out set, ungated
 }
 
 
 def gold_path(case: str) -> Path:
-    """The case's signed gold if there is one, else its draft key (case02 to case05)."""
+    """The case's signed gold if there is one, else its draft key (case02 to case06)."""
     signed = Path("eval/gold") / case / "gold.jsonl"
     if signed.exists() and signed.read_text(encoding="utf-8").strip():
         return signed
@@ -164,6 +165,8 @@ def ensure_reports(case: str) -> dict:
             from eval.synthetic.case04_generate import generate
         elif case == "case05":
             from eval.synthetic.case05_generate import generate
+        elif case == "case06":
+            from eval.synthetic.case06_generate import generate
         else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
         generate(synthetic_dir(case), None)
@@ -189,6 +192,10 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
         from eval.synthetic.case05_generate import write_affidavit_pdf as write_case05
 
         return write_case05(path)
+    if case == "case06":
+        from eval.synthetic.case06_generate import write_affidavit_pdf as write_case06
+
+        return write_case06(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
@@ -450,13 +457,14 @@ DRAFT_SHEETS = {
     "case02": Path("eval/synthetic/case02/case02_assumptions.jsonl"),
     "case04": Path("eval/synthetic/case04/draft_assumptions.jsonl"),  # held-out set, ungated
     "case05": Path("eval/synthetic/case05/draft_assumptions.jsonl"),  # held-out set, ungated
+    "case06": Path("eval/synthetic/case06/draft_assumptions.jsonl"),  # held-out set, ungated
 }
 
 
 def assumption_sheet(case: str) -> Path | None:
     """The case's assumption sheet: the signed copy under eval/gold/ if there is one, else the
     draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02,
-    eval/synthetic/<case>/ for case04 and case05)."""
+    eval/synthetic/<case>/ for case04 to case06)."""
     signed = Path("eval/gold") / case / "assumptions.jsonl"
     if signed.exists():
         return signed
@@ -588,8 +596,11 @@ TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # its per-claim output is seen (a run that stops before its decision prints is not a result).
 # case05's go/no-go ran on Arsh's Mac on 2026-11-02 and 03 (NO-GO, the result of record), so
 # case05 is spent too and gives no go/no-go again: runs on case04 and case05 are development
-# data. The next held-out case joins this set once Arsh signs it.
-TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset()
+# data. case06 is the next held-out case, written blind to case05's run and diagnosis, to the
+# step's prompt and code, and to the code that reads names and events. As with case05, it
+# gives no go/no-go until Arsh signs its sheet, and its first complete go/no-go run is the
+# result of record.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case06"})
 # The stand-in stance run of a --no-stance dev check (no model).
 NO_STANCE_RUN_ID = "run:no-stance"
 
@@ -634,7 +645,7 @@ def testability_step(
     step = testability.create(
         conn,
         filler,  # type: ignore[arg-type]
-        testability.sheet_named(rows, sheet_people(conn)),
+        testability.sheet_named(rows, sheet_people(conn), testability.account_copies(conn)),
         cap,
         model=model,
         template=prompt_body(path.read_text(encoding="utf-8")),
@@ -965,7 +976,10 @@ def print_hidden_summary(s: dict) -> None:
     print(f"pipeline: {s['case']} {s['mode']} (hidden case, aggregate only): {s['claims']} claims")
     print(f"pipeline: gold {s['gold']['status']}")
     print(f"pipeline: assumption sheet {s['assumption_sheet']['status']}")
-    print(f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} (0 supported by design)")
+    print(
+        f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} "
+        "(supported only by code checks, rule 3c')"
+    )
     print(
         f"pipeline: key evidence {r['key_evidence']} records; retrieved "
         f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "
@@ -997,7 +1011,10 @@ def print_summary(s: dict) -> None:
         f"stored, {s['dropped_labels']} labels dropped"
     )
     print(f"pipeline: assumption sheet {s['assumption_sheet']['status']}")
-    print(f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} (0 supported by design)")
+    print(
+        f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} "
+        "(supported only by code checks, rule 3c')"
+    )
     print(
         f"pipeline: key evidence {r['key_evidence']} records; retrieved "
         f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "

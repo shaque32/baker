@@ -85,11 +85,31 @@ def md5_file(path: Path) -> str:
 def runtime_requirements(root: Path = ROOT) -> list[str]:
     """Mabillon's dependencies plus the `synthetic` extra: the installer ships eval/ so an expert's
     PC can run the case01 gate and the speed test, and those render the synthetic case PDFs.
-    Plus the `cloud` extra, the client for a case the expert allows to use cloud AI."""
+    Plus the `cloud` extra, the client for a case the expert allows to use cloud AI, and the `app`
+    extra, Mabillon's own window. pip judges a requirement's `sys_platform` marker by the machine
+    that stages, not by --platform, so the Windows-only ones are kept without their marker."""
     data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     project = data["project"]
     extras = project["optional-dependencies"]
-    return [*project["dependencies"], *extras["synthetic"], *extras["cloud"]]
+    app = [
+        r.split(";")[0].strip() for r in extras["app"] if "sys_platform" not in r or "win32" in r
+    ]
+    return [*project["dependencies"], *extras["synthetic"], *extras["cloud"], *app]
+
+
+# Pure-Python dependencies published only as source (pywebview needs proxy_tools). pip_target
+# takes wheels only, so these are built into wheels here first, from the exact version.
+SOURCE_ONLY = ("proxy_tools==0.1.0",)
+
+
+def build_source_only(folder: Path) -> Path:
+    """Wheels for SOURCE_ONLY in folder, for pip_target's --find-links."""
+    cmd = [
+        sys.executable, "-m", "pip", "wheel", "--disable-pip-version-check", "--no-deps",
+        "--use-pep517", "--wheel-dir", str(folder), *SOURCE_ONLY,
+    ]  # fmt: skip
+    subprocess.run(cmd, check=True)  # noqa: S603 - pip, arguments built here
+    return folder
 
 
 def pip_target(target: Path, *args: str) -> None:
@@ -176,7 +196,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Mabillon's runtime dependencies, plus llama-cpp-python's own (numpy, jinja2, ...), which
     # both runtimes share. The llama_cpp package itself goes in runtime/<variant>/.
-    pip_target(site, *runtime_requirements())
+    wheels = build_source_only(a.out.parent / f"{a.out.name}-wheels")
+    pip_target(site, "--find-links", str(wheels), *runtime_requirements())
+    shutil.rmtree(wheels)
     pip_target(site, str(a.llama_cpu))
     for d in [*site.glob("llama_cpp"), *site.glob("llama_cpp_python-*.dist-info")]:
         shutil.rmtree(d)

@@ -107,7 +107,12 @@ def demo_case(page: Page, base: str) -> None:
     for i in range(folds.count()):  # settled groups fold while claims wait on the expert
         folds.nth(i).click()
     body = page.inner_text("body")
-    want = ("Support found: do you agree?", "Contradicted", "Supported (expert-confirmed)")
+    # rules 0.5.0: the demo's C05 opens as supported by its code checks (rule 3c')
+    want = (
+        "Supported by the records (code checks)",
+        "Contradicted",
+        "Supported (expert-confirmed)",
+    )
     missing = [w for w in want if w not in body]
     need(not missing, f"the claims queue lacks {missing}")
     for banned in ("guilty", "innocent"):
