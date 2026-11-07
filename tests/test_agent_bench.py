@@ -93,3 +93,17 @@ def test_estimate_prices_every_model_from_one_dry_run(dry_case05) -> None:
     text = agent_bench.estimate([res], specs)
     assert f"{res['calls']} calls" in text
     assert all(m.name in text for m in specs)
+
+
+def test_a_larger_token_cap_is_a_second_arm_recorded_with_the_run(tmp_path: Path) -> None:
+    out = tmp_path / "arm"
+    args = ["--dry-run", "--models", "deepseek-v4.1-flash-1017", "--max-tokens", "32000"]
+    assert agent_bench.main([*args, "--out", str(out)]) == 0
+    res = json.loads((out / "deepseek-v4.1-flash-1017" / "case05" / "bench.json").read_text())
+    assert res["max_tokens"] == 32000 and res["stopped_at_max_tokens"] == 0
+
+
+def test_the_first_arm_keeps_open_bench_s_cap(dry_case05) -> None:
+    res, sent, _ = dry_case05
+    assert res["max_tokens"] == 8000
+    assert {b["max_tokens"] for b in sent} == {8000}

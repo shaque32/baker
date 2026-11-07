@@ -25,9 +25,14 @@ Fixed before any run (2026-11-07):
 - No repeat: a hosted model is served by many providers, so its answers do not repeat byte for
   byte. A pass here is a reason to run case06 on the self-hosted stack, nothing more.
 
+Added after the first DeepSeek run (2026-11-07): 36 of its 95 calls stopped at open_bench's
+8,000-token cap (finish_reason "length"), because reasoning tokens count against it, and each
+one counted as an invalid answer. `--max-tokens` sets a larger cap as a second arm, reported
+beside the first one, which stays the run as fixed beforehand.
+
 Usage:
   OPENROUTER_API_KEY=... python -m eval.bench.agent_bench [--models NAME,...]
-      [--cases case05] [--out eval/out/agent_bench] [--reasoning medium]
+      [--cases case05] [--out eval/out/agent_bench] [--reasoning medium] [--max-tokens N]
   python -m eval.bench.agent_bench --dry-run     no network: every answer is an empty list
   python -m eval.bench.agent_bench --estimate    the dry run's prompt tokens, priced per model
   python -m eval.bench.agent_bench --first-pass DB --cases case05
@@ -47,7 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.bench.claude_bench import DataSafetyError
-from eval.bench.open_bench import HostedModel, OpenModel, model
+from eval.bench.open_bench import MAX_TOKENS, HostedModel, OpenModel, OpenParams, model
 
 # The testability sets already spent by a go/no-go run of record. case06 is the held-out set
 # for the plan C stack and case02 is the hidden case: neither may reach a hosted model.
@@ -184,6 +189,10 @@ def run_bench(hosted: HostedModel, case: str, out: Path) -> dict[str, Any]:
         "case": case,
         "weights": f"{hosted.spec.weights}@{hosted.spec.revision}",
         "reasoning": hosted.reasoning,
+        "max_tokens": hosted.params.max_tokens,
+        "stopped_at_max_tokens": sum(
+            r.get("error") == "max_tokens" for r in hosted.served[calls_before:]
+        ),
         "wall_seconds": round(wall, 1),
         "calls": calls,
         "failed_calls": hosted.usage.failed - failed_before,
@@ -226,7 +235,8 @@ def summary(results: list[dict[str, Any]], dry: bool) -> str:
         if not r["step_scorable"]:
             conv += " (under 15 testable: not scorable as written)"
         lines.append(
-            f"| {r['model']} | {r['case']} | {fp['kept_core_assumptions']} of {fp['claims']}"
+            f"| {r['model']} (cap {r.get('max_tokens')}, {r.get('stopped_at_max_tokens')} cut"
+            f" off) | {r['case']} | {fp['kept_core_assumptions']} of {fp['claims']}"
             f" ({fp['of_them_name_only_what_the_sheet_names']} /"
             f" {fp['of_them_name_a_person_phone_or_window_the_sheet_does_not']}) | {conv} |"
             f" {t['mismatch_person_phone_or_window']} | {t['invalid_outputs']} of {t['tries']} |"
@@ -270,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cases", default=",".join(DEFAULT_CASES))
     ap.add_argument("--out", type=Path, default=Path("eval/out/agent_bench"))
     ap.add_argument("--reasoning", default="medium", choices=["low", "medium", "high"])
+    ap.add_argument("--max-tokens", type=int, default=MAX_TOKENS,
+                    help=f"per call, reasoning included (open_bench's {MAX_TOKENS})")  # fmt: skip
     ap.add_argument("--dry-run", action="store_true", help="stand-in answers, no network")
     ap.add_argument("--estimate", action="store_true", help="dry run, then priced per model")
     ap.add_argument("--first-pass", type=Path, default=None, metavar="DB",
@@ -286,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for spec in specs[:1] if args.estimate else specs:
         hosted = HostedModel(spec, args.reasoning, post=dry_post if dry else None)
+        if args.max_tokens != MAX_TOKENS:
+            hosted.params = OpenParams(spec.api_model, args.reasoning, max_tokens=args.max_tokens)
         for case in cases:
             print(f"{spec.name} {case}", file=sys.stderr, flush=True)
             results.append(run_bench(hosted, case, args.out / spec.name / case))

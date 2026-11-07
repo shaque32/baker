@@ -18,7 +18,10 @@
   (DeepSeek) and $2.40 (Kimi). The 14B reference, read from its run of record's database
   (Mac, 2026-11-03): the first pass kept core assumptions for 15 of 48 claims (9 name only what
   the sheet names, 2 a person, phone or window it does not), and the step converted 5 of 33.
-- Open: no hosted model has run it yet (needs `OPENROUTER_API_KEY`). Hosted answers do not
+- Added after the first DeepSeek run: 36 of its 95 calls stopped at open_bench's 8,000-token
+  cap (reasoning counts against it), each one an invalid answer. `--max-tokens` runs a larger cap
+  as a second arm, reported beside the first; the first stays the run as fixed beforehand.
+- Open: hosted results (2026-11-07, case05, cloud thread's container) are development data only. Hosted answers do not
   repeat byte for byte (many providers), so nothing here is a go/no-go: case05 is spent, and the
   result is development data, never quoted as evidence that the step works. The 14B's case05
   answers were on prompt v1.0, so a gap between the two mixes the model and the prompt; the
