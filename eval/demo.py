@@ -63,12 +63,14 @@ from core.contracts import (
     ClaimType,
     EvidenceCandidate,
     EvidenceStatus,
+    ExcerptSplit,
     GoldClaim,
     ModelRun,
     Stance,
     StanceLabel,
 )
 from core.db import connect
+from core.restore.store import add_exhibit
 from core.review import actions
 from core.review.redecide import redecide
 
@@ -83,11 +85,16 @@ DEMO_ROOT_ENV = "MABILLON_DEMO"
 DEMO_FOLDER = "demo-case01"  # where a restored snapshot goes
 DEMO_NAME = "Demo: Petrov and Reyes phones (synthetic case01)"
 SETUP_ACTOR = "expert:Mabillon demo setup"
+# a demo-only exhibit (synthetic, not in the signed answer key): two messages case01's Item 1
+# holds, as a government exhibit would print them next to paragraph 6
+DEMO_EXHIBIT_LABEL = "Government Exhibit 4 (synthetic demo)"
+DEMO_EXHIBIT_TEXT = "need 2 more by friday\nfriday hard. saturday\n"
 SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
 AGENT_EXAMINER = "expert:Demo examiner (scripted from the demo claims)"
 
-# Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person
-# giving the demo accepts its message and re-runs the verdicts.
+# Claims the scripted expert leaves for the live demo. Under rules 0.5.0 C05 starts "Supported by
+# the records (code checks)" (rule 3c'), and turns expert-confirmed only when the person giving
+# the demo accepts its message and re-runs the verdicts.
 LEFT_OPEN = ("C05",)
 
 # The challenge step's work, shown live. Its other-user search on C16 finds the two messages the
@@ -425,6 +432,15 @@ def build_scripted(home: Path, paired: bool = False) -> cases.Case:
                 raise SystemExit("demo: the scripted audit did not finish")
             _scripted_review(conn, gold, run)
             redecide(conn, SETUP_ACTOR)
+            # one exhibit, so the Exhibits tab shows what it does (it never changes a verdict)
+            add_exhibit(
+                conn,
+                DEMO_EXHIBIT_LABEL,
+                DEMO_EXHIBIT_TEXT,
+                ExcerptSplit.LINE,
+                SETUP_ACTOR,
+                paragraph_id=_paragraph(conn, "C05", gold["C05"].para_no, gold["C05"].page),
+            )
             if paired:
                 full = planted.write(work / "paired")["item1-full.ufdr"]
                 _import(case, conn, full, "report")

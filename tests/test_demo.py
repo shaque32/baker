@@ -75,16 +75,26 @@ def test_demo_matches_the_answer_key_except_the_claim_left_for_the_demo(root):
     assert (got["D02"], got["D03"]) == ("supported", "unproven")
     for claim_id in extra:
         del got[claim_id]
-    for claim_id in demo.LEFT_OPEN:
-        assert got[claim_id] == "unproven"
+    for claim_id in demo.LEFT_OPEN:  # rules 0.5.0: its code checks carry it until you accept
+        assert got[claim_id] == "supported"
+        basis = conn.execute(
+            "SELECT supported_basis FROM verdicts WHERE claim_id = ? AND pipeline_run_id = ?",
+            (claim_id, pipeline.last_run(conn)["run_id"]),
+        ).fetchone()[0]
+        assert basis == "checked", claim_id
     assert {c: v for c, v in got.items() if c not in demo.LEFT_OPEN} == {
         c: v for c, v in gold.items() if c not in demo.LEFT_OPEN
     }
 
 
-def test_the_live_step_makes_c05_supported_only_after_the_expert_accepts(root):
+def test_the_live_step_makes_c05_expert_confirmed_only_after_the_expert_accepts(root):
     conn = connect(_case(root).db)
     run = pipeline.last_run(conn)
+    before = conn.execute(
+        "SELECT supported_basis FROM verdicts WHERE claim_id = 'C05' AND pipeline_run_id = ?",
+        (run["run_id"],),
+    ).fetchone()[0]
+    assert before == "checked"  # rule 3c': supported by the records, no reviewer yet
     items = [
         e
         for e in pipeline.load_evidence(conn, run["manifest"]["C05"]["evidence"])
@@ -220,11 +230,29 @@ def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     assert run["fake"] and pipeline.scripted_demo(run)
     agent = "The testability agent's answers were scripted from the demo's own claims"
     report = render_report(conn)
-    assert "Demo case: synthetic data, scripted labels." in report and agent in report
+    head = "most expert decisions are scripted, not made by a person"
+    assert head in report and agent in report
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels." in page and agent in page
+    assert head in page and agent in page
+    # every page of the case says so, not only the review pages (first-time-user review)
+    for path in (
+        "/",
+        "/identities",
+        "/exhibits",
+        "/selection",
+        "/timeline",
+        "/gaps",
+        "/log",
+        "/activity",
+        "/setup",
+        "/run",
+        "/claim/new",
+        "/request-letter",
+    ):
+        body = app.handle(Request("GET", path, {}, dict(HOST))).body.decode()
+        assert body.count(head) == 1, path
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
     assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
     purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))
@@ -242,6 +270,113 @@ def test_every_claim_page_and_the_report_render(root):
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_screen_writes_sources_in_words_and_draws_a_shared_record_once(root):
+    """C05's two assumptions cite the same message: the screen draws its conversation once and
+    the second item points up, with its own quote, source line, tier and decision form. Sources
+    and the tier read as words on the screen; the exported report keeps its ids."""
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    claim = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    items = re.findall(r"<div class='item' id='([^']+)'>", claim)
+    assert len(items) == 2
+    assert claim.count("<div class='thread mini'>") == 1
+    assert f"<a href='#{items[0]}'>the item above</a>" in claim
+    assert claim.count("value='accepted'") >= 2  # each item keeps its own decision
+    assert claim.count("<span class='badge b-open'>supports</span>") == 2
+    selection = app.handle(Request("GET", "/selection", {}, dict(HOST))).body.decode()
+    assert "item1 · Chats, row 948" in selection and "Tier: derived" in selection
+    assert "item1 Chats!948</span>" not in selection
+    overview = app.handle(Request("GET", "/", {}, dict(HOST))).body.decode()
+    assert "(dev:item1)" not in overview and "From item1" in overview
+    setup = app.handle(Request("GET", "/setup", {}, dict(HOST))).body.decode()
+    assert "Cellebrite Excel export, logical extraction" in setup
+    assert "<h2 id='files'>Files</h2>" in setup
+    report = render_report(connect(case.db))
+    assert "tier derived" in report and "Chats!948" in report
+
+
+def test_plain_locator_reads_a_sheet_row_and_leaves_other_shapes():
+    from core.report.selection import plain_locator
+
+    assert plain_locator("item1", "Chats!948") == "item1 · Chats, row 948"
+    assert plain_locator("item3", "chat[2]/message[5]") == "item3 · chat[2]/message[5]"
+
+
+def test_screen_names_a_sender_once_per_side(root):
+    """On the screen a conversation names a sender again only when the account on that side
+    changes, without the app the header already gives, and the header carries the messages'
+    tier; the record under review is always named. The exported report keeps every line."""
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    selection = app.handle(Request("GET", "/selection", {}, dict(HOST))).body.decode()
+    assert "Tier: derived; each message observed" in selection
+    assert " · observed</div>" not in selection
+    convo = selection.split("<div class='sel-convo'>", 1)[1].split("</div></div></div>", 1)[0]
+    # the first conversation: two messages from 5551234, then this phone's reply
+    named = re.findall(r"<div class='who2' title='([a-z]+) · observed'>(.*?)</div>", convo)
+    assert named[0] == ("incoming", '<span class="q">5551234</span>')
+    assert named[1] == ("outgoing", '<span class="q">7001001</span> (this phone)')
+    assert "<div class='bub dim cont'>" in convo  # "new handle. same me", same sender
+    claim = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    mini = claim.split("<div class='thread mini'>", 1)[1]
+    target = mini.split("<div class='msg out target'>", 1)[1].split("</div>", 1)[0]
+    assert "Telegram 7001001</span> (this phone)" in target  # the record is always named
+    assert " to <span" not in mini.split("<p class=", 1)[0]  # a one-to-one thread needs no "to"
+    report = render_report(connect(case.db))
+    assert "Telegram 5551234</span> · incoming · observed" in report
+
+
+def test_claim_page_keeps_recipients_when_more_than_one_account_answers():
+    from core.audit.context import ContextLine
+    from ui.pages import _msgs
+
+    def line(n: int, sender: str, direction: str, to: str = "") -> ContextLine:
+        return ContextLine(f"m{n}", f"Chats!{n}", sender, None, direction, "t", "x", False, to)
+
+    group = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "incoming"),
+            line(3, "Telegram 9 (this phone)", "outgoing", "Telegram 1"),
+            line(4, "Telegram 9 (this phone)", "outgoing", "Telegram 2"),
+        ]
+    )
+    assert ' to <span class="q">Telegram 1</span>' in group
+    assert ' to <span class="q">Telegram 2</span>' in group  # a new recipient is named again
+    pair = _msgs(
+        [line(1, "Telegram 1", "incoming"), line(2, "Telegram 9", "outgoing", "Telegram 1")]
+    )
+    assert " to <span" not in pair
+    # an unknown direction draws on the left with incoming messages, so it shares their side
+    mixed = _msgs(
+        [
+            line(1, "Telegram 1", "incoming"),
+            line(2, "Telegram 2", "unknown"),
+            line(3, "Telegram 1", "incoming"),
+        ]
+    )
+    assert mixed.count("<div class='who2'") == 3
+    # an unknown direction keeps its sender line and says so, even after the same sender
+    same = _msgs([line(1, "Telegram 1", "incoming"), line(2, "Telegram 1", "unknown")])
+    assert same.count("<div class='who2'") == 2 and same.count(" · direction unknown") == 1
+    twice = _msgs([line(1, "Telegram 1", "unknown"), line(2, "Telegram 1", "unknown")])
+    assert twice.count(" · direction unknown") == 2
+
+
+def test_sender_words_puts_the_printed_name_first_and_keeps_the_account():
+    from core.report.selection import sender_words
+
+    assert sender_words("Telegram 7001001 (this phone)", None, "Telegram") == (
+        '<span class="q">7001001</span> (this phone)'
+    )
+    assert sender_words("SMS +1212", "Dan P", "Telegram") == (
+        '<span class="q">Dan P</span> (<span class="q">SMS +1212</span>)'
+    )
+    assert sender_words("unknown", None, "SMS") == '<span class="q">unknown</span>'
 
 
 def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(root):
@@ -267,7 +402,9 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
     assert sections == ["next", "you", "con", "unp", "sup"]  # C16's open doubt waits on you
     you = page.split("<section class='group' id='you'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C16" in you and "id=C05" in you
+    assert "id=C16" in you and "id=C05" not in you  # C05 is supported by its code checks
+    sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C05" in sup
     unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
     assert "id=C06" in unp and GAP_TOPICS[K.MEANING] in unp  # the topic; the claim page says it
     # Next up: D03, the agent's proposal waiting for the person giving the demo.
@@ -460,9 +597,11 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C01" not in sup and "id=C02" not in sup
-    assert html.escape(SUPPORTED_AI) not in sup
-    assert "5 claims need you." in page  # C05, C16, D03 and these two
+    # both are counted and listed under their verdict too, tagged as waiting on the expert
+    for cid in ("C01", "C02"):
+        row = sup.split(f"id={cid}'", 1)[1].split("</li>", 1)[0]
+        assert "<span class='gap you'>Needs you</span>" in row, cid
+    assert "4 claims need you</h1>" in page  # C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):
@@ -630,8 +769,10 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     from core.review.status import claim_states
 
     status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]
-    groups = Counter(pages._group(st) for st in claim_states(connect(case.db)))
-    assert f"{groups['you']} claims need you</a>" in status  # the Claims screen's own grouping
+    states = claim_states(connect(case.db))
+    groups = Counter(pages._verdict_group(st) for st in states)  # every claim under its verdict
+    you = sum(1 for st in states if pages.needs_you(st))
+    assert f"{you} claims need you</a>" in status  # the Claims screen's own count
     for g, name in pages.GROUPS:
         if g != "you" and groups[g]:
             link = f"<a href='/claims#{g}'><span class='name t-{g}'>{name}</span> "

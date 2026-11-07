@@ -64,6 +64,7 @@ from core.llm.cloud import EFFORTS
 from core.llm.runtime import ModelOutput
 from eval import run_pipeline as rp
 from eval.probe.claim_recall import _WORD, MATCH_AT, STOP, recall_for, words
+from eval.probe.model_entry import pick_entry
 from eval.run_eval import load_jsonl, score
 
 CASE = "case01"
@@ -416,21 +417,6 @@ def revision() -> dict[str, Any]:
 
 
 # The arms ---------------------------------------------------------------------------------
-
-
-def pick_entry(entries: list[dict[str, Any]], name: str | None) -> dict[str, Any]:
-    """The models-file entry the local arm uses: the one named, else the only one, else the one
-    whose name says 14B. eval/probe/mac_v12.sh probes the same entry."""
-    if name:
-        pick = [e for e in entries if e["name"] == name]
-    elif len(entries) == 1:
-        pick = entries
-    else:
-        pick = [e for e in entries if "14b" in e["name"].lower()]
-    if len(pick) != 1:
-        names = ", ".join(e["name"] for e in entries)
-        raise SystemExit(f"name one model with --model-name or MODEL_NAME (have: {names})")
-    return pick[0]
 
 
 def local_model(models: Path, name: str | None) -> Any:

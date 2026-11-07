@@ -76,7 +76,8 @@ def test_the_recorded_variant_replays_the_same_answers(conn, tmp_path) -> None: 
     rows = replay.read_rows(tmp_path / "base")
     assert len(rows) == len(rec.calls)
     assert all(r["same_raw"] and r["recorded"] == r["replayed"] for r in rows)
-    assert {r["recorded"] for r in rows} <= {"supports", "complicates", "dropped"}
+    # a "supports" on a record that is not the quoted message is stored as irrelevant
+    assert {r["recorded"] for r in rows} <= {"supports", "complicates", "irrelevant", "dropped"}
     assert model.calls == [c.prompt for c in rec.calls]  # the recorded prompts, in order
     text = replay.report(tmp_path)
     assert "the recorded model file" in text and "new supports 0" in text

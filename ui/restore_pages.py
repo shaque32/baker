@@ -74,10 +74,15 @@ def _option_text(text: str, label: str, limit: int = 80) -> str:
 
 def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
     exhibits = load_exhibits(conn)
-    out = ["<div class='pg-exhibits'><h1>Exhibits</h1>"]
+    out = [
+        "<div class='pg-exhibits'><h1>Exhibits</h1>"
+        "<p class='lede'>Paste the messages a government exhibit quotes. Mabillon finds each "
+        "one in the phone records and shows it in its conversation.</p>"
+    ]
     if needs_request(conn):
         out.append(
-            "<p class='warn'>Only curated reports (or sources of unknown coverage) are imported. "
+            "<p class='warn'>Only curated reports (or sources of unknown coverage) are imported, "
+            "so an exhibit's message may be missing from them. "
             "<a href='/request-letter'>Draft request for the full extraction</a></p>"
         )
     if exhibits:

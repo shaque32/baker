@@ -19,7 +19,7 @@ demo with Ctrl+C in its window.
 
 ## What is real and what is scripted
 
-Say this if asked; the yellow banner on every page says the same.
+Say this if asked; the yellow banner on every page of the case says the same.
 
 | Real (Mabillon's own code) | Scripted (so the demo opens in seconds) |
 |---|---|
@@ -62,6 +62,9 @@ the scripted case).
   its contact record, so D02 shows the whole path to "Supported (expert-confirmed)". D03's ("At
   about 7:58 p.m. on March 9, 2026, Item 1 placed a call to +1 (212) 555-0122") waits on its
   claim page for you.
+- **One exhibit**, "Government Exhibit 4 (synthetic demo)" (eval/demo.py): two Item 1 messages
+  as an exhibit would print them next to paragraph 6, so the Exhibits tab shows what it does.
+  Both are found. An exhibit never changes a verdict.
 - **`mabillon demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
   UFDR of Item 1 that holds records the curated report does not (eval/synthetic/paired.py). It
   is imported after the audit, so every verdict is the same as in the plain demo. The Selection
@@ -75,22 +78,24 @@ the scripted case).
 
 Open with this, before the screen: "You stay in charge. Mabillon does not replace the forensic
 analyst or make any call for you. It does the searching and scrolling, hands you the exact
-records, and nothing counts as supported until you accept it yourself."
+records, and nothing counts as supported unless its code checks carry it against the records
+or you accept it yourself. Every finding says which."
 
 1. **Cases, then the case.** One case, nothing else on the screen. Open it. The setup page
    shows the three imported files, each with its SHA-256, and "curated report (examiner-selected;
    cannot show absence)".
-2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01, D02 and D03: 8
-   supported (expert-confirmed), 6 contradicted, 9 unproven. Next up is D03: "Proposed by agent:
-   the testability agent proposed assumptions that would make this claim testable". C05 ("Support
-   found: do you agree?") and C16 ("2 contradicting or complicating item(s) to review") wait just
-   below it.
-3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". The model-side label
-   says supports, yet the verdict is unproven: no claim is supported until an expert accepts its
-   evidence. Point out the time check: the phone prints the message on 3/13 (UTC), and Mabillon
-   converts it to 8:03 p.m. on March 12 in New York, so the claim's date is right. Type a
-   one-sentence reason, click **Accept** on both items, then **Re-run verdicts** (rules only, no
-   model). C05 turns "Supported (expert-confirmed)" with your name in the audit log.
+2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01, D02 and D03:
+   9 supported (8 expert-confirmed, and C05 "Supported by the records (code checks)"), 6
+   contradicted, 8 unproven. Next up is D03: "Proposed by agent: the testability agent proposed
+   assumptions that would make this claim testable". C16 ("2 contradicting or complicating
+   item(s) to review") waits just below it.
+3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". It reads "Supported by
+   the records (code checks)": the sender and time checks passed against the records, and no
+   model label or reviewer was used (rules 0.5.0). Point out the time check: the phone prints the
+   message on 3/13 (UTC), and Mabillon converts it to 8:03 p.m. on March 12 in New York, so the
+   claim's date is right. Type a one-sentence reason, click **Accept** on both items, then
+   **Re-run verdicts** (rules only, no model). C05 turns "Supported (expert-confirmed)" with your
+   name in the audit log.
 4. **Live: the challenge step (C16).** Open C16, "got the money, come get it". On every claim
    close to supported, Mabillon runs code's searches for what would undercut it, and keeps only
    doubt. Here its search for someone else using the account found "its ilya btw, dan's at work.
@@ -132,7 +137,7 @@ each of these; Mabillon does not.
 |---|---|---|---|---|---|
 | C10 | 8 | Petrov texted "its done" at 2:31 a.m. on March 5 | Time zone: Item 1 prints UTC | Time check fails: the message was sent 9:31 p.m. March 4 local; Item 2's copy prints 9:31 p.m. | Contradicted |
 | C11 | 9 | Reyes got a warning call at 10:05 p.m., and after it Petrov sent "move it tonight" | Time zone across two phones | In one clock the message came 15 minutes before the call; read as printed, the order reverses | Contradicted |
-| C05 | 6 | Petrov wrote "need 2 more by friday" on March 12 | Time zone, the other way | Printed 3/13 but sent March 12 local; the claim is right, and only the expert's acceptance makes it supported | Unproven until you accept, then supported |
+| C05 | 6 | Petrov wrote "need 2 more by friday" on March 12 | Time zone, the other way | Printed 3/13 but sent March 12 local; the claim is right, and the sender and time checks carry it | Supported by the records (code checks), then expert-confirmed once you accept |
 | C04 | 5 | Petrov first contacted @northstar on March 12 | Handle change: @alex92 became @northstar | Same Telegram user id 5551234 since Feb 20; the absence check finds 10 earlier messages | Contradicted |
 | C08 | 7 | Petrov chose the meeting place | Who proposed it | Sender check fails: Reyes sent "lets meet monday 8pm. lot behind kings plaza"; Petrov replied "ok works" | Contradicted |
 | C14 | 11 | No contact of any kind March 20 to 23 | WhatsApp gap | Absence check finds 12 SMS, Telegram and call records in the window | Contradicted |

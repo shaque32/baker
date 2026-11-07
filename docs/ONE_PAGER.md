@@ -23,8 +23,10 @@ the judgment.
    records as supporting, contradicting or neither, and every quote it gives must appear word for
    word in the record or it is thrown away.
 4. **Gives each claim a status from fixed, versioned rules:** supported, contradicted or unproven,
-   with the records and reasons. **The model never decides a verdict.** Nothing is supported
-   until you accept its evidence, and a model's "contradicts" label counts only after you confirm
+   with the records and reasons. **The model never decides a verdict.** A claim is supported
+   when you accept its evidence, or, for a message, timing or count claim, when every part of it
+   passed the code checks against the records ("Supported by the records (code checks)", with no
+   model label used). A model's "contradicts" label counts only after you confirm
    it (until then the claim shows "Contradiction found, confirm to finalize"). A code check that
    fails, such as a wrong sender or a time outside the stated window, contradicts a claim
    directly, with the failed check shown.

@@ -543,9 +543,15 @@ def test_the_screen_and_the_report_show_an_embedded_copy_with_the_same_note(tmp_
 
 
 def _claim_html(text: str, claim_id: str) -> str:
+    """The claim's block, then its appendix entry (the exact rule text and the verdict trace)."""
     start = text.index(f'<div class="claim" id="{claim_id}">')
     end = text.find('<div class="claim" id="', start + 1)
-    return text[start : end if end != -1 else text.index("<h2>Searches and coverage</h2>")]
+    block = text[start : end if end != -1 else text.index("<h2>Searches and coverage</h2>")]
+    at = text.find(f"<div class='claim-ids' id='ids-{claim_id}'>")
+    if at == -1:
+        return block
+    stop = text.find("<div class='claim-ids' id='", at + 1)
+    return block + text[at : stop if stop != -1 else text.index("</body>")]
 
 
 def test_a_confirmed_verdict_traces_each_item_to_the_model_and_the_expert(first_report):
@@ -562,10 +568,13 @@ def test_an_unconfirmed_verdict_shows_what_was_found_and_not_relied_on(first_rep
     """A claim waiting on the expert traces its proposed support as found and not relied on,
     with the AI reviewer's acceptance named as not confirmed; never as confirmed."""
     waiting = [
-        b for b in first_report.split('<div class="claim" id="')[1:] if f">{AWAITING_EXPERT}<" in b
+        b.split('"', 1)[0]
+        for b in first_report.split('<div class="claim" id="')[1:]
+        if f">{AWAITING_EXPERT}<" in b
     ]
     assert waiting
-    traced = [b[b.index("How this verdict was reached") :] for b in waiting]
+    blocks = [_claim_html(first_report, cid) for cid in waiting]
+    traced = [b[b.index("How this verdict was reached") :] for b in blocks]
     assert any(
         "Found, not relied on" in t and "Local AI reviewer accepted; not confirmed" in t
         for t in traced
