@@ -8,12 +8,14 @@
 | `stage.py` | Lays out what the installer ships: Python, Mabillon's git-tracked source (in a folder still named `baker`) (no case02, no cloud benchmark), both runtimes, `BUILD_INFO.json` with every file's SHA-256 |
 | `baker.iss` | Inno Setup script: per-user install, picks the runtime, places and verifies the model, writes `~/.mabillon/model.json`. An update over an install made under the name Baker keeps its folder, model and own model setting, and replaces its Start-menu shortcuts |
 | `baker.cmd` | The `mabillon` command (`python -X utf8 -m cli`), staged as both `mabillon.cmd` and `baker.cmd` |
-| `speedtest.ps1` | Install, model download and check, probe and timed case01 audit, then `RESULTS.md` to paste back |
+| `speedtest.ps1` | Install, model download and check, probe and timed case01 audit, then `RESULTS.md` to paste back. `-Repeat` adds the repeat check (`eval/probe/repeat_check.py`, about 2 more hours on an NVIDIA GPU), so one rental measures speed and repeatability |
+| `wizard_shots.ps1` | Clicks through Setup's wizard as a person would and saves a picture and the text of every page (CI artifact `windows-setup-wizard`) |
 
 CI (`.github/workflows/windows-installer.yml`) runs on every push to `main`, on pull requests
 that touch this folder, and on demand. It checks the pins, builds both runtimes (cached), builds
 the installer, installs it on a fresh runner and runs the case01 merge gate from the installed
-copy, then uninstalls it. The installer, its `.sha256`, `BUILD_INFO.json` and `speedtest.ps1`
+copy, then uninstalls it. A second fresh runner clicks through the wizard and saves each page
+(`wizard_shots.ps1`). The installer, its `.sha256`, `BUILD_INFO.json` and `speedtest.ps1`
 are the `mabillon-installer` artifact of the run.
 
 CPU timing: **Actions > windows-installer > Run workflow** with "Time the 14B model" ticked, or
