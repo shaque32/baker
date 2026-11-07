@@ -1,0 +1,54 @@
+# Known vulnerabilities in the Python packages Mabillon installs, checked with pip-audit against
+# the PyPI advisory database. Runs when the dependencies change, on every push to main, and weekly,
+# since a new advisory can land on an unchanged tree. pip-audit sends package names and versions
+# to PyPI, never case data; this job runs on GitHub's runner only, not in Mabillon.
+#
+# Covered: everything `pip install ".[cloud]"` resolves today (the app plus the cloud labeler),
+# at the newest versions pyproject.toml allows, which is what a fresh install gets.
+# Not covered: llama-cpp-python (built from source by the installers, pinned in
+# packaging/windows/pins.json) and the dev-only tools.
+name: dependency-audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - ".github/workflows/dependency-audit.yml"
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Mabillon and its cloud extra in a clean venv, and list what it resolved
+        run: |
+          python -m venv /tmp/app
+          /tmp/app/bin/python -m pip install --upgrade pip
+          /tmp/app/bin/python -m pip install -e ".[cloud]"
+          /tmp/app/bin/python -m pip freeze --exclude-editable | tee /tmp/resolved.txt
+
+      - name: pip-audit on that list (fails on any known vulnerability)
+        # A separate venv, so pip-audit's own packages are not mistaken for Mabillon's.
+        run: |
+          python -m venv /tmp/audit
+          /tmp/audit/bin/python -m pip install pip-audit
+          /tmp/audit/bin/pip-audit -r /tmp/resolved.txt --no-deps --disable-pip \
+            --progress-spinner off --desc on

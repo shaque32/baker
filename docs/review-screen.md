@@ -204,6 +204,8 @@ one that no longer verifies. The expert:
 1. Leaves the case folder as it is (it is evidence of what happened) and runs
    `mabillon verify-log --db <case folder>/case.db` to record the reason.
 2. Restores the case folder from a backup made before the change, if there is one, and opens it.
+   "Back up this case" on Set up and run (or `mabillon backup`) makes such a backup: a verified
+   copy of the whole folder, under `~/Mabillon/backups` unless another folder is given.
    The restored log must still hold every anchored entry: restore the folder whole, its
    `case.db.anchors.jsonl` with its `case.db`. A restored log older than the anchor file beside it
    is blocked.

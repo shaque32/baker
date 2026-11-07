@@ -52,7 +52,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
-from core.casework import cases, jobs, protect
+from core.casework import backup, cases, jobs, protect
 from core.casework import cloud as cloud_policy
 from core.casework.model_check import ModelCheck, check_model
 from core.contracts import (
@@ -150,13 +150,14 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/case/open": ("audit", "propose", "model_check"),
     "/case/encrypt": ("audit", "propose", "model_check"),
     "/case/lock": ("audit", "propose", "model_check"),
+    "/case/backup": ("audit", "propose", "model_check"),
 }
 NO_CASE_GET = {"/cases"}
 HELP_GET = {"/help", "/help/bug-report.json"}  # with or without a case open
 NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 # Posts that must not have the case database open while they run: encrypting replaces the
 # database file (Windows cannot replace an open file), and locking forgets its key.
-OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
+OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done", "/case/backup"}
 
 
 _EVIDENCE_HREF = re.compile(r"""href=['"](/evidence\?[^'"]*)['"]""")
@@ -693,6 +694,7 @@ class App:
             "/case/open": lambda: self._open_case(f),
             "/case/encrypt": lambda: self._encrypt(f),
             "/case/lock": lambda: self._lock(),
+            "/case/backup": lambda: self._backup(f),
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
             "/case/recovery/new": lambda: self._new_recovery(f),
@@ -1240,6 +1242,15 @@ class App:
             "its recovery key, shown at the top of this page."
         )
 
+    def _backup(self, f: dict[str, str]) -> str:
+        case = self._open()
+        to = f.get("to", "").strip()
+        done = backup.back_up(case, self.actor, root=Path(to) if to else None)
+        return (
+            f"Backed up {case.name} to {done.folder} ({done.files} files, verified). Copy that "
+            "folder to a drive kept off this computer."
+        )
+
     def _lock(self) -> str:
         case = self._open()
         if protect.state(case) == "plain":
@@ -1367,6 +1378,7 @@ class App:
             cloud_key=self._cloud_key_state(),
             cloud_key_from=self._cloud_key_source(),
             audited=_audited(conn),
+            backup_root=str(backup.default_root(case)) if case.db.name == cases.DB_NAME else None,
             model_ok=None
             if check is None or (job is not None and job.running and job.kind == "model_check")
             else check.ok,
@@ -1374,7 +1386,7 @@ class App:
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         delta = -1 if f.get("delta") == "-1" else 1
-        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta)
+        order = cases.move_claim(self._open(), conn, f.get("claim", ""), delta, self.actor)
         cid = f.get("claim", "")
         return f"{_named(conn, cid)} now runs at position {order.index(cid) + 1}."
 
