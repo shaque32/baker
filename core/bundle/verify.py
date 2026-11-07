@@ -73,6 +73,7 @@ from core.contracts import (
     Claim,
     ClaimStatus,
     EvidenceStatus,
+    ProvenanceTier,
     Stance,
     Stipulation,
     StipulationKind,
@@ -1946,9 +1947,9 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     stip_position = min(positions.values(), default=0)
     stipulations = _stipulations_at(conn, log, run, stip_position)
     actions = defaultdict(list)
-    for _s, _a, actor, act, p in log:
+    for seq, _a, actor, act, p in log:
         if act in ("verdict.override", "verdict.confirm", "verdict.carry"):
-            actions[p.get("verdict_id")].append((actor, act, p))
+            actions[p.get("verdict_id")].append((actor, act, {**p, "_seq": seq}))
     decided_at = _decided_at(log, run)
     accepted = testability.accepted_in(conn, run)  # rules 0.4.0: the step's proposals it used
     n = overridden = untimed = 0
@@ -1978,7 +1979,8 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         if stored is None:
             out.add(FAIL, "verdicts", f"{claim_id}: no stored verdict for the run")
             continue
-        problem = _compare(decision, stored, actions.get(stored.id, []))
+        problem = _override_support(conn, log, items, actions.get(stored.id, []))
+        problem = problem or _compare(decision, stored, actions.get(stored.id, []))
         when = decided_at.get(claim_id)
         if when is None:
             untimed += 1
@@ -2019,6 +2021,35 @@ def _decided_at(log: list, run: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _override_support(
+    conn: sqlite3.Connection, log: list, items: dict, actions: list[tuple[str, str, dict]]
+) -> str | None:
+    """An override to Supported cites the support the expert had accepted when it was made
+    (core/review/actions.py override_verdict): each cited item is one of the claim's items in
+    the run, and an expert had accepted it as of the override's log entry."""
+    for _actor, act, p in actions:
+        if act != "verdict.override" or "cited_evidence_ids" not in p:
+            continue
+        cited = p["cited_evidence_ids"]
+        if not isinstance(cited, list) or not cited or not set(cited) <= set(items["evidence"]):
+            return "an override to Supported cites evidence that is not the claim's"
+        found = {x.id: x for x in pipeline.load_evidence(conn, cited)}
+        if set(found) != set(cited):
+            return "an override to Supported cites evidence the bundle does not hold"
+        statuses = _statuses_at(conn, log, p["_seq"], cited)
+        if any(
+            statuses[i] is not EvidenceStatus.ACCEPTED
+            or found[i].stance is not Stance.SUPPORTS
+            or found[i].tier is not ProvenanceTier.OBSERVED
+            for i in cited
+        ):
+            return (
+                "an override to Supported cites evidence an expert had not accepted as "
+                "observed support when the override was made"
+            )
+    return None
+
+
 def _override_basis(decision: Any, verdict: Verdict) -> SupportedBasis | None:
     """The basis an expert's override stores (core/review/actions.py override_verdict): the
     expert, except that a verdict the rules supported by code checks alone keeps that basis."""
@@ -2030,18 +2061,11 @@ def _override_basis(decision: Any, verdict: Verdict) -> SupportedBasis | None:
 
 
 def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -> str | None:
-    for name in (
-        "id",
-        "rule_version",
-        "reasons",
-        "coverage",
-        "cited_evidence_ids",
-        "cited_check_ids",
-        "cited_stipulation_ids",
-    ):
+    for name in ("id", "rule_version", "reasons", "coverage"):
         if getattr(decision, name) != getattr(stored, name):
             return f"the rules give other {name.replace('_', ' ')} than recorded"
     verdict, basis = decision.verdict, decision.supported_basis
+    cited_evidence = decision.cited_evidence_ids
     by: str | None = None
     note: str | None = None
     for actor, act, p in actions:
@@ -2054,11 +2078,20 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
         elif act == "verdict.override":
             verdict = Verdict(p["verdict"])
             basis = _override_basis(decision, verdict)
+            if verdict == Verdict.SUPPORTED and "cited_evidence_ids" in p:
+                cited_evidence = tuple(p["cited_evidence_ids"])
             by, note = actor, p.get("note")
         else:
             if p.get("verdict") != verdict.value:
                 return "a logged confirmation names another verdict than the one it confirmed"
             by, note = actor, None
+    for name, want in (
+        ("cited_evidence_ids", cited_evidence),
+        ("cited_check_ids", decision.cited_check_ids),
+        ("cited_stipulation_ids", decision.cited_stipulation_ids),
+    ):
+        if want != getattr(stored, name):
+            return f"the rules give other {name.replace('_', ' ')} than recorded"
     if (verdict, basis) != (stored.verdict, stored.supported_basis):
         return (
             f"the rules and the logged expert actions give {verdict.value}, but the stored "
