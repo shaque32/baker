@@ -415,6 +415,10 @@ class App:
                 self._note_view(conn, req, resp)
                 return self._unrecorded_warning(resp)
             return self._post(conn, req)
+        except pipeline.StoredVerdictInvalid as err:  # a GET only: _post flashes it
+            self._last_view = None  # not a view of the page asked for
+            back = pages.link(req.path, **req.query) if req.path in activity.PAGES else "/"
+            return self._html(pages.stored_verdict_page(self._page(), str(err), back), 409)
         finally:
             conn.close()
 

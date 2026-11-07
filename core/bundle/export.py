@@ -251,6 +251,18 @@ def plan(conn: sqlite3.Connection, run: dict[str, Any], include: tuple[str, ...]
     # Evidence: the audit's items, less those no verdict rests on.
     positions = verify._positions(log, run)
     left: dict[str, str] = {}
+    # Support an override to Supported cites stays in, with its reviews, so the verifier can
+    # check it was accepted when the override was made, whatever happened to it since.
+    vids = {
+        r[0]
+        for r in conn.execute("SELECT id FROM verdicts WHERE pipeline_run_id = ?", (run["run_id"],))
+    }
+    override_cited = {
+        str(i)
+        for _s, _a, _c, act, p in log
+        if act == "verdict.override" and p.get("verdict_id") in vids
+        for i in (p.get("cited_evidence_ids") or ())
+    }
     for claim_id, items in manifest.items():
         at = verify._statuses_at(conn, log, positions[claim_id], items["evidence"])
         for e in pipeline.load_evidence(conn, items["evidence"]):
@@ -258,6 +270,7 @@ def plan(conn: sqlite3.Connection, run: dict[str, Any], include: tuple[str, ...]
                 left[e.id] = "irrelevant"
             elif (
                 "dismissed" not in inc
+                and e.id not in override_cited
                 and at.get(e.id) is EvidenceStatus.DISMISSED
                 and e.status is EvidenceStatus.DISMISSED
             ):

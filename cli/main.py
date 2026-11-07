@@ -1071,6 +1071,9 @@ def main(argv: list[str] | None = None) -> int:
     except (actions.ReviewError, CaseLocked, audit_log.ChainBroken) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+    except pipeline.StoredVerdictInvalid as e:  # an old override's row: `redecide` replaces it
+        print(f"error: {e} (mabillon redecide --db <case.db> --by expert:<name>)", file=sys.stderr)
+        return 2
 
 
 def baker_alias() -> int:

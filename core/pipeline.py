@@ -683,6 +683,11 @@ def load_stipulations(conn: sqlite3.Connection) -> list[Stipulation]:
     ]
 
 
+class StoredVerdictInvalid(invariants.InvariantViolation):
+    """A stored verdict row the VerdictDecision contract refuses, so no page may show it.
+    The screen offers a verdict re-run (core/review/redecide.py), which replaces it."""
+
+
 def load_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str) -> VerdictDecision | None:
     r = conn.execute(
         "SELECT id, claim_id, pipeline_run_id, verdict, supported_basis, rule_version,"
@@ -693,6 +698,28 @@ def load_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str) -> Verdic
     if r is None:
         return None
     cited = json.loads(r[8])
+    try:
+        return _verdict_from_row(r, cited)
+    except ValueError as err:  # pydantic's ValidationError is a ValueError
+        raise StoredVerdictInvalid(
+            f"the stored verdict on {claim_id} in run {run_id} breaks the verdict contract "
+            f"({_first_error(err)}). An expert override to Supported could store one with no "
+            "cited evidence before overrides required accepted support. Re-run the verdicts "
+            "to replace it: the rules decide again from the stored evidence and your review "
+            "decisions, and nothing is lost from the audit log."
+        ) from err
+
+
+def _first_error(err: ValueError) -> str:
+    errors = getattr(err, "errors", None)
+    if callable(errors):
+        msgs = [str(x.get("msg", "")).removeprefix("Value error, ") for x in errors()]
+        if msgs:
+            return "; ".join(msgs)
+    return str(err)
+
+
+def _verdict_from_row(r: tuple, cited: dict) -> VerdictDecision:
     return VerdictDecision(
         id=r[0],
         claim_id=r[1],
