@@ -116,6 +116,35 @@ MODELS = (
         parameters_b=2780,
         usd_per_mtok=(2.00, 10.00),
     ),
+    # Single-GPU candidates for a hosted endpoint we run ourselves: each fits one 48 GB card
+    # at 8-bit, so it can be served one request at a time on one pinned machine.
+    OpenModel(
+        name="qwen3.6-35b-a3b",
+        api_model="qwen/qwen3.6-35b-a3b",
+        weights="Qwen/Qwen3.6-35B-A3B",
+        revision="345d467b117d1fd5eda9b879a5988de9ae5f47a7",
+        license="Apache-2.0",
+        parameters_b=36,
+        usd_per_mtok=(0.10, 0.90),
+    ),
+    OpenModel(
+        name="nemotron-3.5-lightning",
+        api_model="nvidia/nemotron-3.5-lightning",
+        weights="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+        revision="a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+        license="other (openmdw-1.1)",
+        parameters_b=32,
+        usd_per_mtok=(0.07, 0.20),
+    ),
+    OpenModel(
+        name="qwen3.8-27b",
+        api_model="qwen/qwen3.8-27b",
+        weights="Qwen/Qwen3.8-27B",
+        revision="37561816e66b5b9153b1b64c10968c18c1e6f4a0",
+        license="Apache-2.0",
+        parameters_b=28,
+        usd_per_mtok=(0.15, 1.875),
+    ),
 )
 
 PROVIDER = {
