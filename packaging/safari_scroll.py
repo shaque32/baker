@@ -56,9 +56,8 @@ class Driver:
         self.s("POST", "/url", {"url": url})
         time.sleep(0.8)
 
-    def js(self, script: str, *els: str):  # noqa: ANN202
-        args = [{ELEMENT: el, "ELEMENT": el} for el in els]
-        return self.s("POST", "/execute/sync", {"script": script, "args": args})
+    def js(self, script: str):  # noqa: ANN202
+        return self.s("POST", "/execute/sync", {"script": script, "args": []})
 
     def find(self, css: str) -> str | None:
         try:
@@ -176,10 +175,10 @@ def main() -> int:
             # it. A fixed scrollTop left the row under the ledger's top edge, and safaridriver
             # refuses a click on an element it cannot see (HTTP 400).
             scrolled = d.js(
-                "const a = document.querySelector('aside.side'), l = arguments[0];"
+                "const a = document.querySelector('aside.side'),"
+                " l = a.querySelector(\".ledger a[href^='/claim?id=C10']\");"
                 " a.scrollTop += l.getBoundingClientRect().top - a.getBoundingClientRect().top"
-                " - a.clientHeight / 2; return Math.round(a.scrollTop)",
-                link,
+                " - a.clientHeight / 2; return Math.round(a.scrollTop)"
             )
             refused = d.click(link)
             if refused:
