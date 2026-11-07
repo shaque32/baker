@@ -80,7 +80,8 @@ def test_pip_install_includes_every_data_file_core_and_ui_read():
 def test_every_package_a_shipped_file_imports_is_installed():
     """The installed copy runs the case01 gate and the speed test, so every third-party module a
     shipped file imports must come with the installer (llama_cpp ships as its own runtime)."""
-    import_name = {"sqlcipher3_wheels": "sqlcipher3"}  # a distribution named unlike its module
+    # distributions named unlike their module
+    import_name = {"sqlcipher3_wheels": "sqlcipher3", "pywebview": "webview"}
     shipped_dists = {
         import_name.get(d, d)
         for d in (

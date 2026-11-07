@@ -9,6 +9,7 @@ accepts evidence on the screen and re-runs the verdicts.
 from __future__ import annotations
 
 import ast
+import html
 import http.client
 import json
 import re
@@ -476,6 +477,23 @@ def test_report_has_awaiting_versions_coverage_log_and_print_layout(conn, tmp_pa
     assert "Hash chain verified" in html and "Pipeline runs: completed 1" in html
     assert "@media print" in html and "thead { display: table-header-group; }" in html
     write_report(conn, tmp_path / "r.html")  # passes the forbidden-word check
+
+
+def test_report_on_screen_has_a_way_back_and_the_saved_copy_does_not(db):
+    # Mabillon's own window has no Back button: the report on screen links back to the case.
+    app = App(db, expert="Test Expert", port=PORT)
+    on_screen = get(app, "/report").body.decode()
+    assert on_screen.count("Back to the case</a>") == 1
+    assert "@media print{.screen-said{display:none}}" in on_screen
+    saved = get(app, "/report", download="1").body.decode()
+    assert "Back to the case" not in saved and "screen-said" not in saved
+    # in the window, saving comes back here: the report says where it went, or why it did not
+    for flash in (("Saved r.html in /x <D>.", False), ("Not saved in /x: disk full", True)):
+        app.flash = flash
+        body = get(app, "/report").body.decode()
+        assert html.escape(flash[0]) in body and "<D>" not in body
+        assert ("role='alert'" in body) is flash[1]
+        assert app.flash is None
 
 
 def test_report_after_expert_review_says_expert_confirmed(conn):

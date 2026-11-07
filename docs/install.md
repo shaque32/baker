@@ -60,8 +60,14 @@ run then stops with an error and nothing is decided from it. Reinstall with
 
 Mabillon installs to `%LOCALAPPDATA%\Programs\Mabillon`, the model to
 `%LOCALAPPDATA%\Mabillon\models`, and the model setting to `%USERPROFILE%\.mabillon\model.json`.
-Setup adds the `mabillon` command to your PATH (`baker` still works for a release) and a
-**Mabillon command prompt** shortcut to the Start menu.
+Setup adds **Mabillon** and **Mabillon demo** to the Start menu (and, if you leave the box ticked,
+**Mabillon** to the desktop). Each opens Mabillon in its own window, drawn by Windows' own Edge
+WebView2; closing the window stops it, and it asks first while an audit runs. Files you download
+from the screen are saved in your Downloads folder, and the page says where. A PC without
+WebView2 opens the browser instead, from a console window: closing that window stops
+Mabillon. What Mabillon prints goes to
+`%LOCALAPPDATA%\Mabillon\Mabillon.log`. Setup also adds the `mabillon` command to your PATH (`baker`
+still works for a release) and a **Mabillon command prompt** shortcut to the Start menu.
 
 On a PC where it was installed under the name Baker, Setup updates that install in place: it
 stays in `%LOCALAPPDATA%\Programs\Baker`, a model in `%LOCALAPPDATA%\Baker\models` and a model

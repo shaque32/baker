@@ -64,9 +64,8 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 The demo is a ready-made, fully synthetic case (two phones, seven planted traps). No model runs,
 so it opens in seconds. Run it before you open anything real.
 
-1. Start it. Mac: double-click **Mabillon demo**. Windows: in **Mabillon command prompt**, run
-   `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer, and only the
-   browser Mabillon opened, can use that address. Closing the window that started it stops
+1. Start it. Mac: open **Mabillon Demo** from Applications. Windows: **Mabillon demo** in the Start
+   menu. It opens in its own window, which only your computer can open, and closing it stops
    Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
@@ -85,7 +84,8 @@ demo to a clean copy.
 
 ## 4. Your first case
 
-1. Start Mabillon (Mac: **Mabillon** on the Desktop; Windows: `mabillon serve --open`). It opens
+1. Start Mabillon (Mac: **Mabillon** in Applications; Windows: **Mabillon** in the Start menu or on
+   the desktop). It opens in its own window; in a browser, `mabillon serve --open` opens
    `http://127.0.0.1:8765`.
 2. **New case.** Leave **Encrypt this case with a passphrase** ticked. Mabillon shows a recovery key
    **once**: write it down and keep it away from the computer. If you lose both the passphrase and
