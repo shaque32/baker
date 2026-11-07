@@ -1,0 +1,33 @@
+{
+  "_note": "Plan C model server pins (2026-11-07). Model picked by the 5-judge consensus (/mnt/project-files/baker/model-pick-2026-11-07/CONSENSUS.md). Engine flags marked unverified must be confirmed on the first audited boot; manifest_sha256 is filled in from that boot's state.json.",
+  "model": {
+    "repo": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+    "served_name": "deepseek-v4.1-flash-1017",
+    "license": "MIT",
+    "weights_format": "FP8 dense weights, FP4 experts (config.json quantization_config, read 2026-11-07)",
+    "manifest_sha256": null
+  },
+  "engine": {
+    "name": "vllm",
+    "package": "vllm",
+    "version": "0.32.0",
+    "_version_note": "released 2026-10-18; DeepSeek V4.1 support and Hopper FP4-expert kernels (MARLIN) unverified for this version"
+  },
+  "hardware": {
+    "aws_instance": "p5en.48xlarge",
+    "gpus": "8 x NVIDIA H200 141 GB",
+    "_price_note": "about $63/h on demand us-east-1 (secondary sources, unverified)"
+  },
+  "serve": {
+    "seed": 1234,
+    "max_tokens": 32000,
+    "timeout_seconds": 900,
+    "max_num_seqs": 1,
+    "tensor_parallel_size": 8,
+    "max_model_len": 65536,
+    "extra_args": ["--enable-expert-parallel"],
+    "env": {"VLLM_BATCH_INVARIANT": "1"},
+    "_env_note": "batch-invariant mode name and effect unverified for this engine version"
+  }
+}
