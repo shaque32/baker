@@ -102,7 +102,7 @@ def test_every_package_a_shipped_file_imports_is_installed():
                 continue
             for name in names:
                 top = name.split(".")[0]
-                local = top in {"cli", "core", "ui", "eval"}
+                local = top in {"account", "cli", "core", "ui", "eval"}
                 if not local and top not in sys.stdlib_module_names and top not in shipped_dists:
                     missing.setdefault(top, f)
     assert not missing, f"add to pyproject dependencies or the synthetic extra: {missing}"

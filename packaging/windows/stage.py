@@ -37,7 +37,7 @@ PINS = Path(__file__).with_name("pins.json")
 LAUNCHER = Path(__file__).with_name("baker.cmd")
 
 # What goes into baker/: these top-level paths from `git ls-files`, minus EXCLUDE.
-SHIP = ("cli/", "core/", "ui/", "eval/", "docs/", "README.md", "pyproject.toml")
+SHIP = ("account/", "cli/", "core/", "ui/", "eval/", "docs/", "README.md", "pyproject.toml")
 EXCLUDE = (
     "eval/bench/",  # cloud benchmark, eval only; the product never talks to a cloud model
     "eval/stancedata/",  # small-model track, not part of the product yet

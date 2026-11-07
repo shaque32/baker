@@ -314,7 +314,22 @@ def cmd_name_account(a: argparse.Namespace) -> int:
     return 0
 
 
+def _license_allows_audit() -> bool:
+    """With sign-in on, a new audit from the command line needs a license, as on the screen.
+    While it is off (account.SIGNIN_ON) this never connects and always allows."""
+    import account
+
+    if not account.SIGNIN_ON:
+        return True
+    allowed, why = _signin_for(0).may_start_audit()  # type: ignore[attr-defined]
+    if not allowed:
+        print(f"audit: not started. {why}", file=sys.stderr)
+    return bool(allowed)
+
+
 def cmd_audit(a: argparse.Namespace) -> int:
+    if not _license_allows_audit():
+        return 2
     conn = _open(a.db)
     if a.fake:
         from eval.pipeline_fakes import fake_components
@@ -643,6 +658,50 @@ def _open_in_browser(link: str) -> None:
     webbrowser.open(link)
 
 
+def _open_url(url: str) -> bool:
+    """The system browser, for the sign-in page: never Mabillon's own window, which keeps no
+    cookies or sign-ins between launches."""
+    import webbrowser
+
+    return webbrowser.open(url)
+
+
+def _signin_for(port: int) -> object:
+    """Sign-in for the screen on this port, with the one license client (account/client.py)."""
+    from account.client import Client
+    from account.session import SignIn
+    from core import build
+
+    version = build.release()
+    return SignIn(port, version, Client(version), _open_url)
+
+
+def cmd_license(a: argparse.Namespace) -> int:
+    """`mabillon license status | import FILE | sign-out`: the license on this computer."""
+    import account
+    from account import license as lic
+
+    if not account.SIGNIN_ON:
+        print("Sign-in is not turned on in this Mabillon, so nothing needs a license.")
+        return 0
+    if a.action == "import":
+        if a.file is None:
+            raise SystemExit("name the license file: mabillon license import <file>")
+        try:
+            stored = lic.read_license_file(a.file.read_bytes())
+        except OSError as e:
+            raise SystemExit(f"cannot read {a.file}: {e}") from e
+        except lic.BadLicense as e:
+            raise SystemExit(f"not used: {e}") from e
+        lic.save(stored)
+    elif a.action == "sign-out":
+        signin = _signin_for(0)
+        print(signin.sign_out())  # type: ignore[attr-defined]
+        return 0
+    print(lic.status(lic.load()).message)
+    return 0
+
+
 def _stop(signum: int, frame: object) -> None:
     raise KeyboardInterrupt
 
@@ -674,8 +733,14 @@ def cmd_serve(a: argparse.Namespace) -> int:
         home = a.cases or cases_home()
         home.mkdir(parents=True, exist_ok=True)
     remembered = paths.settings_file("reviewer.json")  # the examiner's name, between launches
+    import account
+
+    signin_for = _signin_for if account.SIGNIN_ON else None  # off: no sign-in, as before
     server, note = _bind(
-        a.port, lambda port: make_server(a.db, port, a.expert, home=home, name_file=remembered)
+        a.port,
+        lambda port: make_server(
+            a.db, port, a.expert, home=home, name_file=remembered, signin_for=signin_for
+        ),
     )
     if note:
         print(note)
@@ -1105,6 +1170,10 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--window", action="store_true", help="open it in Mabillon's own window (the app)"
     )
+    sp = sub.add_parser("license", help="the Mabillon license on this computer")
+    sp.set_defaults(fn=cmd_license)
+    sp.add_argument("action", choices=["status", "import", "sign-out"])
+    sp.add_argument("file", type=Path, nargs="?", help="the license file, for import")
     sp = sub.add_parser("model-check", help="check the local model before a first audit")
     sp.set_defaults(fn=cmd_model_check)
     sp = sub.add_parser("bug-report", help="write a bug report that holds no case data")

@@ -128,8 +128,10 @@ class Page:
         cloud: bool = False,
         case_key: str = "",
         stand_in: str = "",
+        account: bool = False,
     ):
         self.token = token
+        self.account = account  # sign-in is on: the header links the Account page
         self.case_key = case_key  # names the open case in every form, so a stale tab's post
         # for another case is refused (ui/app.py, App._stale_case)
         self.expert = expert
@@ -217,7 +219,9 @@ class Page:
                 if self.cloud
                 else "<span class='pill' title='Nothing leaves this computer'>Offline</span>"
             )
-            + f"{who}<a href='/help' class='help'>Help</a></div></div>"
+            + who
+            + ("<a href='/account' class='help'>Account</a>" if self.account else "")
+            + "<a href='/help' class='help'>Help</a></div></div>"
             f"<nav class='tabs'>{links}</nav></header>"
             f"<main{' class=wide' if wide else ''}>"
             f"{notice}{flash}{self.stand_in}{banner}{body}</main>"

@@ -16,8 +16,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
+from account.flow import DONE_PATH
+from account.session import SignIn
 from core.support import errors as support_errors
 from ui import downloads
+from ui.account_page import done_page
 from ui.app import MAX_BODY, App, Request, Response
 from ui.screen_key import OPEN_PATH, REFUSED, ScreenKey
 
@@ -131,6 +134,8 @@ class _Handler(BaseHTTPRequestHandler):
         if len(hosts) != 1 or hosts[0] not in self.app.allowed_hosts():
             return Response(400, WRONG_HOST.encode("utf-8"), [_PLAIN, *_SECURITY])
         parts = urlsplit(self.path)
+        if parts.path == DONE_PATH and self.command == "GET":
+            return self._signin_done(parts.query)
         if parts.path == OPEN_PATH:
             given = dict(parse_qsl(parts.query)).get("key")
             if self.command == "GET" and self.key.matches(given):
@@ -139,6 +144,23 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.key.admits(self.headers.get("Cookie")):
             return None
         return Response(403, REFUSED.encode("utf-8"), [_PLAIN, *_SECURITY])
+
+    def _signin_done(self, query: str) -> Response:
+        """Where the browser comes back from the sign-in page (account/flow.py). The system
+        browser does not hold this launch's screen key, so this one path is let in without it:
+        it acts only for the one sign-in this screen started (its one-use state, within 10
+        minutes), and its page shows nothing from a case and holds no form token."""
+        signin = self.app.signin
+        if signin is None or not signin.on:
+            return Response(404, b"no such page", [_PLAIN, *_SECURITY])
+        q = dict(parse_qsl(query))
+        ok, message = signin.finish(q.get("code"), q.get("state"))
+        headers = [h for h in _SECURITY if h[0] != "Referrer-Policy"]
+        headers += [
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("Referrer-Policy", "no-referrer"),  # the code in its address goes nowhere
+        ]
+        return Response(200 if ok else 400, done_page(ok, message).encode("utf-8"), headers)
 
     def _refuse(self, resp: Response) -> None:
         """Answer a refused request; a small body is read first, so the browser sees the answer
@@ -195,17 +217,21 @@ def make_server(
     home: Path | None = None,
     name_file: Path | None = None,
     download_folder: Path | None = None,
+    signin_for: Callable[[int], SignIn] | None = None,
 ) -> HTTPServer:
     """Bind 127.0.0.1:port (0 picks a free port). Nothing else is ever bound. On one case
     database (db) or on a cases folder (home). The server's screen key is new on every call;
     only launch_url(server) opens the screen. name_file remembers the examiner's name between
     launches (the command passes ~/.mabillon/reviewer.json). With download_folder (Mabillon's
-    own window), the screen saves downloads into that folder itself."""
+    own window), the screen saves downloads into that folder itself. signin_for builds the
+    sign-in (account/session.py) for the port bound, with its license client."""
     app = App(db, expert=expert, home=home, name_file=name_file)
     handler = type("Handler", (_Handler,), {"app": app, "download_folder": download_folder})
     server = _Server((HOST, port), handler)
     app.port = server.server_address[1]
     handler.key = ScreenKey(app.port)
+    if signin_for is not None:
+        app.signin = signin_for(app.port)
     server.app = app  # type: ignore[attr-defined]
     server.key = handler.key  # type: ignore[attr-defined]
     return server
