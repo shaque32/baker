@@ -21,6 +21,7 @@ and every report prints each one as a limitation.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, date, datetime
@@ -315,6 +316,20 @@ def confirm_verdict(
         )
 
 
+CHECKED_REASON = "Rule 3c': every core assumption passed its code checks"
+
+
+def _rules_checked(conn: sqlite3.Connection, vid: str) -> bool:
+    """The rules supported this verdict by code checks alone (rule 3c'): it cites no evidence
+    and its stored reasons, which an override never changes, give the rule 3c' support."""
+    reasons_json, cited_json = conn.execute(
+        "SELECT reasons_json, cited_json FROM verdicts WHERE id = ?", (vid,)
+    ).fetchone()
+    if json.loads(cited_json).get("evidence"):
+        return False
+    return any(str(r).startswith(CHECKED_REASON) for r in json.loads(reasons_json))
+
+
 def override_verdict(
     conn: sqlite3.Connection,
     claim_id: str,
@@ -331,8 +346,14 @@ def override_verdict(
     _withheld_acknowledged(conn, claim_id)
     if verdict == Verdict.SUPPORTED:
         # The verdicts table ties SUPPORTED to a supported_basis; an override records the
-        # expert as the basis.
-        basis = SupportedBasis.CONFIRMED.value
+        # expert as the basis, except on a verdict the rules supported by code checks alone
+        # (rule 3c'). That one cites checks and no evidence, and a confirmed basis must cite
+        # evidence, so it keeps the checked basis. The label still says expert override.
+        basis = (
+            SupportedBasis.CHECKED.value
+            if _rules_checked(conn, vid)
+            else SupportedBasis.CONFIRMED.value
+        )
     else:
         basis = None
     with conn:
