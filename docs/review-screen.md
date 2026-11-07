@@ -148,6 +148,12 @@ eval or re-decided.
   checks ("Supported by the records (code checks)"). An item the local AI reviewer accepted shows
   its tier as `ai_reviewed` ("AI-reviewed, not confirmed"), and one counsel accepted shows
   `counsel_reviewed`. Only an expert's acceptance shows as `confirmed`.
+- Plain guidance on every claim (`core/review/guidance.py`, report 0.39.0): the claim page and the
+  report say, in the same words, what the verdict shown means, what it does not mean, and the
+  judgment calls the records cannot settle: phone ownership an expert has not confirmed, and
+  identity, role, content-meaning, absence and event claims (dropped once an expert confirmed or
+  overrode the verdict). It is for the examiner and for the counsel who reads the report. It
+  never changes a verdict or a label.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.

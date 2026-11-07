@@ -72,7 +72,7 @@ from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note, direction_words, sender_words, shows_side
 from core.report.timeline import CSS as TIMELINE_CSS
-from core.review import activity, device_names
+from core.review import activity, device_names, guidance
 from core.review import flags as F
 from core.review import withheld as W
 from core.review.activity import VIEW
@@ -1452,6 +1452,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     ]
     if needs:
         out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for t in needs) + "</ul>")
+    out.append(guidance.html(guidance.for_claim(conn, st)))  # the same block as the report
     out.append(_gap_lines(st))  # the same lines as the report
     out.append(_coverage_lines(conn, st))
     out.append(_claim_notices(conn, st))
