@@ -81,3 +81,47 @@ def test_the_report_and_claim_page_cite_a_claims_quoted_forbidden_word(quoting, 
     assert "page withheld" not in response.text
     page = response.text
     assert page.count(f'<span class="q">{QUOTE}</span>') >= 3  # reason, assumption, search
+
+
+UNQUOTED = "PETROV deleted the WhatsApp messages he exchanged with REYES"
+
+
+class _Refusing:
+    """The fake assumptions, except that one claim gets none and the refusal the filler writes
+    when a proposal's quote is the claim's own sentence (assumption_filler._resolve)."""
+
+    def __init__(self, inner: object, claim_id: str) -> None:
+        self.inner, self.claim_id = inner, claim_id
+
+    def build(self, claim):  # noqa: ANN001, ANN201
+        return [] if claim.id == self.claim_id else self.inner.build(claim)  # type: ignore[attr-defined]
+
+    def refused(self, claim_id: str) -> list[str]:
+        if claim_id != self.claim_id:
+            return []
+        return [f"{UNQUOTED!r} is not inside quotation marks in the claim"]
+
+
+def test_a_refusal_quoting_the_claims_own_words_still_gets_a_report(tmp_path):
+    """The 14B baseline on the Mac (2026-11-06): case01's audit finished, then the report
+    refused, because a not-tested claim's line printed the claim's own sentence in single
+    quotes, which the cited mark did not cover."""
+    path = tmp_path / "case.db"
+    run_pipeline.build_case("case01", path).close()  # type: ignore[attr-defined]
+    conn = connect(path)
+    claim_id = conn.execute("SELECT id FROM claims ORDER BY id").fetchone()[0]
+    conn.execute("UPDATE claims SET text = ? WHERE id = ?", (f"{UNQUOTED}.", claim_id))
+    conn.commit()
+    comps = fake_components(accept=True)
+    comps.assumptions = _Refusing(comps.assumptions, claim_id)
+    result = pipeline.run_audit(conn, comps)
+    conn.commit()
+    assert UNQUOTED in result.not_tested[claim_id]
+    report = render_report(conn)
+    check_report_text(report)
+    assert f'<span class="q">{UNQUOTED}</span>' in report
+    app = App(path, expert="Test Expert", port=8765)
+    response = app.handle(Request("GET", "/claim", {"id": claim_id}, {"host": "127.0.0.1:8765"}))
+    assert response.status == 200, response.text[:300]
+    assert f'<span class="q">{UNQUOTED}</span>' in response.text
+    conn.close()

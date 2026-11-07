@@ -37,9 +37,15 @@ _COUNT_WORD = {
 }
 
 
-# Words in double quotes inside Mabillon's own sentence: an assumption's text or a rule's reason
-# ("The words \"Done. It's been deleted.\" mean ...") carries the claim's quoted message.
+# Words in quotes inside Mabillon's own sentence: an assumption's text or a rule's reason
+# ("The words \"Done. It's been deleted.\" mean ...") carries the claim's quoted message, and a
+# filler refusal prints the words it was given as Python writes them, in single quotes
+# ("'PETROV deleted the WhatsApp messages ...' is not inside quotation marks in the claim"). A
+# single quote counts only where no letter or digit touches it on the outside, so an
+# apostrophe ("PETROV's") never opens or closes one. The kinds nest (a rule's reason holds
+# 'The words "..." mean ...'), so each is matched on its own and only cited spans are kept.
 _QUOTED = re.compile(r'"([^"]+)"|\u201c([^\u201d]+)\u201d')
+_SINGLE = re.compile(r"(?<![\w'])'([^']+)'(?![\w'])")
 
 
 def _fold(text: str) -> str:
@@ -131,13 +137,18 @@ class Names:
     def _quotes(self, text: str | None, rest: Callable[[str], str]) -> str:
         if not text:
             return ""
+        cited = sorted(
+            (m.start(), -m.end(), m[0], words)
+            for pattern in (_QUOTED, _SINGLE)
+            for m in pattern.finditer(text)
+            if self._cited(words := next(g for g in m.groups() if g))
+        )  # quoted words no claim holds stay Mabillon's own, checked whole
         out, at = [], 0
-        for m in _QUOTED.finditer(text):
-            words = m[1] or m[2]
-            if not self._cited(words):
-                continue  # quoted words no claim holds stay Mabillon's own, checked whole
-            out += [rest(text[at : m.start()]), e(m[0][0]), q(words), e(m[0][-1])]
-            at = m.end()
+        for start, neg_end, whole, words in cited:
+            if start < at:
+                continue  # inside a cited span already kept (the earlier, longer one)
+            out += [rest(text[at:start]), e(whole[0]), q(words), e(whole[-1])]
+            at = -neg_end
         out.append(rest(text[at:]))
         return "".join(out)
 

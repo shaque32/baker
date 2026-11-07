@@ -231,7 +231,9 @@ from core.review.withheld import summary as withheld_summary
 # AI review alone never makes a claim supported always stays). The Selection audit says where
 # each quote not placed is listed, and the Quiet stretches strip gives each app the same pace as
 # the cards.
-REPORT_VERSION = "0.37.0"
+# 0.38.0: a not-tested claim's refusals cite the claim's own words when the filler printed them
+# in single quotes, so a claim that says "deleted" no longer stops the report (14B Mac baseline).
+REPORT_VERSION = "0.38.0"
 
 # what each provenance tier means, in the report's Limitations and on the Help page
 TIER_WORDS = (
@@ -1130,7 +1132,7 @@ def _claim_block(
     if st.unlabeled:
         out.append(f"<p class='muted'>{names.html(st.unlabeled)}</p>")
     if st.untested:
-        out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
+        out.append(f"<p><strong>{names.cite(st.not_tested)}</strong></p>")
         if case is not None:
             held = "".join(f"<li>{e(h)}</li>" for h in case_holdings(conn))
             out.append(f"<p>{e(HOLDINGS)}</p><ul>{held or '<li>No extraction imported.</li>'}</ul>")

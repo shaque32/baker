@@ -1590,7 +1590,8 @@ def _not_tested_block(conn: sqlite3.Connection, st: ClaimState) -> str:
     if sep:
         out.append(
             "<details class='why-tech'><summary>Why code could not set it up</summary>"
-            f"<p class='muted'>Refused: {plain_ids(conn, refused)}</p></details>"
+            f"<p class='muted'>Refused: {Names(conn).for_claim(st.claim.text).html(refused)}</p>"
+            "</details>"
         )
     para = st.claim.paragraph_id
     same = [
