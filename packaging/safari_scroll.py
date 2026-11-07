@@ -56,8 +56,9 @@ class Driver:
         self.s("POST", "/url", {"url": url})
         time.sleep(0.8)
 
-    def js(self, script: str):  # noqa: ANN202
-        return self.s("POST", "/execute/sync", {"script": script, "args": []})
+    def js(self, script: str, *els: str):  # noqa: ANN202
+        args = [{ELEMENT: el, "ELEMENT": el} for el in els]
+        return self.s("POST", "/execute/sync", {"script": script, "args": args})
 
     def find(self, css: str) -> str | None:
         try:
@@ -68,9 +69,16 @@ class Driver:
             print(json.dumps({"find": css, "error": str(err), "body": body}), flush=True)
             return None
 
-    def click(self, el: str) -> None:
-        self.s("POST", f"/element/{el}/click")
+    def click(self, el: str) -> str | None:
+        """Click as a person would; return safaridriver's refusal instead of raising it."""
+        try:
+            self.s("POST", f"/element/{el}/click")
+        except urllib.error.HTTPError as err:
+            body = err.read().decode()[:300]
+            print(json.dumps({"click": el, "error": str(err), "body": body}), flush=True)
+            return body or str(err)
         time.sleep(1.2)
+        return None
 
     def type(self, el: str, text: str) -> None:
         self.s("POST", f"/element/{el}/value", {"text": text})
@@ -164,24 +172,39 @@ def main() -> int:
         d.get(demo + "/claim?id=C01")
         link = d.find("aside.side .ledger a[href^='/claim?id=C10']")
         if link:
-            d.js("document.querySelector('aside.side').scrollTop = 900; return 1")
-            d.click(link)
-            note(
-                "C10 from the side ledger",
-                lambda s: s["ledger"] and s["ledger"] > 0 and s["y"] < 40,
+            # Scroll the ledger as a person would before clicking: C10's row in the middle of
+            # it. A fixed scrollTop left the row under the ledger's top edge, and safaridriver
+            # refuses a click on an element it cannot see (HTTP 400).
+            scrolled = d.js(
+                "const a = document.querySelector('aside.side'), l = arguments[0];"
+                " a.scrollTop += l.getBoundingClientRect().top - a.getBoundingClientRect().top"
+                " - a.clientHeight / 2; return Math.round(a.scrollTop)",
+                link,
             )
+            refused = d.click(link)
+            if refused:
+                note("C10 from the side ledger", False, scrolled=scrolled, error=refused)
+            else:
+                note(
+                    "C10 from the side ledger",
+                    lambda s: s["ledger"] and s["ledger"] > 0 and s["y"] < 40,
+                    scrolled=scrolled,
+                )
 
         # 4. Confirm a verdict from far down the page (POST, 303 to #verdict).
         d.get(demo + "/claim?id=C09")
         d.js("document.querySelectorAll('#verdict details').forEach(x => x.open = true); return 1")
         btn = d.find("form[action='/verdict'] button")
         if btn:
-            d.click(btn)
-            note("C09 confirm verdict (redirect to #verdict)", lambda s: s["y"] > 0)
-            note(
-                "C09's row shows in the ledger after the form",
-                lambda s: 0 <= s["open_row"] and s["open_row"] + 40 <= s["ledger_h"],
-            )
+            refused = d.click(btn)
+            if refused:
+                note("C09 confirm verdict (redirect to #verdict)", False, error=refused)
+            else:
+                note("C09 confirm verdict (redirect to #verdict)", lambda s: s["y"] > 0)
+                note(
+                    "C09's row shows in the ledger after the form",
+                    lambda s: 0 <= s["open_row"] and s["open_row"] + 40 <= s["ledger_h"],
+                )
     finally:
         d.quit()
     print(json.dumps({"summary": {"steps": len(out), "landed_wrong": bad}}), flush=True)
