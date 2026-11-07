@@ -109,7 +109,7 @@ from core.report import selection as selection_html
 from core.report import timeline as timeline_html
 from core.report import why
 from core.report.fmt import e, q, said
-from core.review import account_names, activity, audit_log, device_names
+from core.review import account_names, activity, audit_log, device_names, guidance
 from core.review.status import (
     AWAITING_EXPERT,
     CONTRADICTION_FOUND,
@@ -236,7 +236,9 @@ from core.review.withheld import summary as withheld_summary
 # 0.38.0: rules 0.5.0. Two new supported labels, "Supported by the records (code checks)" and
 # "Supported (reviewed by counsel)", each defined in Limitations when used, and the tier
 # counsel_reviewed. Neither displays as expert-confirmed.
-REPORT_VERSION = "0.38.0"
+# 0.39.0: each claim says what its verdict means, what it does not mean, and the judgment calls
+# the records cannot settle (core/review/guidance.py, the same block as the claim page).
+REPORT_VERSION = "0.39.0"
 
 # what each provenance tier means, in the report's Limitations and on the Help page
 TIER_WORDS = (
@@ -1088,6 +1090,7 @@ def _claim_block(
         out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     nt = " v-nt" if st.untested else ""
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
+    out.append(guidance.html(guidance.for_claim(conn, st)))  # the same block as the claim page
     out.extend(
         f"<p class='gap'><strong>{e(topic)}:</strong> {e(text)}</p>"
         for topic, text in st.explain_lines()
