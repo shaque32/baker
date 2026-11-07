@@ -27,26 +27,9 @@
   --measure: 62ch;
   --wide: 1120px;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #12110f; --card: #1a1916; --panel: #211f1b; --fg: #ece8df; --muted: #a8a196;
-    --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #7a6428;
-    --sup: #92c4a2; --sup-bg: #1b2a20;
-    --con: #eea193; --con-bg: #33201c;
-    --unp: #e3bd6c; --unp-bg: #2e2716;
-    --ink: #0a0a09; --ink-line: #262420;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #12110f; --card: #1a1916; --panel: #211f1b; --fg: #ece8df; --muted: #a8a196;
-  --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #7a6428;
-  --sup: #92c4a2; --sup-bg: #1b2a20;
-  --con: #eea193; --con-bg: #33201c;
-  --unp: #e3bd6c; --unp-bg: #2e2716;
-  --ink: #0a0a09; --ink-line: #262420;
-  color-scheme: dark;
-}
+/* One look in every system theme: the near-black header, hero and closing band against the light
+   paper page. Dark mode is not followed, so the contrast stays the same for everyone. */
+:root { color-scheme: light; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
@@ -157,8 +140,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
    The hero headline comes into focus word by word; the claim list in the hero window arrives in
    order; "Book a demo" leans toward the pointer; one heading lights up word by word as it scrolls
    through the screen. Reduced motion turns all of it off and shows the finished state. */
-.blur-in .w { display: inline-block; animation: blur-in 0.9s var(--ease) both; }
-@keyframes blur-in { from { opacity: 0; filter: blur(12px); transform: translateY(-0.16em); } }
+.blur-in .w { animation: blur-in 0.9s var(--ease) both; }
+@keyframes blur-in { from { opacity: 0; filter: blur(12px); } }
 .blur-in .ph .w:nth-child(1) { animation-delay: 0.07s; } .blur-in .ph .w:nth-child(2) { animation-delay: 0.14s; }
 .blur-in > .w:nth-child(3) { animation-delay: 0.21s; }
 .blur-in > .w:nth-child(4) { animation-delay: 0.28s; }
@@ -188,6 +171,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* The hero window's tilt, set from main.js as the page scrolls (from Aceternity's container scroll) */
 .hero > .wrap { perspective: 1400px; }
 .hero .app-win { transform-origin: 50% 0; will-change: transform; }
+/* Start tilted in CSS, at the angle the script sets for the first screen, so the window does not
+   snap from flat to tilted when the script runs. */
+@media (min-width: 961px) and (prefers-reduced-motion: no-preference) {
+  .hero .app-win, .js .hero .app-win.reveal { transform: rotateX(16deg) scale(0.94); }
+}
 .magnet { transition: transform 0.4s var(--ease), opacity 0.2s; will-change: transform; }
 .js .scrub .w { opacity: 0.2; transition: opacity 0.35s linear; }
 .js .scrub .w.lit { opacity: 1; }
