@@ -37,7 +37,7 @@
 - Open: Arsh signed the privacy wording on 2026-11-06 (plans/desktop-sign-in.md A to E); it goes
   into docs/SECURITY_PRIVACY.md and the site privacy page in the PR that turns sign-in on, since
   until then "accounts, license server: None" stays true, and the CLAUDE.md line is in
-  PROPOSED_CHANGES.md for a human to apply. Turning it on also needs the license server and its
+  PROPOSED_CHANGES.md for a human to apply. Turning it on also needs the license server
   deployed (Cloudflare D1, Resend, the signing key), and a real sign-in on a Mac and a Windows
   PC. Making license files for offline labs needs an admin step, not written. The "Offline" pill's tooltip
   ("Nothing leaves this computer") must say "nothing from this case" once it is on. A clock set
