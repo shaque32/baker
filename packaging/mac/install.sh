@@ -12,6 +12,7 @@
 #   5. downloads the model (Qwen3-14B Q4, 9 GB) to ~/Mabillon/models and checks its SHA-256
 #   6. writes ~/.mabillon/model.json (only if there is no model setting), runs the model check and
 #      builds the demo case, and puts two launchers on the Desktop: "Mabillon" and "Mabillon demo"
+#      (they open the browser), and two apps in ~/Applications that open Mabillon in its own window
 # A Mac set up when the product was called Baker keeps what it has: a verified model in
 # ~/Baker/models and a model setting in ~/.baker/model.json are used where they are, and the
 # Desktop launchers "Baker" and "Baker demo" this installer made are replaced.
@@ -91,7 +92,7 @@ if [ "$HERE" != "$APP/baker" ]; then
 fi
 LLAMA_VERSION="$(pin "['llama_cpp_python']['version']")"
 CMAKE_ARGS="-DGGML_METAL=on" uv pip install --python "$APP/.venv/bin/python" \
-  -e "$APP/baker[synthetic,local,cloud]" "llama-cpp-python==$LLAMA_VERSION"
+  -e "$APP/baker[synthetic,local,cloud,app]" "llama-cpp-python==$LLAMA_VERSION"
 MABILLON="$APP/.venv/bin/mabillon"
 "$MABILLON" --help >/dev/null || stop "Mabillon did not install"
 echo "Installed Mabillon in $APP."
@@ -152,6 +153,49 @@ for name in "Mabillon" "Mabillon demo"; do
     "$name" "$MABILLON" "$cmd" > "$f"
   chmod +x "$f"
 done
+# The apps: Mabillon in its own window (ui/window.py). Built here, on this Mac, so macOS does not
+# quarantine them. An app of the same name is replaced only when this installer made it.
+APPS="$HOME/Applications"
+ICONSET="$(mktemp -d)/Mabillon.iconset"
+"$APP/.venv/bin/python" "$APP/baker/packaging/mac/make_icon.py" "$ICONSET" \
+  && iconutil -c icns "$ICONSET" -o "${ICONSET%.iconset}.icns" || echo "(no app icon: $ICONSET)"
+make_app() {  # make_app <name> <bundle id> <mabillon arguments>
+  local dir="$APPS/$1.app"
+  if [ -e "$dir" ] && ! grep -q "<string>$2</string>" "$dir/Contents/Info.plist" 2>/dev/null; then
+    echo "Left $dir alone: it is not one this installer made."
+    return
+  fi
+  rm -rf "$dir"
+  mkdir -p "$dir/Contents/MacOS" "$dir/Contents/Resources"
+  cat > "$dir/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>$1</string>
+  <key>CFBundleDisplayName</key><string>$1</string>
+  <key>CFBundleIdentifier</key><string>$2</string>
+  <key>CFBundleExecutable</key><string>Mabillon</string>
+  <key>CFBundleIconFile</key><string>Mabillon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+  # Finder starts an app with no Terminal, so what Mabillon prints goes to a log of this account's.
+  printf '#!/bin/bash\n# Opens %s in its own window. Closing the window stops it.\nexec "%s" %s >>"$HOME/Library/Logs/Mabillon.log" 2>&1\n' \
+    "$1" "$MABILLON" "$3" > "$dir/Contents/MacOS/Mabillon"
+  chmod +x "$dir/Contents/MacOS/Mabillon"
+  [ -f "${ICONSET%.iconset}.icns" ] && cp "${ICONSET%.iconset}.icns" "$dir/Contents/Resources/Mabillon.icns"
+  echo "Made $dir."
+}
+mkdir -p "$APPS" "$HOME/Library/Logs"
+make_app "Mabillon" "com.getmabillon.mabillon" "serve --window"
+make_app "Mabillon Demo" "com.getmabillon.mabillon.demo" "demo --window"
+rm -rf "$(dirname "$ICONSET")"
+
 # The launchers the Baker installer made, and only those (they open with its comment line).
 for name in "Baker" "Baker demo"; do
   f="$HOME/Desktop/$name.command"
@@ -163,9 +207,11 @@ done
 
 say "Mabillon is installed."
 cat <<EOF
-Double-click "Mabillon" on your Desktop to open your cases, or "Mabillon demo" for the demo case.
-Mabillon opens in your browser at http://127.0.0.1 and runs only on this Mac.
-Close the Terminal window that opens with it to stop Mabillon.
+Open Mabillon from your Applications folder (or Spotlight) to work on your cases, or
+"Mabillon Demo" for the demo case. Each opens in its own window and runs only on this Mac;
+closing the window stops it. Drag it to the Dock to keep it there.
+The "Mabillon" and "Mabillon demo" launchers on your Desktop open the same screens in your
+browser instead; close the Terminal window they open to stop Mabillon.
 EOF
 if [ -d "$HOME/Baker/app" ]; then
   echo

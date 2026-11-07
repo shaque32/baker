@@ -95,6 +95,23 @@ CSP = (
     "frame-ancestors 'none'; base-uri 'none'"
 )
 FONT_PREFIX = "/static/fonts/"
+REPORT_SAID_CSS = (
+    ".screen-said{margin:0 0 12px;font-size:.9em}.screen-said.err{color:#b3261e}"
+    "@media print{.screen-said{display:none}}"
+)
+
+
+def report_said(flash: tuple[str, bool] | None) -> str:
+    """On the on-screen report, what the last action said: in Mabillon's own window, where
+    "Save this report" put the file, or why it was not saved. Never printed or saved."""
+    if flash is None:
+        return ""
+    message, error = flash
+    role = "alert" if error else "status"
+    cls = "screen-said err" if error else "screen-said"
+    return f"<p class='{cls}' role='{role}'>{html.escape(message)}</p>"
+
+
 MAX_BODY = 1_000_000
 TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
@@ -652,13 +669,13 @@ class App:
             body = render_report(conn, timeline=self._timeline(), header=header)
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
-                body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+                body = body.replace("<style>", f"<style>{theme.FONT_CSS}{REPORT_SAID_CSS}", 1)
                 # On screen only: a way back into the app and a way to save it.
                 body = body.replace(
                     "<h1>Mabillon claims report</h1>",
                     "<p class='screen-only' style='margin:0 0 12px'><a href='/'>Back to the "
                     "case</a> · <a href='/report?download=1'>Save this report (HTML)</a></p>"
-                    "<h1>Mabillon claims report</h1>",
+                    f"{report_said(page.flash)}<h1>Mabillon claims report</h1>",
                     1,
                 )
             resp = self._html(body)

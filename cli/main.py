@@ -33,13 +33,13 @@
     python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
-                            [--open]
+                            [--open | --window]
     python -m cli model-check
     python -m cli encrypt   --db case.db --by expert:<name>
     python -m cli passphrase --db case.db --by expert:<name>
     python -m cli recovery-key --db case.db --by expert:<name>
     python -m cli backup    --db case.db --by expert:<name> [--to <folder>]
-    python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
+    python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--window] [--build-only]
                             [--from-case <case folder> | --scripted | --paired]
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
@@ -99,6 +99,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core import paths, pipeline
 from core.audit._llm_json import CloudPaused, ModelUnavailable
@@ -108,6 +109,11 @@ from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict, Verd
 from core.db import CaseLocked, apply_schema, connect
 from core.report.html import write_report
 from core.review import actions, audit_log
+
+if TYPE_CHECKING:
+    from http.server import HTTPServer
+
+    from ui.screen_key import ScreenKey
 
 
 def _ask(prompt: str) -> str:
@@ -679,12 +685,24 @@ def cmd_serve(a: argparse.Namespace) -> int:
     except OSError as e:  # the screen still works from the printed link
         print(f"(could not save the screen key in {screen_key.key_dir()}: {e})", file=sys.stderr)
     where = f"case {a.db}" if a.db is not None else f"cases in {home}"
+    if getattr(a, "window", False):
+        return _serve_in_window(server, key, where)
     print(f"Mabillon: {launch_url(server)}")
     print(f"  ({where}; this computer only; Ctrl+C stops it)")
     print("This link opens the screen; it changes each time Mabillon starts. Keep it private.")
     print("A running audit stops when this does; its finished claims are kept and resume later.")
     if a.open:
         _open_in_browser(launch_url(server))
+    _serve_until_stopped(server, key)
+    return 0
+
+
+def _serve_until_stopped(server: HTTPServer, key: ScreenKey) -> None:
+    """Serve until Ctrl+C, SIGTERM or SIGHUP, then close and remove the screen key file."""
+    import signal
+
+    from ui import screen_key
+
     replaced = _stop_on_signals()
     try:
         server.serve_forever()
@@ -693,10 +711,50 @@ def cmd_serve(a: argparse.Namespace) -> int:
     finally:
         server.server_close()
         screen_key.remove_key(key)
-        import signal
-
         for sig, handler in replaced.items():
             signal.signal(sig, handler)  # type: ignore[arg-type]
+
+
+def _serve_in_window(server: HTTPServer, key: ScreenKey, where: str) -> int:
+    """Serve on a background thread and show the screen in Mabillon's own window (ui/window.py)
+    until the expert closes it; then stop. With no window possible, the browser instead."""
+    import threading
+
+    from ui import downloads, screen_key, window
+    from ui.server import launch_url
+
+    app = server.app  # type: ignore[attr-defined]
+    handler = server.RequestHandlerClass
+    handler.download_folder = downloads.downloads_folder()  # type: ignore[attr-defined]
+    threading.Thread(target=server.serve_forever, name="mabillon-screen", daemon=True).start()
+
+    def audit_running() -> bool:
+        job = app.jobs.current
+        return job is not None and job.running
+
+    print(f"Mabillon: opening its own window ({where}). Closing the window stops it.")
+    shown = window.show(launch_url(server), audit_running)
+    server.shutdown()  # waits for the background thread's loop to end
+    if shown:
+        server.server_close()
+        screen_key.remove_key(key)
+        return 0
+    # No window here: the browser, as `serve --open`, with downloads left to the browser.
+    handler.download_folder = None  # type: ignore[attr-defined]
+    if _no_console_on_windows():
+        # A Start-menu shortcut (pythonw) has no console to stop a browser screen from, so start
+        # again in a console window of its own: closing it, or Ctrl+C, stops Mabillon, as before.
+        server.server_close()
+        screen_key.remove_key(key)
+        if _restart_in_console():
+            print("No window here: Mabillon started again in a console window, in the browser.")
+            return 0
+        print("No window here, and no console could be opened to run it in the browser.")
+        return 1
+    print(f"Opening it in your browser instead: {launch_url(server)}")
+    print("Ctrl+C stops it.")
+    _open_in_browser(launch_url(server))
+    _serve_until_stopped(server, key)
     return 0
 
 
@@ -844,7 +902,12 @@ def cmd_demo(a: argparse.Namespace) -> int:
         return 0
     return cmd_serve(
         argparse.Namespace(
-            db=None, cases=demo.cases_dir(root), port=a.port, expert=a.expert, open=not a.no_open
+            db=None,
+            cases=demo.cases_dir(root),
+            port=a.port,
+            expert=a.expert,
+            open=not a.no_open,
+            window=a.window,
         )
     )
 
@@ -1039,6 +1102,9 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--port", type=int, default=8765)
     sp.add_argument("--expert", help="your name, recorded with every decision")
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
+    sp.add_argument(
+        "--window", action="store_true", help="open it in Mabillon's own window (the app)"
+    )
     sp = sub.add_parser("model-check", help="check the local model before a first audit")
     sp.set_defaults(fn=cmd_model_check)
     sp = sub.add_parser("bug-report", help="write a bug report that holds no case data")
@@ -1050,6 +1116,9 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--port", type=int, default=8766, help="default 8766, beside a real `serve`")
     sp.add_argument("--expert", help="the name recorded with decisions made during the demo")
     sp.add_argument("--no-open", action="store_true", help="do not open the browser")
+    sp.add_argument(
+        "--window", action="store_true", help="open it in Mabillon's own window (the app)"
+    )
     sp.add_argument("--build-only", action="store_true", help="reset the case, do not serve it")
     g = sp.add_mutually_exclusive_group()
     g.add_argument(
@@ -1064,7 +1133,59 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+_NO_CONSOLE = False  # set when started with no console (pythonw: the Windows shortcuts)
+
+
+def _no_console_on_windows() -> bool:
+    return _NO_CONSOLE and sys.platform == "win32"
+
+
+def _restart_in_console() -> bool:
+    """Start this same command again, without --window, under python.exe in a new console window
+    (serve also opens the browser). False when that cannot be done."""
+    import subprocess
+
+    exe = Path(sys.executable).with_name("python.exe")
+    if not exe.exists():
+        return False
+    args = [arg for arg in sys.argv[1:] if arg != "--window"]
+    if args[:1] == ["serve"] and "--open" not in args:
+        args.append("--open")
+    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10)
+    try:
+        # this same command, from its own arguments
+        subprocess.Popen([str(exe), "-X", "utf8", "-m", "cli", *args], creationflags=flags)  # noqa: S603
+    except OSError:
+        return False
+    return True
+
+
+def _log_when_no_console() -> None:
+    """pythonw (the Windows Start-menu shortcuts) runs Mabillon with no console, so sys.stdout and
+    sys.stderr are None and anything that writes to them, such as the screen's request log, would
+    fail. Write them to this account's own log file instead."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    import os
+
+    global _NO_CONSOLE
+    _NO_CONSOLE = True
+
+    base = os.environ.get("LOCALAPPDATA")
+    folder = Path(base) / "Mabillon" if base else Path.home() / ".mabillon"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        log = open(folder / "Mabillon.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    except OSError:
+        log = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    if sys.stdout is None:
+        sys.stdout = log
+    if sys.stderr is None:
+        sys.stderr = log
+
+
 def main(argv: list[str] | None = None) -> int:
+    _log_when_no_console()
     a = parser().parse_args(argv)
     try:
         return a.fn(a)
