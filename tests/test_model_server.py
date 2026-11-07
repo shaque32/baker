@@ -3,10 +3,13 @@ engine and no network: a stand-in answers every forwarded request. Synthetic dat
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
 import shutil
+import socket
+import ssl
 import subprocess
 import threading
 import time
@@ -142,18 +145,16 @@ def test_requests_reach_the_engine_one_at_a_time(tmp_path):
     assert most[0] == 1
 
 
-def test_the_log_never_holds_a_prompt_or_an_answer(tmp_path):
-    secret = "SYNTHETIC-PROMPT-TEXT-123"
-    g = _gateway(tmp_path, forward=lambda body: (200, b'{"answer": "SYNTHETIC-ANSWER-456"}'))
-    log = io.StringIO()
-    handler = gw.make_handler(g, log=log)
-    raw = _body(messages=[{"role": "user", "content": secret}])
+def _post(g, raw: bytes, auth: str | None, rfile=None, log=None):  # noqa: ANN001, ANN202
+    handler = gw.make_handler(g, log=log if log is not None else io.StringIO())
 
     class Fake(handler):  # type: ignore[misc, valid-type]
         def __init__(self) -> None:
             self.command, self.path = "POST", gw.COMPLETIONS
-            self.headers = {"Content-Length": str(len(raw)), "Authorization": f"Bearer {TOKEN}"}
-            self.rfile, self.wfile = io.BytesIO(raw), io.BytesIO()
+            self.headers = {"Content-Length": str(len(raw))}
+            if auth:
+                self.headers["Authorization"] = auth
+            self.rfile, self.wfile = rfile or io.BytesIO(raw), io.BytesIO()
             self.request_version, self.requestline = "HTTP/1.1", "POST"
             self.close_connection = True
 
@@ -168,9 +169,107 @@ def test_the_log_never_holds_a_prompt_or_an_answer(tmp_path):
 
     f = Fake()
     f.do_POST()
+    return f
+
+
+def test_the_log_never_holds_a_prompt_or_an_answer(tmp_path):
+    secret = "SYNTHETIC-PROMPT-TEXT-123"
+    g = _gateway(tmp_path, forward=lambda body: (200, b'{"answer": "SYNTHETIC-ANSWER-456"}'))
+    log = io.StringIO()
+    raw = _body(messages=[{"role": "user", "content": secret}])
+    f = _post(g, raw, f"Bearer {TOKEN}", log=log)
     assert f.code == 200 and b"SYNTHETIC-ANSWER-456" in f.wfile.getvalue()
     assert secret not in log.getvalue() and "SYNTHETIC-ANSWER" not in log.getvalue()
     assert log.getvalue().startswith("POST /v1/chat/completions 200")
+
+
+def test_without_a_token_the_body_is_never_read(tmp_path):
+    class NeverRead(io.BytesIO):
+        def read(self, *a):  # noqa: ANN002, ANN202
+            raise AssertionError("the body was read before the token check")
+
+    g = _gateway(tmp_path)
+    for auth in (None, "Bearer wrong"):
+        assert _post(g, _body(), auth, rfile=NeverRead()).code == 401
+
+
+def test_a_body_shorter_than_its_length_is_refused(tmp_path):
+    g = _gateway(tmp_path)
+    raw = _body()
+    assert _post(g, raw, f"Bearer {TOKEN}", rfile=io.BytesIO(raw[:-5])).code == 400
+
+
+def test_a_pinned_manifest_must_match_the_recorded_one(tmp_path):
+    g = _gateway(tmp_path)  # state.json records "ab" * 32
+    g.pins = {**PINS, "model": {**PINS["model"], "manifest_sha256": "cd" * 32}}
+    assert g.health()["ready"] is False
+    with pytest.raises(gw.Refused) as e:
+        g.complete(f"Bearer {TOKEN}", _body())
+    assert e.value.status == 503
+    g.pins = {**PINS, "model": {**PINS["model"], "manifest_sha256": "ab" * 32}}
+    assert g.health()["ready"] is True
+
+
+def _tls_server(tmp_path: Path, max_connections: int):  # noqa: ANN202
+    openssl = shutil.which("openssl")
+    if not openssl:
+        pytest.skip("openssl not installed")
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run(  # noqa: S603
+        [openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+         "-subj", "/CN=localhost", "-keyout", str(key), "-out", str(cert)],
+        check=True, capture_output=True,
+    )  # fmt: skip
+    server = gw.TLSServer(
+        ("127.0.0.1", 0), gw.make_handler(_gateway(tmp_path)), gw.tls_context(cert, key),
+        max_connections=max_connections, io_timeout=5.0,
+    )  # fmt: skip
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _health(port: int) -> int:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # self-signed test certificate
+    conn = http.client.HTTPSConnection("127.0.0.1", port, timeout=3, context=ctx)
+    try:
+        conn.request("GET", "/health")
+        return conn.getresponse().status
+    finally:
+        conn.close()
+
+
+def test_a_silent_client_does_not_block_the_next_one(tmp_path):
+    server = _tls_server(tmp_path, max_connections=4)
+    port = server.server_address[1]
+    try:
+        with socket.create_connection(("127.0.0.1", port)):  # opens TCP, never says hello
+            assert _health(port) == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_connections_over_the_cap_are_closed(tmp_path):
+    server = _tls_server(tmp_path, max_connections=1)
+    port = server.server_address[1]
+    try:
+        with socket.create_connection(("127.0.0.1", port)):  # holds the only slot
+            time.sleep(0.2)
+            with pytest.raises((ssl.SSLError, OSError, http.client.HTTPException)):
+                _health(port)
+        for _ in range(30):  # the slot comes back once the silent client leaves
+            time.sleep(0.1)
+            try:
+                assert _health(port) == 200
+                break
+            except (ssl.SSLError, OSError, http.client.HTTPException):
+                continue
+        else:
+            pytest.fail("the slot never came back")
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_the_manifest_hashes_every_weights_file(tmp_path):

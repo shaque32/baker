@@ -33,6 +33,11 @@ network change, and the server must pass the consensus conditions before any rea
   logs or stores a request or answer body; a log line is method, path, status and seconds.
   `/health` reports the model, the revision, the weights manifest hash and the engine version,
   so the app can refuse a server that is not the pinned stack.
+  The token is checked before the body is read. The TLS handshake runs in each connection's own
+  thread with a deadline, every read has a deadline, and open connections are capped at 32, so a
+  silent or slow client cannot hold the door.
+- On a relaunch, `launch.sh` refuses to start if the engine or gateway port is already in use,
+  deletes the old `state.json`, and checks that its own engine process is the one answering.
 
 ## What a pass here does not prove
 - `/health` reports a hash, which is a claim, not proof. The proof is the audited image and the

@@ -78,16 +78,28 @@ say "2/5 weights: $REPO_ID@$REV"
 "$OPT/venv/bin/hf" download "$REPO_ID" --revision "$REV" --local-dir "$OPT/weights" > /dev/null
 
 say "3/5 engine on 127.0.0.1:$ENGINE_PORT, one sequence at a time"
+# A relaunch must not let an old engine or gateway answer for the new one: refuse busy ports,
+# and drop the old first-boot result so the gateway stays closed until this boot passes.
+for port in "$ENGINE_PORT" 8443; do
+  if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
+    die "port $port is already in use; stop the old engine and gateway first (or reboot)"
+  fi
+done
+rm -f "$OPT/state.json" "$OPT/manifest.json"
 # shellcheck disable=SC2086 # EXTRA is a list of flags from pins.json
 "$OPT/venv/bin/vllm" serve "$OPT/weights" --served-model-name "$SERVED" \
   --host 127.0.0.1 --port "$ENGINE_PORT" --tensor-parallel-size "$TP" \
   --max-model-len "$MAXLEN" --max-num-seqs 1 --seed "$SEED" \
   --disable-log-requests --disable-uvicorn-access-log $EXTRA > "$OPT/engine.log" 2>&1 &
+ENGINE_PID=$!
 for _ in $(seq 1 180); do
+  kill -0 "$ENGINE_PID" 2> /dev/null || die "engine exited; see $OPT/engine.log"
   curl -sf "http://127.0.0.1:$ENGINE_PORT/health" > /dev/null && break
   sleep 10
 done
 curl -sf "http://127.0.0.1:$ENGINE_PORT/health" > /dev/null || die "engine did not start; see $OPT/engine.log"
+# The port was free before the start and this child is still alive, so it is the one answering.
+kill -0 "$ENGINE_PID" 2> /dev/null || die "engine exited; see $OPT/engine.log"
 
 say "4/5 first-boot checks (manifest, engine version, synthetic repeat)"
 "$OPT/venv/bin/python" "$HERE/firstboot.py" --pins "$PINS" --weights "$OPT/weights" \

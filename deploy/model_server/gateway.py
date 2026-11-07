@@ -14,8 +14,12 @@ What it enforces, so every answer is repeatable and nothing about a case is kept
 - /health reports the pinned model repository, revision, the SHA-256 of the weights manifest
   and the engine version, so the app can refuse a server that does not run the pinned stack.
   A reported hash is a claim, not proof: the audited image and the launch log are the proof.
-- Until the first-boot checks pass (weights manifest recorded, engine version equal to the pin),
-  /health says not ready and every completion is refused.
+- Until the first-boot checks pass (weights manifest recorded and equal to the pinned one when
+  pins.json carries it, engine version equal to the pin), /health says not ready and every
+  completion is refused.
+- A slow or silent client cannot hold the door: the TLS handshake runs in the connection's own
+  thread with a deadline, every read has a deadline, the token is checked before the body is
+  read, and open connections are capped.
 
 Standard library only. Usage (launch.sh starts it):
   python gateway.py --pins pins.json --state state.json --tokens tokens \
@@ -39,6 +43,8 @@ from pathlib import Path
 from typing import Any
 
 MAX_BODY_BYTES = 1_000_000  # a filled-in stance prompt is a few kilobytes
+IO_TIMEOUT_SECONDS = 20.0  # handshake and each read from a client
+MAX_CONNECTIONS = 32  # open client connections; more are closed at once
 COMPLETIONS = "/v1/chat/completions"
 
 
@@ -144,6 +150,8 @@ class Gateway:
         problems = []
         if not st.get("manifest_sha256"):
             problems.append("weights manifest not recorded")
+        elif model.get("manifest_sha256") and st["manifest_sha256"] != model["manifest_sha256"]:
+            problems.append("weights manifest is not the pinned one")
         if st.get("engine_version") != engine["version"]:
             problems.append(
                 f"engine {st.get('engine_version')!r} is not the pinned {engine['version']!r}"
@@ -178,9 +186,12 @@ class Gateway:
         except urllib.error.HTTPError as e:
             return e.code, e.read()
 
-    def complete(self, auth: str | None, raw: bytes) -> tuple[int, bytes]:
+    def authorize(self, auth: str | None) -> None:
         if not token_ok(auth, self.tokens):
             raise Refused(401, "token")
+
+    def complete(self, auth: str | None, raw: bytes) -> tuple[int, bytes]:
+        self.authorize(auth)
         if not self.health()["ready"]:
             raise Refused(503, "not ready: first-boot checks have not passed")
         try:
@@ -198,6 +209,7 @@ def make_handler(gw: Gateway, log: Any = sys.stderr) -> type[BaseHTTPRequestHand
     class Handler(BaseHTTPRequestHandler):
         server_version = "mabillon-model-server"
         sys_version = ""
+        timeout = IO_TIMEOUT_SECONDS  # every read from the client has a deadline
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             pass  # the default logger prints request lines; ours is _log (no bodies, no IPs)
@@ -225,17 +237,81 @@ def make_handler(gw: Gateway, log: Any = sys.stderr) -> type[BaseHTTPRequestHand
             start = time.perf_counter()
             if self.path != COMPLETIONS:
                 return self._send(404, b'{"error": "not found"}', start)
+            auth = self.headers.get("Authorization")
             try:
+                gw.authorize(auth)  # before reading the body: no token, nothing is read
                 length = int(self.headers.get("Content-Length") or 0)
                 if not 0 < length <= MAX_BODY_BYTES:
                     raise Refused(413, "body size")
-                status, payload = gw.complete(self.headers.get("Authorization"),
-                                              self.rfile.read(length))  # fmt: skip
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise Refused(400, "body: shorter than Content-Length")
+                status, payload = gw.complete(auth, raw)
             except Refused as r:
                 status, payload = r.status, json.dumps({"error": r.reason}).encode("utf-8")
+            except (TimeoutError, OSError):
+                self.close_connection = True  # the client stalled or went away: drop it
+                return self._log(408, start)
+            except ValueError:
+                status, payload = 400, b'{"error": "Content-Length"}'
             self._send(status, payload, start)
 
     return Handler
+
+
+class TLSServer(ThreadingHTTPServer):
+    """Accepts plain TCP and does the TLS handshake in the connection's own thread, with a
+    deadline, so a client that never finishes its handshake cannot stop the next one being
+    accepted. Open connections are capped; one over the cap is closed at once."""
+
+    daemon_threads = True
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        ctx: ssl.SSLContext,
+        max_connections: int = MAX_CONNECTIONS,
+        io_timeout: float = IO_TIMEOUT_SECONDS,
+    ) -> None:
+        super().__init__(address, handler)
+        self.ctx = ctx
+        self.io_timeout = io_timeout
+        self.slots = threading.BoundedSemaphore(max_connections)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            request.settimeout(self.io_timeout)
+            try:
+                tls = self.ctx.wrap_socket(request, server_side=True)
+            except (OSError, ValueError):
+                self.shutdown_request(request)
+                return
+            try:
+                self.finish_request(tls, client_address)
+            except Exception as e:  # noqa: BLE001 - one bad connection never stops the server
+                print(f"connection error: {type(e).__name__}", file=sys.stderr, flush=True)
+            finally:
+                self.shutdown_request(tls)
+        finally:
+            self.slots.release()
+
+
+def tls_context(cert: Path, key: Path) -> ssl.SSLContext:
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(cert, key)
+    return ctx
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,11 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     pins = json.loads(args.pins.read_text(encoding="utf-8"))
     gw = Gateway(pins, args.state, load_tokens(args.tokens), args.upstream)
-    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(gw))
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    ctx.load_cert_chain(args.cert, args.key)
-    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    httpd = TLSServer((args.host, args.port), make_handler(gw), tls_context(args.cert, args.key))
     print(f"gateway on {args.host}:{args.port}, upstream {args.upstream}", file=sys.stderr)
     httpd.serve_forever()
     return 0

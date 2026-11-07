@@ -9,7 +9,9 @@
 - Where: PR #244 (branch claude/project-thread-fujfti-model-server)
 - Verified: `tests/test_model_server.py` with a stand-in engine (no GPU, no network): tokens,
   settings, one-at-a-time, no bodies in the log, readiness gate, manifest, smoke test,
-  localhost-only engine, `bash -n` on launch.sh. Never booted on a GPU.
+  localhost-only engine, `bash -n` on launch.sh, token checked before the body is read, a
+  pinned manifest must match, and a real TLS server where a silent client blocks no one and
+  connections over the cap are closed. Never booted on a GPU.
 - Open: the engine version's support for DeepSeek V4.1, Hopper FP4-expert kernels and the
   batch-invariant setting are unverified; the weights' size (about 765 GB stored) disagrees with
   one blog's 510 GB; the AWS price is unverified. The app has no client for it, and `core/`
