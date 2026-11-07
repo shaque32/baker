@@ -18,7 +18,8 @@ DOES = (
     "Checks each claim against the extraction and shows the records it rests on, so you do "
     "the reading of the evidence, not the scrolling.",
     "Marks each claim supported, contradicted or unproven from fixed, versioned rules. "
-    "Nothing is supported until you accept its evidence.",
+    "A claim is supported only when you accept its evidence, or, for a message, timing or "
+    "count claim, when every part of it passed Mabillon's code checks against the records.",
     "Runs on this computer. Cloud AI is used only when your case allows it and you opt in.",
 )
 DOES_NOT = (
@@ -101,6 +102,16 @@ _VERDICTS = (
         "records failed, or an expert accepted records that contradict it.",
     ),
     ("Unproven", "Not established either way. It does not mean the claim is false."),
+    (
+        "Supported by the records (code checks)",
+        "Every part of the claim passed Mabillon's code checks against the records. No model "
+        "label and no reviewer was used, and no expert has confirmed it.",
+    ),
+    (
+        "Supported (reviewed by counsel)",
+        "Defense counsel, not an expert, accepted some of the support. Work product, not an "
+        "expert's opinion.",
+    ),
     (
         "Support found: do you agree?",
         "Unproven until you accept the records Mabillon read as support.",

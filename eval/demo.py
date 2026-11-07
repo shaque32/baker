@@ -92,8 +92,9 @@ DEMO_EXHIBIT_TEXT = "need 2 more by friday\nfriday hard. saturday\n"
 SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
 AGENT_EXAMINER = "expert:Demo examiner (scripted from the demo claims)"
 
-# Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person
-# giving the demo accepts its message and re-runs the verdicts.
+# Claims the scripted expert leaves for the live demo. Under rules 0.5.0 C05 starts "Supported by
+# the records (code checks)" (rule 3c'), and turns expert-confirmed only when the person giving
+# the demo accepts its message and re-runs the verdicts.
 LEFT_OPEN = ("C05",)
 
 # The challenge step's work, shown live. Its other-user search on C16 finds the two messages the
