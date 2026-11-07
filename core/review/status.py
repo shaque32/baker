@@ -8,6 +8,10 @@ the evidence that verdict was decided on. It never upgrades a verdict:
 - "Supported (expert-confirmed)" only when rules.py stored supported_basis 'confirmed'.
 - "Supported (AI-reviewed)" for supported_basis 'ai_reviewed'. Rules 0.2.0 never produce it,
   but if a later rule version does, it never displays as confirmed.
+- "Supported by the records (code checks)" for supported_basis 'checked' (rules 0.5.0, rule
+  3c'): every core assumption passed its deterministic checks; no model label, no reviewer.
+- "Supported (reviewed by counsel)" for supported_basis 'counsel_reviewed' (rules 0.5.0): some
+  support rests on a lawyer's acceptance. Work product; it never displays as confirmed.
 - "Support found: do you agree?" when the verdict is unproven and supporting evidence on the
   claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). It reads
   as Mabillon's finding put to the expert, never as a verdict: the verdict stays unproven, and under
@@ -64,6 +68,8 @@ def _count(n: int, noun: str) -> str:
 
 
 SUPPORTED_AI = "Supported (AI-reviewed)"
+SUPPORTED_CHECKED = "Supported by the records (code checks)"
+SUPPORTED_COUNSEL = "Supported (reviewed by counsel)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Support found: do you agree?"
 CONTRADICTION_FOUND = "Contradiction found, confirm to finalize"
@@ -385,6 +391,10 @@ def verdict_label(
     if decision.verdict == Verdict.SUPPORTED:
         if decision.supported_basis == SupportedBasis.CONFIRMED:
             return SUPPORTED_EXPERT, "v-sup"
+        if decision.supported_basis == SupportedBasis.CHECKED:
+            return SUPPORTED_CHECKED, "v-supchk"
+        if decision.supported_basis == SupportedBasis.COUNSEL_REVIEWED:
+            return SUPPORTED_COUNSEL, "v-supcou"
         return SUPPORTED_AI, "v-supai"
     if pipeline.RULES_PENDING_REASON in decision.reasons:
         return RULES_PENDING, "v-unp"

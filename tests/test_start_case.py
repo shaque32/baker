@@ -31,6 +31,7 @@ from core.contracts import (
     ModelRun,
     Stance,
     StanceLabel,
+    SupportedBasis,
     Verdict,
 )
 from core.db import connect
@@ -399,7 +400,12 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     assert finished == order  # one log entry per claim, in the order they ran
 
     states = {cid: claim_state(conn, cid) for cid in order}
-    assert all(st.decision.verdict != Verdict.SUPPORTED for st in states.values())
+    # nobody reviewed anything: supported only where code checks carry it (rules 0.5.0, 3c')
+    assert all(
+        st.decision.verdict != Verdict.SUPPORTED
+        or st.decision.supported_basis is SupportedBasis.CHECKED
+        for st in states.values()
+    )
     page = get(app, "/run").text
     assert "Finished" in page and LABELING_INCOMPLETE not in page
     queue_page = get(app, "/claims").text

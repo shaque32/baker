@@ -1,7 +1,8 @@
 """An expert override to Supported (core/review/actions.py override_verdict) on the demo case.
 
 Supported needs the expert's own acceptance of the claim's support, and the verdict cites it.
-Before this, an override to Supported on C05 (unproven, citing nothing) was stored with no cited
+Before this, an override to Supported on an unproven claim citing nothing (demo C05 under rules
+0.4.0, C06 here) was stored with no cited
 evidence, which the VerdictDecision contract refuses to load, so every page of the case failed.
 A case that already holds such a row shows a page offering a verdict re-run instead."""
 
@@ -90,41 +91,46 @@ def _overrides(conn) -> int:  # noqa: ANN001
 
 def test_supported_without_accepted_support_is_refused_and_nothing_is_stored(root):
     conn = connect(_case(root).db)
-    before, logged = _row(conn, "C05"), _overrides(conn)
+    before, logged = _row(conn, "C06"), _overrides(conn)
     assert before[0] == "unproven" and json.loads(before[2])["evidence"] == []
     with pytest.raises(ReviewError, match="supporting evidence you accepted"):
-        actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "I read it myself.")
-    assert _row(conn, "C05") == before and _overrides(conn) == logged
+        actions.override_verdict(conn, "C06", Verdict.SUPPORTED, EXPERT, "I read it myself.")
+    assert _row(conn, "C06") == before and _overrides(conn) == logged
 
 
 def test_the_screen_says_why_and_the_case_stays_up(root):
     app = _app(root)
-    resp = _post(app, "/verdict", claim="C05", action="override", verdict="supported", note="ok")
+    resp = _post(app, "/verdict", claim="C06", action="override", verdict="supported", note="ok")
     assert resp.status == 303
     msg, is_error = app.flash
     assert is_error and "Not recorded" in msg and "supporting evidence you accepted" in msg
-    for path, query in (("/claim", {"id": "C05"}), ("/claims", {}), ("/", {}), ("/report", {})):
+    for path, query in (("/claim", {"id": "C06"}), ("/claims", {}), ("/", {}), ("/report", {})):
         assert _get(app, path, **query).status == 200, path
 
 
 def test_an_open_or_ai_accepted_item_is_not_support_for_an_override(root):
     conn = connect(_case(root).db)
-    items = _supports(conn, "C05")
-    assert items and all(x.status is EvidenceStatus.OPEN for x in items)
-    actions.decide_evidence(conn, items[0].id, EvidenceStatus.DISMISSED, EXPERT, "Not it.")
+    items = _supports(conn, "C06")
+    assert items and all(x.status is EvidenceStatus.DISMISSED for x in items)
+    actions.decide_evidence(conn, items[0].id, EvidenceStatus.OPEN, EXPERT, "Look again.")
     with pytest.raises(ReviewError, match="supporting evidence you accepted"):
-        actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "I read it myself.")
+        actions.override_verdict(conn, "C06", Verdict.SUPPORTED, EXPERT, "I read it myself.")
 
 
 def test_supported_after_accepting_cites_the_accepted_support(root, tmp_path):
     conn = connect(_case(root).db)
-    items = _supports(conn, "C05")
+    items = _supports(conn, "C06")
     for x in items:
         actions.decide_evidence(conn, x.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
-    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Sent March 12 local.")
-    verdict, basis, cited_json, by, note = _row(conn, "C05")
+    actions.override_verdict(conn, "C06", Verdict.SUPPORTED, EXPERT, "Read the thread myself.")
+    verdict, basis, cited_json, by, note = _row(conn, "C06")
     cited = sorted(x.id for x in items)
-    assert (verdict, basis, by, note) == ("supported", "confirmed", EXPERT, "Sent March 12 local.")
+    assert (verdict, basis, by, note) == (
+        "supported",
+        "confirmed",
+        EXPERT,
+        "Read the thread myself.",
+    )
     assert json.loads(cited_json)["evidence"] == cited
     (payload,) = [
         json.loads(p)
@@ -133,10 +139,10 @@ def test_supported_after_accepting_cites_the_accepted_support(root, tmp_path):
         )
     ]
     assert payload["cited_evidence_ids"] == cited and payload["was"] == "unproven"
-    d = pipeline.load_verdict(conn, "C05", pipeline.view_run(conn)["run_id"])
+    d = pipeline.load_verdict(conn, "C06", pipeline.view_run(conn)["run_id"])
     assert d is not None and d.cited_evidence_ids == tuple(cited)
     app = _app(root)
-    for path, query in (("/claim", {"id": "C05"}), ("/claims", {}), ("/report", {})):
+    for path, query in (("/claim", {"id": "C06"}), ("/claims", {}), ("/report", {})):
         assert _get(app, path, **query).status == 200, path
     # The bundle replays the override's citations from the log, and passes.
     path = export.export_bundle(conn, tmp_path / "b.zip", EXPERT, counsel_confirmed=True).path
@@ -144,8 +150,8 @@ def test_supported_after_accepting_cites_the_accepted_support(root, tmp_path):
     assert not [f for f in findings if f.level == FAIL and f.check == "verdicts"], findings
     assert any(f.level == PASS and "set by the expert" in f.detail for f in findings)
     # Overriding away again keeps the citations, as the bundle replays.
-    actions.override_verdict(conn, "C05", Verdict.UNPROVEN, EXPERT, "Second thoughts.")
-    assert _row(conn, "C05")[:2] == ("unproven", None)
+    actions.override_verdict(conn, "C06", Verdict.UNPROVEN, EXPERT, "Second thoughts.")
+    assert _row(conn, "C06")[:2] == ("unproven", None)
     path = export.export_bundle(conn, tmp_path / "c.zip", EXPERT, counsel_confirmed=True).path
     findings = verify_bundle(path)
     assert not [f for f in findings if f.level == FAIL and f.check == "verdicts"], findings
@@ -154,8 +160,8 @@ def test_supported_after_accepting_cites_the_accepted_support(root, tmp_path):
 def test_the_bundle_refuses_an_override_citing_support_nobody_accepted(root):
     conn = connect(_case(root).db)
     run = pipeline.view_run(conn)
-    items = run["manifest"]["C05"]
-    open_item = _supports(conn, "C05")[0].id
+    items = run["manifest"]["C06"]
+    open_item = _supports(conn, "C06")[0].id
     log = [
         (s, at, a, act, json.loads(p))
         for s, at, a, act, p in conn.execute(
@@ -176,21 +182,21 @@ def test_an_already_stored_bad_row_shows_a_re_run_page_that_repairs_it(root):
     with conn:
         conn.execute(
             "UPDATE verdicts SET verdict = 'supported', supported_basis = 'confirmed',"
-            " confirmed_by = ?, override_note = 'old' WHERE claim_id = 'C05'"
+            " confirmed_by = ?, override_note = 'old' WHERE claim_id = 'C06'"
             " AND pipeline_run_id = ?",
             (EXPERT, run_id),
         )
     with pytest.raises(pipeline.StoredVerdictInvalid, match="Re-run the verdicts"):
-        pipeline.load_verdict(conn, "C05", run_id)
+        pipeline.load_verdict(conn, "C06", run_id)
     app = _app(root)
-    for path, query in (("/claim", {"id": "C05"}), ("/claims", {}), ("/", {})):
+    for path, query in (("/claim", {"id": "C06"}), ("/claims", {}), ("/", {})):
         resp = _get(app, path, **query)
         assert resp.status == 409, path
         assert "Re-run the verdicts" in resp.text and 'action="/redecide"' in resp.text
-    resp = _post(app, "/redecide", next="/claim?id=C05")
+    resp = _post(app, "/redecide", next="/claim?id=C06")
     assert resp.status == 303 and not app.flash[1], app.flash
-    assert _get(app, "/claim", id="C05").status == 200
-    assert _row(conn, "C05")[0] == "unproven"  # the rules' verdict, in the new run
+    assert _get(app, "/claim", id="C06").status == 200
+    assert _row(conn, "C06")[0] == "unproven"  # the rules' verdict, in the new run
 
 
 def test_the_command_line_names_the_repair_for_a_bad_row(root, tmp_path, capsys):
@@ -202,7 +208,7 @@ def test_the_command_line_names_the_repair_for_a_bad_row(root, tmp_path, capsys)
     with conn:
         conn.execute(
             "UPDATE verdicts SET verdict = 'supported', supported_basis = 'confirmed'"
-            " WHERE claim_id = 'C05' AND pipeline_run_id = ?",
+            " WHERE claim_id = 'C06' AND pipeline_run_id = ?",
             (run_id,),
         )
     conn.close()
@@ -219,18 +225,18 @@ def test_a_supported_override_lapses_on_a_verdict_re_run(root):
     from core.review.redecide import redecide
 
     conn = connect(_case(root).db)
-    items = _supports(conn, "C05")
+    items = _supports(conn, "C06")
     for x in items:
         actions.decide_evidence(conn, x.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
-    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Sent March 12 local.")
+    actions.override_verdict(conn, "C06", Verdict.SUPPORTED, EXPERT, "Read the thread myself.")
     for x in items:  # back to as the rules last saw it
-        actions.decide_evidence(conn, x.id, EvidenceStatus.OPEN, EXPERT, "Look again.")
+        actions.decide_evidence(conn, x.id, EvidenceStatus.DISMISSED, EXPERT, "Look again.")
     result = redecide(conn, EXPERT)
-    assert "C05" in result.lapsed and "C05" not in result.carried
-    verdict, basis, cited_json, by, note = _row(conn, "C05")
+    assert "C06" in result.lapsed and "C06" not in result.carried
+    verdict, basis, cited_json, by, note = _row(conn, "C06")
     assert (verdict, basis, by, note) == ("unproven", None, None, None)
     assert json.loads(cited_json)["evidence"] == []
-    assert _get(_app(root), "/claim", id="C05").status == 200
+    assert _get(_app(root), "/claim", id="C06").status == 200
 
 
 def test_a_default_bundle_keeps_override_support_dismissed_before_and_after(root, tmp_path):
@@ -239,14 +245,14 @@ def test_a_default_bundle_keeps_override_support_dismissed_before_and_after(root
     from core.review.redecide import redecide
 
     conn = connect(_case(root).db)
-    items = _supports(conn, "C05")
+    items = _supports(conn, "C06")
     for x in items:
         actions.decide_evidence(conn, x.id, EvidenceStatus.DISMISSED, EXPERT, "Not yet.")
     redecide(conn, EXPERT)
-    items = _supports(conn, "C05")
+    items = _supports(conn, "C06")
     for x in items:
         actions.decide_evidence(conn, x.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
-    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Sent March 12 local.")
+    actions.override_verdict(conn, "C06", Verdict.SUPPORTED, EXPERT, "Read the thread myself.")
     for x in items:
         actions.decide_evidence(conn, x.id, EvidenceStatus.DISMISSED, EXPERT, "Second look.")
     path = export.export_bundle(
@@ -254,3 +260,17 @@ def test_a_default_bundle_keeps_override_support_dismissed_before_and_after(root
     ).path
     findings = verify_bundle(path)
     assert not [f for f in findings if f.level == FAIL], [f for f in findings if f.level == FAIL]
+
+
+def test_a_verdict_the_rules_supported_by_checks_keeps_its_checked_basis(root):
+    """Rules 0.5.0: C05 is supported by code checks alone (rule 3c'), citing checks and no
+    evidence. An override away and back to Supported needs no accepted evidence and keeps the
+    checked basis, as before this guard."""
+    conn = connect(_case(root).db)
+    assert _row(conn, "C05")[:2] == ("supported", "checked")
+    actions.override_verdict(conn, "C05", Verdict.UNPROVEN, EXPERT, "Not sure yet.")
+    actions.override_verdict(conn, "C05", Verdict.SUPPORTED, EXPERT, "Checks hold.")
+    verdict, basis, cited_json, _by, _note = _row(conn, "C05")
+    assert (verdict, basis) == ("supported", "checked")
+    assert json.loads(cited_json)["evidence"] == [] and json.loads(cited_json)["checks"]
+    assert _get(_app(root), "/claim", id="C05").status == 200

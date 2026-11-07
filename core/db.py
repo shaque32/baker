@@ -30,6 +30,7 @@ __all__ = [
     "apply_schema",
     "connect",
     "is_encrypted",
+    "upgrade_verdicts",
 ]
 
 
@@ -93,3 +94,40 @@ def is_encrypted(conn: sqlite3.Connection) -> bool:
 
 def apply_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def _schema_table(name: str) -> str:
+    """The CREATE TABLE statement core/schema.sql gives for one table."""
+    text = SCHEMA_PATH.read_text(encoding="utf-8")
+    start = text.index(f"CREATE TABLE {name} (")
+    return text[start : text.index("\n);", start) + 3]
+
+
+def upgrade_verdicts(conn: sqlite3.Connection) -> bool:
+    """Rebuild a verdicts table made under schema 0.7.0 or earlier, whose CHECK refuses the
+    bases rules 0.5.0 can store (checked, counsel_reviewed). SQLite cannot change a CHECK in
+    place, so the table is copied into the 0.8.0 definition, every row and column as it was,
+    and its index made again, inside one savepoint. No other table references verdicts. Returns
+    whether it rebuilt the table; a current or missing table is left alone."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'verdicts'"
+    ).fetchone()
+    if row is None or "'checked'" in row[0]:
+        return False
+    cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(verdicts)"))
+    new = _schema_table("verdicts").replace("CREATE TABLE verdicts (", "CREATE TABLE verdicts_08 (")
+    conn.execute("SAVEPOINT upgrade_verdicts")
+    try:
+        conn.execute(new)
+        conn.execute(f"INSERT INTO verdicts_08 ({cols}) SELECT {cols} FROM verdicts")  # noqa: S608
+        conn.execute("DROP TABLE verdicts")
+        conn.execute("ALTER TABLE verdicts_08 RENAME TO verdicts")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_verdicts_run ON verdicts(pipeline_run_id, claim_id)"
+        )
+    except BaseException:
+        conn.execute("ROLLBACK TO upgrade_verdicts")
+        conn.execute("RELEASE upgrade_verdicts")
+        raise
+    conn.execute("RELEASE upgrade_verdicts")
+    return True

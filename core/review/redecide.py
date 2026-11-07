@@ -39,7 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core import build, pipeline
+from core import build, db, pipeline
 from core.audit import invariants, rules, testability
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -236,6 +236,7 @@ def redecide(
     }
     if isinstance(src["config"].get("cloud"), dict):
         cfg["cloud"] = src["config"]["cloud"]  # the reused labels' cloud decision, for the report
+    db.upgrade_verdicts(conn)  # a case made before 0.8.0 cannot store a checked verdict
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

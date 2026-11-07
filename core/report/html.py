@@ -115,6 +115,8 @@ from core.review.status import (
     CONTRADICTION_FOUND,
     HOLDINGS,
     SUPPORTED_AI,
+    SUPPORTED_CHECKED,
+    SUPPORTED_COUNSEL,
     SUPPORTED_EXPERT,
     ClaimState,
     case_holdings,
@@ -231,7 +233,10 @@ from core.review.withheld import summary as withheld_summary
 # AI review alone never makes a claim supported always stays). The Selection audit says where
 # each quote not placed is listed, and the Quiet stretches strip gives each app the same pace as
 # the cards.
-REPORT_VERSION = "0.37.0"
+# 0.38.0: rules 0.5.0. Two new supported labels, "Supported by the records (code checks)" and
+# "Supported (reviewed by counsel)", each defined in Limitations when used, and the tier
+# counsel_reviewed. Neither displays as expert-confirmed.
+REPORT_VERSION = "0.38.0"
 
 # what each provenance tier means, in the report's Limitations and on the Help page
 TIER_WORDS = (
@@ -239,6 +244,10 @@ TIER_WORDS = (
     ("derived", "Worked out by code from observed records, such as a local time."),
     ("inferred", "A model's reading, such as a label on a record."),
     ("ai_reviewed", "Accepted by the local AI reviewer. It never counts as confirmed."),
+    (
+        "counsel_reviewed",
+        "Accepted by the named defense lawyer, as work product. It never counts as confirmed.",
+    ),
     ("confirmed", "Accepted by a human expert."),
 )
 
@@ -263,6 +272,8 @@ __all__ = [
     "AWAITING_EXPERT",
     "CONTRADICTION_FOUND",
     "SUPPORTED_AI",
+    "SUPPORTED_CHECKED",
+    "SUPPORTED_COUNSEL",
     "SUPPORTED_EXPERT",
     "render_report",
     "write_report",
@@ -336,6 +347,9 @@ th { background: #f9fafb; font: 500 12.5px var(--sans); color: var(--muted); }
 .v-sup::before { content: "✓"; }
 .v-supai { color: var(--supai); background: var(--sup-bg); border: 1px dashed var(--sup-line); }
 .v-supai::before { content: "✓"; }
+.v-supchk, .v-supcou { color: var(--supai); background: var(--sup-bg);
+  border: 1px dashed var(--sup-line); }
+.v-supchk::before, .v-supcou::before { content: "✓"; }
 .v-con { color: var(--con); background: var(--con-bg); }
 .v-con::before { content: "✕"; }
 .v-unp { color: var(--unp); background: var(--unp-bg); }
@@ -720,7 +734,7 @@ def sources(conn: sqlite3.Connection) -> list[tuple]:
 
 
 def tier_legend() -> str:
-    """What the five tiers mean: the report's first limitation, and the Help page's list."""
+    """What the six tiers mean: the report's first limitation, and the Help page's list."""
     return (
         "<li><strong>Each item carries a tier saying where it comes from.</strong><ul>"
         + "".join(f"<li><strong>{e(t)}</strong>: {e(m)}</li>" for t, m in TIER_WORDS)
@@ -880,6 +894,19 @@ def _limitations(
         )
     else:
         supported += "Under the current rules no claim reaches supported on AI review alone."
+    if used(SUPPORTED_CHECKED):
+        supported += (
+            f" <strong>{SUPPORTED_CHECKED}</strong> means every core assumption of the claim "
+            "passed Mabillon's deterministic checks against the records, which the finding "
+            "cites. No model label and no reviewer was used, and no expert has confirmed it. "
+            "It is offered only for communication, timing and count claims."
+        )
+    if used(SUPPORTED_COUNSEL):
+        supported += (
+            f" <strong>{SUPPORTED_COUNSEL}</strong> means some of the supporting evidence was "
+            "accepted by the named defense lawyer, not an expert. It is work product, not an "
+            "expert's opinion, and an expert's decision overrides it."
+        )
     items.append(f"<li>{supported}</li>")
     if used(AWAITING_EXPERT):
         items.append(

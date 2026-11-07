@@ -142,9 +142,12 @@ eval or re-decided.
   case locks), no report is built, and nothing is written. The CLI refuses every command but
   `verify-log` the same way, `report` and `encrypt` included (an encrypted case's log is inside
   its database, so `passphrase` checks it after the current passphrase opens it).
-- Under rules 0.2.0 no claim is supported until an expert accepts its key evidence. An item the
-  local AI reviewer accepted shows its tier as `ai_reviewed` ("AI-reviewed, not confirmed"); only
-  an expert's acceptance shows as `confirmed`.
+- Under rules 0.5.0 a claim is supported when an expert accepts its key evidence
+  ("Supported (expert-confirmed)"), when counsel accepts it ("Supported (reviewed by counsel)"),
+  or, for communication, timing and count claims, when every core assumption passed its code
+  checks ("Supported by the records (code checks)"). An item the local AI reviewer accepted shows
+  its tier as `ai_reviewed` ("AI-reviewed, not confirmed"), and one counsel accepted shows
+  `counsel_reviewed`. Only an expert's acceptance shows as `confirmed`.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.

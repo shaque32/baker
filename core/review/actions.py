@@ -318,6 +318,20 @@ def confirm_verdict(
         )
 
 
+CHECKED_REASON = "Rule 3c': every core assumption passed its code checks"
+
+
+def _rules_checked(conn: sqlite3.Connection, vid: str) -> bool:
+    """The rules supported this verdict by code checks alone (rule 3c'): it cites no evidence
+    and its stored reasons, which an override never changes, give the rule 3c' support."""
+    reasons_json, cited_json = conn.execute(
+        "SELECT reasons_json, cited_json FROM verdicts WHERE id = ?", (vid,)
+    ).fetchone()
+    if json.loads(cited_json).get("evidence"):
+        return False
+    return any(str(r).startswith(CHECKED_REASON) for r in json.loads(reasons_json))
+
+
 def _accepted_support(conn: sqlite3.Connection, claim_id: str, vid: str) -> tuple[str, ...]:
     """The claim's supporting items an expert accepted, in the run whose verdict `vid` is: on a
     core assumption, on an observed record, latest decision 'accepted' (only decide_evidence
@@ -358,7 +372,9 @@ def override_verdict(
     has accepted at least one supporting item on an observed record of a core assumption, and
     the verdict then cites those items, logged with the override so a bundle replays it. Before
     this, an override to Supported on a verdict citing nothing was stored and then could not be
-    read, which took down every page of the case."""
+    read, which took down every page of the case. The one exception is a verdict the rules
+    supported by code checks alone (rule 3c', rules 0.5.0): Supported there keeps the checked
+    basis and its cited checks, since the rules' own support needs no reviewer."""
     from core import pipeline  # core.pipeline imports this package
 
     _expert(actor)
@@ -367,7 +383,12 @@ def override_verdict(
     vid, was = _current_verdict(conn, claim_id)
     _withheld_acknowledged(conn, claim_id)
     payload: dict[str, object] = {"verdict_id": vid, "verdict": verdict.value, "was": was}
-    if verdict == Verdict.SUPPORTED:
+    if verdict == Verdict.SUPPORTED and _rules_checked(conn, vid):
+        # The rules supported this verdict by code checks alone (rule 3c'): it cites checks and
+        # no evidence, and a confirmed basis must cite evidence, so it keeps the checked basis.
+        # The label still says expert override.
+        basis: str | None = SupportedBasis.CHECKED.value
+    elif verdict == Verdict.SUPPORTED:
         support = _accepted_support(conn, claim_id, vid)
         if not support:
             raise ReviewError(
@@ -377,7 +398,7 @@ def override_verdict(
             )
         # The verdicts table ties SUPPORTED to a supported_basis; an override records the
         # expert as the basis, and cites the support the expert accepted.
-        basis: str | None = SupportedBasis.CONFIRMED.value
+        basis = SupportedBasis.CONFIRMED.value
         payload["cited_evidence_ids"] = list(support)
     else:
         basis = None
@@ -388,7 +409,7 @@ def override_verdict(
             " override_note = ? WHERE id = ?",
             (verdict.value, basis, actor, note, vid),
         )
-        if verdict == Verdict.SUPPORTED:
+        if "cited_evidence_ids" in payload:
             (cited_json,) = conn.execute(
                 "SELECT cited_json FROM verdicts WHERE id = ?", (vid,)
             ).fetchone()
