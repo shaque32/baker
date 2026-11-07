@@ -137,7 +137,7 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
         "SELECT 'log', seq, payload_json, NULL, NULL FROM audit_log"
         " WHERE action = 'evidence.decide'"
         " UNION ALL SELECT 'review', NULL, id, reason, status FROM evidence_reviews"
-        " WHERE reviewer_kind = 'expert'"
+        " WHERE reviewer_kind IN ('expert', 'counsel')"
     )
     for kind, seq, text, reason, status in rows:
         if kind == "review":
@@ -154,8 +154,8 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
     for review, (seq, why, was) in sorted(logged.items(), key=lambda kv: kv[1][0]):
         if review not in stored:
             return seq, (
-                f"evidence decision {seq} of the audit log has no matching expert review in the "
-                "case database, so it was removed outside Mabillon"
+                f"evidence decision {seq} of the audit log has no matching expert or counsel "
+                "review in the case database, so it was removed outside Mabillon"
             )
         reason, status = stored[review]
         if (why is not None and why != reason) or (was is not None and was != status):
@@ -166,8 +166,8 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
     for review in stored:
         if review not in logged:
             return 0, (
-                f"the expert review {review} is in the case database but not in the audit log, "
-                "so it was added outside Mabillon"
+                f"the expert or counsel review {review} is in the case database but not in the "
+                "audit log, so it was added outside Mabillon"
             )
     return None
 

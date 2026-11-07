@@ -478,6 +478,10 @@ def review_label(conn: sqlite3.Connection, item: EvidenceItem) -> str:
     if kind == "expert":
         what = {"accepted": "Accepted", "dismissed": "Dismissed", "open": "Reopened"}[status]
         return f"{what} by {e(who)}: {said(reason)}"
+    if kind == "counsel":
+        what = {"counsel_accepted": "Accepted", "open": "Reopened"}[status]
+        tail = " Reviewed by counsel, not an expert." if status == "counsel_accepted" else ""
+        return f"{what} by {e(who)}: {said(reason)}{tail}"
     what = {"ai_accepted": "Accepted", "dismissed": "Dismissed"}[status]
     tail = " Not confirmed by an expert." if status == "ai_accepted" else ""
     return f"{what} by the local AI reviewer: {e(reason)}{tail}"
@@ -506,6 +510,9 @@ def _expert_step(conn: sqlite3.Connection, x: EvidenceItem, decided_at: datetime
             "open": "Expert reopened",
         }[status]
         return f"{what}: {e(who)}{later}"
+    if kind == "counsel":
+        what = {"counsel_accepted": "Counsel accepted", "open": "Counsel reopened"}[status]
+        return f"{what}, not an expert: {e(who)}{later}"
     if status == "ai_accepted":
         return f"Local AI reviewer accepted; not confirmed by an expert{later}"
     return f"Local AI reviewer dismissed; no expert has decided it{later}"
@@ -1456,15 +1463,15 @@ def render_report(
                 "claim is shown as unproven because no verdict was decided.</div>"
             )
         later = conn.execute(
-            "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
+            "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind IN ('expert', 'counsel')"
             " AND decided_at_utc > ?",
             (run["started_at_utc"],),
         ).fetchone()[0]
         if later:
             parts.append(
-                f"<div class='banner'><strong>{later} expert evidence decisions were made after "
-                "this run.</strong> The review column shows them, but the verdicts do not reflect "
-                "them yet. Re-run the verdicts.</div>"
+                f"<div class='banner'><strong>{later} evidence decisions by the expert or counsel "
+                "were made after this run.</strong> The review column shows them, but the "
+                "verdicts do not reflect them yet. Re-run the verdicts.</div>"
             )
         awaiting = sum(1 for st in states if st.awaiting_expert)
         if awaiting:

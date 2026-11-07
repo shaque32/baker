@@ -212,6 +212,8 @@ class Step:
     def examiner(self) -> str:
         if self.actor.startswith("expert:"):
             return self.actor[len("expert:") :]
+        if self.actor.startswith("counsel:"):
+            return f"{self.actor[len('counsel:') :]} (counsel)"
         return "(no name entered)" if self.actor == UNNAMED else self.actor
 
     @property
@@ -250,7 +252,7 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
     ev_claim, vd_claim = _claims_of(conn)
     rows = conn.execute(
         "SELECT seq, at_utc, actor, action, payload_json, hash FROM audit_log"
-        " WHERE action = ? OR actor LIKE 'expert:%' ORDER BY seq",
+        " WHERE action = ? OR actor LIKE 'expert:%' OR actor LIKE 'counsel:%' ORDER BY seq",
         (VIEW,),
     ).fetchall()
     raw: list[Step] = []

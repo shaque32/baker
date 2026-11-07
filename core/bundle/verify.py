@@ -983,36 +983,40 @@ def _ai_reviews(conn: sqlite3.Connection, out: _Out) -> None:
 
 
 def _expert_reviews(conn: sqlite3.Connection, out: _Out) -> None:
-    """Each expert review is the one its evidence.decide entry logged: the same evidence item,
-    expert, time and place in the item's reviews (the log's status and reason are compared by
-    audit_log.decision_problem)."""
+    """Each expert or counsel review is the one its evidence.decide entry logged: the same
+    evidence item, person, kind of reviewer, time and place in the item's reviews (the log's
+    status and reason are compared by audit_log.decision_problem). The kind must match the
+    actor's prefix, so a counsel decision can never be stored as an expert's."""
     bad = n = 0
     for _s, at, actor, act, p in _log(conn):
         if act != "evidence.decide":
             continue
         row = conn.execute(
-            "SELECT evidence_id, seq, reviewer, decided_at_utc FROM evidence_reviews"
-            " WHERE id = ? AND reviewer_kind = 'expert'",
+            "SELECT evidence_id, seq, reviewer, decided_at_utc, reviewer_kind FROM evidence_reviews"
+            " WHERE id = ? AND reviewer_kind IN ('expert', 'counsel')",
             (p.get("review_id"),),
         ).fetchone()
         if row is None:
             continue  # decision_problem has already failed the log for this
         n += 1
-        eid, seq, reviewer, decided = row
+        eid, seq, reviewer, decided, kind = row
         if (
             eid != p.get("evidence_id")
             or p.get("review_id") != review_id(eid, seq)
             or reviewer != actor
+            or not str(actor).startswith(f"{kind}:")
             or _dt(decided) != _dt(at)
         ):
             out.add(
                 FAIL,
                 "expert reviews",
-                f"{p.get('review_id')}: not the evidence item, expert or time the log recorded",
+                f"{p.get('review_id')}: not the evidence item, reviewer or time the log recorded",
             )
             bad += 1
     if n and not bad:
-        out.add(PASS, "expert reviews", f"{n} expert reviews are the ones the audit log recorded")
+        out.add(
+            PASS, "expert reviews", f"{n} expert or counsel reviews are the ones the log recorded"
+        )
 
 
 def _claim_origins(log: list) -> tuple[dict[str, tuple[int, str | dict]], set[str]]:
@@ -1882,7 +1886,7 @@ def _statuses_at(
             " WHERE r.evidence_id = ? ORDER BY r.seq",
             (eid,),
         ):
-            if kind == "expert":
+            if kind in ("expert", "counsel"):
                 at = decided.get(rid)
             else:
                 prun = conn.execute(

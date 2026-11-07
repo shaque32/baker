@@ -699,7 +699,8 @@ def _state(
     if st.evidence:
         marks = ",".join("?" * len(st.evidence))
         later = conn.execute(
-            "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"  # noqa: S608
+            "SELECT COUNT(*) FROM evidence_reviews"  # noqa: S608
+            " WHERE reviewer_kind IN ('expert', 'counsel')"
             f" AND decided_at_utc > ? AND evidence_id IN ({marks})",
             (run["started_at_utc"], *[e.id for e in st.evidence]),  # type: ignore[index]
         ).fetchone()[0]

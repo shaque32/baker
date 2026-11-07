@@ -26,6 +26,7 @@ import sqlite3
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 
+from core import db
 from core.contracts import (
     ClaimStatus,
     ClaimType,
@@ -75,8 +76,11 @@ def decide_evidence(
     reason: str,
     clock: Clock | None = None,
 ) -> ReviewDecision:
-    """Accept, dismiss or reopen one evidence item. Overrides whatever the AI reviewer decided."""
+    """Accept, dismiss or reopen one evidence item. Overrides whatever the AI reviewer or
+    counsel decided."""
     _expert(actor)
+    if status not in (EvidenceStatus.ACCEPTED, EvidenceStatus.DISMISSED, EvidenceStatus.OPEN):
+        raise ReviewError("an expert accepts, dismisses or reopens")
     if not reason.strip():
         raise ReviewError("say why, in one sentence")
     if conn.execute("SELECT 1 FROM evidence_items WHERE id = ?", (evidence_id,)).fetchone() is None:
@@ -113,6 +117,100 @@ def decide_evidence(
             actor,
             "evidence.decide",
             # the reason too, so editing it in evidence_reviews no longer matches the log
+            {
+                "evidence_id": evidence_id,
+                "review_id": d.id,
+                "status": status.value,
+                "reason": reason,
+            },
+        )
+    return d
+
+
+# ---------------------------------------------------------------- counsel (rules 0.5.0, option B)
+
+COUNSEL_ACTION = "evidence.decide"  # one action for every human evidence decision; actor says who
+CounselCheck = Callable[[sqlite3.Connection, str, EvidenceStatus, str], None]
+# Checks a counsel decision must pass before it is stored, each run in order with
+# (conn, evidence_id, status, actor). A check refuses by raising ReviewError. None by default;
+# the lawyer-checker work adds its "cited record opened" lock here (plans/lawyer-checker-and-
+# examiner-pilot.md).
+COUNSEL_CHECKS: list[CounselCheck] = []
+
+
+def _counsel(actor: str) -> str:
+    if not actor.startswith("counsel:") or len(actor) <= len("counsel:"):
+        raise ReviewError(f"actor must be 'counsel:<name>', got {actor!r}")
+    return actor
+
+
+def decide_counsel(
+    conn: sqlite3.Connection,
+    evidence_id: str,
+    status: EvidenceStatus,
+    actor: str,
+    reason: str,
+    clock: Clock | None = None,
+) -> ReviewDecision:
+    """A named defense lawyer accepts one evidence item (counsel_accepted), or takes back their
+    own acceptance (open). Counsel's acceptance is work product, never expert opinion: claims that
+    rest on it are "Supported (reviewed by counsel)" and never show as confirmed. Counsel never
+    dismisses, and never decides an item an expert has decided: the expert's decision stands.
+    Counsel overrides the AI reviewer, as any human does."""
+    _counsel(actor)
+    if status not in (EvidenceStatus.COUNSEL_ACCEPTED, EvidenceStatus.OPEN):
+        raise ReviewError(
+            "counsel can accept an item or take back their own acceptance, nothing else"
+        )
+    if not reason.strip():
+        raise ReviewError("say why, in one sentence")
+    if conn.execute("SELECT 1 FROM evidence_items WHERE id = ?", (evidence_id,)).fetchone() is None:
+        raise ReviewError(f"no evidence item {evidence_id}")
+    rows = conn.execute(
+        "SELECT reviewer_kind, status FROM evidence_reviews WHERE evidence_id = ? ORDER BY seq",
+        (evidence_id,),
+    ).fetchall()
+    if any(kind == ReviewerKind.EXPERT.value for kind, _ in rows):
+        raise ReviewError("an expert has decided this item; counsel cannot change it")
+    last = rows[-1] if rows else None
+    if status == EvidenceStatus.COUNSEL_ACCEPTED and last == (
+        ReviewerKind.COUNSEL.value,
+        EvidenceStatus.COUNSEL_ACCEPTED.value,
+    ):
+        raise ReviewError("counsel has already accepted this item")
+    if status == EvidenceStatus.OPEN and last != (
+        ReviewerKind.COUNSEL.value,
+        EvidenceStatus.COUNSEL_ACCEPTED.value,
+    ):
+        raise ReviewError("counsel can only take back an acceptance of their own")
+    for check in COUNSEL_CHECKS:
+        check(conn, evidence_id, status, actor)
+    db.upgrade_evidence_reviews(conn)  # a case made before 0.8.0 cannot store a counsel review
+    seq = len(rows) + 1
+    now = _now(clock)
+    d = ReviewDecision(
+        id=review_id(evidence_id, seq),
+        evidence_id=evidence_id,
+        seq=seq,
+        reviewer_kind=ReviewerKind.COUNSEL,
+        reviewer=actor,
+        status=status,
+        reason=reason,
+        model_run_id=None,
+        decided_at_utc=now,
+    )
+    with conn:
+        conn.execute(
+            "INSERT INTO evidence_reviews (id, evidence_id, seq, reviewer_kind, reviewer, status,"
+            " reason, model_run_id, model_call_id, decided_at_utc)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)",
+            (d.id, evidence_id, seq, d.reviewer_kind.value, actor, status.value, reason, _iso(now)),
+        )
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            COUNSEL_ACTION,
             {
                 "evidence_id": evidence_id,
                 "review_id": d.id,

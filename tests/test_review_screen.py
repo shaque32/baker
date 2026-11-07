@@ -481,7 +481,7 @@ def test_report_has_awaiting_versions_coverage_log_and_print_layout(conn, tmp_pa
 def test_report_after_expert_review_says_expert_confirmed(conn):
     for eid in key_items(conn, "C05"):
         actions.decide_evidence(conn, eid, EvidenceStatus.ACCEPTED, EXPERT, "Matches.")
-    assert "expert evidence decisions were made after this run" in render_report(conn)
+    assert "decisions by the expert or counsel were made after this run" in render_report(conn)
     redecide(conn, EXPERT)
     html = render_report(conn)
     assert f'"verdict v-sup">{SUPPORTED_EXPERT}' in html

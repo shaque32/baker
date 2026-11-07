@@ -30,6 +30,7 @@ __all__ = [
     "apply_schema",
     "connect",
     "is_encrypted",
+    "upgrade_evidence_reviews",
     "upgrade_verdicts",
 ]
 
@@ -130,4 +131,52 @@ def upgrade_verdicts(conn: sqlite3.Connection) -> bool:
         conn.execute("RELEASE upgrade_verdicts")
         raise
     conn.execute("RELEASE upgrade_verdicts")
+    return True
+
+
+def _schema_statement(start: str, end: str) -> str:
+    """The statement of core/schema.sql that begins with `start`, through the first `end`."""
+    text = SCHEMA_PATH.read_text(encoding="utf-8")
+    i = text.index(start)
+    return text[i : text.index(end, i) + len(end)]
+
+
+def upgrade_evidence_reviews(conn: sqlite3.Connection) -> bool:
+    """Rebuild an evidence_reviews table made under schema 0.7.0 or earlier, whose CHECKs refuse
+    counsel reviews (rules 0.5.0). Like upgrade_verdicts: every row copied into the 0.8.0
+    definition inside one savepoint. Dropping the old table drops its append-only triggers
+    (DROP TABLE fires no DELETE trigger), so they are made again from core/schema.sql, with the
+    evidence_status view that reads the table. No other table references evidence_reviews.
+    Returns whether it rebuilt the table; a current or missing table is left alone."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evidence_reviews'"
+    ).fetchone()
+    if row is None or "'counsel'" in row[0]:
+        return False
+    cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(evidence_reviews)"))
+    new = _schema_table("evidence_reviews").replace(
+        "CREATE TABLE evidence_reviews (", "CREATE TABLE evidence_reviews_08 ("
+    )
+    view = _schema_statement("CREATE VIEW evidence_status AS", ";\n")
+    triggers = [
+        _schema_statement(f"CREATE TRIGGER evidence_reviews_no_{op}", "END;")
+        for op in ("update", "delete")
+    ]
+    conn.execute("SAVEPOINT upgrade_evidence_reviews")
+    try:
+        conn.execute(new)
+        conn.execute(
+            f"INSERT INTO evidence_reviews_08 ({cols}) SELECT {cols} FROM evidence_reviews"  # noqa: S608
+        )
+        conn.execute("DROP VIEW IF EXISTS evidence_status")
+        conn.execute("DROP TABLE evidence_reviews")
+        conn.execute("ALTER TABLE evidence_reviews_08 RENAME TO evidence_reviews")
+        conn.execute(view)
+        for t in triggers:
+            conn.execute(t)
+    except BaseException:
+        conn.execute("ROLLBACK TO upgrade_evidence_reviews")
+        conn.execute("RELEASE upgrade_evidence_reviews")
+        raise
+    conn.execute("RELEASE upgrade_evidence_reviews")
     return True

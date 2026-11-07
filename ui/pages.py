@@ -273,7 +273,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
         out.append(partial_banner(conn, run))
     # a stand-in run's banner (demo or test run) is on every page: Page.stand_in
     later = conn.execute(
-        "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
+        "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind IN ('expert', 'counsel')"
         " AND decided_at_utc > ?",
         (run["started_at_utc"],),
     ).fetchone()[0]

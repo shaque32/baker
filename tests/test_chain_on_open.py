@@ -591,7 +591,7 @@ def test_an_expert_review_added_outside_baker_blocks_the_case(decided_db):
     )
     conn.commit()
     conn.close()
-    with pytest.raises(SystemExit, match="expert review rv:e1#2 is in the case database but not"):
+    with pytest.raises(SystemExit, match="counsel review rv:e1#2 is in the case database but not"):
         cli_main(["claims", "--db", str(decided_db), "list"])
 
 
@@ -612,7 +612,7 @@ def test_a_removed_expert_review_blocks_the_case(decided_db):
     conn.execute("DELETE FROM evidence_reviews")
     conn.commit()
     conn.close()
-    with pytest.raises(SystemExit, match="has no matching expert review .* removed outside"):
+    with pytest.raises(SystemExit, match="no matching expert or counsel review .* removed"):
         cli_main(["claims", "--db", str(decided_db), "list"])
 
 
