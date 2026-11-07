@@ -172,6 +172,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        # The logs are a convenience: a full artifact storage quota must not fail the install test.
+        continue-on-error: true
         with:
           name: mac-clean-install
           path: ${{ runner.temp }}/ui

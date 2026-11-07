@@ -38,6 +38,7 @@
     python -m cli encrypt   --db case.db --by expert:<name>
     python -m cli passphrase --db case.db --by expert:<name>
     python -m cli recovery-key --db case.db --by expert:<name>
+    python -m cli backup    --db case.db --by expert:<name> [--to <folder>]
     python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
                             [--from-case <case folder> | --scripted | --paired]
 
@@ -729,6 +730,19 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backup(a: argparse.Namespace) -> int:
+    from core.casework import backup
+    from core.casework.cases import Case
+
+    if not a.db.exists():
+        raise SystemExit(f"no case database at {a.db}")
+    _unlock(a.db)
+    done = backup.back_up(Case(a.db), a.by, root=a.to)
+    print(f"backed up to {done.folder}: {done.files} file(s), {done.bytes:,} bytes, verified")
+    print("It opens with the same passphrase. Copy that folder to a drive kept off this computer.")
+    return 0
+
+
 def cmd_recovery_key(a: argparse.Namespace) -> int:
     from core.casework import protect
     from core.casework.cases import Case
@@ -1005,6 +1019,11 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--by", required=True)
     sp = add("passphrase", cmd_passphrase, "change an encrypted case's passphrase")
     sp.add_argument("--by", required=True)
+    sp = add("backup", cmd_backup, "copy a case folder to a new, verified backup folder")
+    sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--to", type=Path, help="the folder to make the backup in (default ~/Mabillon/backups)"
+    )
     sp = add("recovery-key", cmd_recovery_key, "make a new recovery key for an encrypted case")
     sp.add_argument("--by", required=True)
 
