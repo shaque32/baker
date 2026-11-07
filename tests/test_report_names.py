@@ -142,3 +142,22 @@ def test_a_claims_own_lines_cite_only_its_own_quotes(conn):
         check_report_text("<p>" + names.for_claim(other).html(line) + "</p>")
     # the key of names shown stays shared with the report
     assert "person:dev:item1:owner" in names.used
+
+
+def test_a_quoted_backslash_is_compared_as_written_first(conn):
+    """A template prints the claim's quote raw, so a Windows path's backslash is not an escape
+    (Greptile on #235): the words are compared as printed before Python's escapes are read."""
+    from core.audit.invariants import check_report_text
+
+    conn.executescript(
+        "CREATE TABLE claims (id TEXT, text TEXT);"
+        "INSERT INTO claims VALUES ('C1', 'PETROV wrote \"deleted C:\\temp\".');"
+    )
+    names = Names(conn)
+    assert "C:\\temp" in conn.execute("SELECT text FROM claims").fetchone()[0]
+    check_report_text(
+        "<p>" + names.html('The message "deleted C:\\temp" was sent by PETROV') + "</p>"
+    )
+    check_report_text(
+        "<p>" + names.html("'deleted C:\\\\temp' is not inside quotation marks") + "</p>"
+    )
