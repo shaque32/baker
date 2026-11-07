@@ -81,9 +81,11 @@ Full design: `docs/encryption.md`.
 - **Not encrypted.** `case.json`, so a locked case can be listed. It holds the case name, when the
   case was made, who made it (the name entered on the screen), the claim order (claim ids only) and
   the timeline tolerance and gap settings. Don't put a client's name in the case name if that
-  matters. Also not encrypted: the file names under `inputs/` (each upload keeps its original
-  name, so rename files that identify a client or exhibit before uploading), downloaded reports,
-  and anything on screen while a case is unlocked.
+  matters. In an encrypted case each file imported from the screen is stored in `inputs/` under a
+  random name (`input-` and 24 hex digits); its real name is only in the encrypted database. Still
+  not encrypted: the names of files under `inputs/` imported before the case was encrypted (they
+  keep their original names, so rename files that identify a client or exhibit before uploading
+  to a plain case), downloaded reports, and anything on screen while a case is unlocked.
 - **Hashes** are of the plain bytes, so a file's SHA-256 matches the original whether or not the
   case is encrypted.
 - Use the computer's own disk encryption too (FileVault, BitLocker). Python cannot guarantee memory
@@ -110,7 +112,7 @@ Full design: `docs/encryption.md`.
 
 **On the computer.** Mabillon deletes nothing on a schedule. A case is kept until the expert deletes
 it. Mabillon has no "delete case" button: delete the case folder (under `~/Mabillon/cases` by default),
-plus any backups of it, any downloaded reports, any request draft downloaded from the case
+plus any backups of it (`~/Mabillon/backups` by default, and wherever you copied them), any downloaded reports, any request draft downloaded from the case
 (`mabillon-request-draft.txt`: file names, device labels, extraction details, hashes) and any
 `mabillon ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
 settings under `~/.mabillon` (`~/.baker` on a computer set up when the product was called Baker): `model.json` (which model file to use), `model-check.json` (the model
@@ -121,8 +123,8 @@ file's checked hash), `speed.json` (seconds per model call) and, if the expert s
 For an encrypted case, first lock it ("Lock this case now") or stop Mabillon, because a running Mabillon
 keeps an unlocked case's key in memory. Then destroy `case.key` and every copy of the recovery key,
 and check that the case no longer opens. The case database and the input file contents are then
-unreadable. `case.json` (case name, examiner name, times) and the input file names under `inputs/`
-stay readable, so delete the case folder and every backup of it to remove those too. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
+unreadable. `case.json` (case name, examiner name, times) and the names of any input files imported
+before the case was encrypted stay readable, so delete the case folder and every backup of it to remove those too. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
 disk encryption covers that.
 
 **At Anthropic (opted-in case only).** Requests go to the Claude API under the expert's own account, so
@@ -273,7 +275,9 @@ the case's audit log as `cloud.sent`.
   scripts, no CDN.
 - Every review decision (evidence, verdicts, claims, stipulations) is written to a hash-chained
   audit log under the examiner's name, anchored in a file beside the database. The claim order
-  on the setup page is saved in `case.json` and is not logged. Each case page the examiner
+  on the setup page is saved in `case.json`, and each move of a claim in it is logged
+  (`claim.move`). Each backup made with "Back up this case" or `mabillon backup` is logged
+  (`case.backup`, with the folder it went to). Each case page the examiner
   opens is logged there too, as a page view (time, name, page, item ids and the source location
   of an opened evidence record, no record text); it stays in the case database, encrypted with
   it, and is never sent. The log is checked on open and before every report, and a failure blocks the case. The
