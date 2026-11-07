@@ -125,6 +125,40 @@ const link = /https:\/\/account\.getmabillon\.com\/signin\/link\?t=([A-Za-z0-9_-
 assert.ok(!JSON.stringify(db.prepare("SELECT * FROM links").all()).includes(link), "only the hash is kept");
 assert.match(linkEmail("L", 15), /never sends us anything from your cases/);
 
+// An email that fails to send gives the same answer, so an outage never shows who holds a license
+const sendOk = globalThis.fetch;
+globalThis.fetch = async () => new Response("quota", { status: 429 });
+const quiet = console.error;
+console.error = () => {};
+r = await handle(ask("expert@lab.example"), env, NOW);
+console.error = quiet;
+globalThis.fetch = sendOk;
+assert.equal(r.status, 200);
+assert.match(await text(r), /If expert@lab\.example holds a Mabillon license/);
+assert.equal(emails.length, 1);
+
+// The send limit counts each address and each IP on its own: new IPs never buy more emails
+{
+  const used = new Map();
+  const limited = {
+    ...env,
+    LIMITER: { limit: async ({ key }) => ({ success: (used.set(key, (used.get(key) || 0) + 1).get(key)) <= 5 }) },
+  };
+  const from = (ip, email) =>
+    new Request(`${ORIGIN}/signin`, {
+      method: "POST",
+      body: form({ email, state: STATE, challenge, return: RETURN }),
+      headers: { "CF-Connecting-IP": ip },
+    });
+  const before = emails.length;
+  for (let i = 0; i < 5; i++) assert.equal((await handle(from(`10.0.0.${i}`, "expert@lab.example"), limited, NOW)).status, 200);
+  assert.equal((await handle(from("10.0.0.9", "expert@lab.example"), limited, NOW)).status, 429);
+  assert.equal(emails.length, before + 5);
+  for (let i = 0; i < 5; i++) await handle(from("10.0.1.1", `other${i}@lab.example`), limited, NOW);
+  assert.equal((await handle(from("10.0.1.1", "more@lab.example"), limited, NOW)).status, 429);
+  emails.length = before;
+}
+
 // Opening the link (or a mail scanner opening it) does not use it up
 for (let i = 0; i < 2; i++) {
   r = await handle(req("GET", `/signin/link?t=${link}`), env, NOW);

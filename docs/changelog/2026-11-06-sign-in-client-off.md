@@ -10,14 +10,16 @@
   written to ~/.mabillon/account/account.log first; `account/session.py` ties them together for
   the screen. The screen gains an Account page (`ui/account_page.py`) and lets `/signin/done` in
   without the screen key for the one waiting state only. A license only holds back starting a
-  new audit; opening, review, the report and export never need one. `mabillon license status |
+  new audit, on the screen or with `mabillon audit`; opening, review, the report and export
+  never need one. A renewal that finishes after a sign-out (even from another process) is dropped. `mabillon license status |
   import FILE | sign-out`. **Off:** `account.SIGNIN_ON = False` and `SIGNING_KEYS` is empty, so
   `serve` builds no sign-in, there is no Account page or link, `/signin/done` answers 404, every
   audit starts as before and nothing connects. The license server is `workers/license/`, a
   Cloudflare Worker for account.getmabillon.com with one D1 database (`workers/license/schema.sql`,
   the server's own tables, never case data): emailed one-time links through Resend, a "Continue"
   button so mail scanners cannot spend a link, codes bound to the app's PKCE challenge, hashed
-  links, codes and tokens, and Ed25519-signed licenses. Not deployed; Arsh sets it up
+  links, codes and tokens, sign-in emails limited to 5 a minute for each address and for each
+  IP, an email that fails to send answering the same as any other, and Ed25519-signed licenses. Not deployed; Arsh sets it up
   (`workers/license/README.md`). Plan and privacy wording: plans/desktop-sign-in.md.
 - Where: branch claude/project-thread-jvh1pc, PR #243 (draft, off by default)
 - Verified: `tests/test_account.py` (signatures, edited or foreign licenses refused, status
@@ -42,7 +44,9 @@
   PC. Making license files for offline labs needs an admin step, not written. The "Offline" pill's tooltip
   ("Nothing leaves this computer") must say "nothing from this case" once it is on. A clock set
   back can stretch the 30-day grace; not handled. A license file is imported from the command
-  line only, not yet from the screen.
+  line only, not yet from the screen. The sign-in page answers the same for every address, even
+  when an email fails to send, but a licensed address waits for the email call, so timing could
+  still tell them apart; not handled.
 - Affects: none while off (no capability, privacy, network or customer-facing change ships).
   Once on: privacy and network use (one license host).
 - Status doc: no change

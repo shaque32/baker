@@ -19,6 +19,7 @@ import binascii
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -208,12 +209,16 @@ def save(stored: Stored, home: Path | None = None) -> Path:
     if stored.token is not None:
         body["token"] = stored.token
     path = license_file(home)
-    tmp = path.with_suffix(".tmp")
-    tmp.unlink(missing_ok=True)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(body, f)
-    os.replace(tmp, path)
+    # A file of its own for each write (mkstemp makes it 0600), so two Mabillons saving at once
+    # never write into or remove each other's; license.json is replaced only once it is closed.
+    fd, tmp = tempfile.mkstemp(prefix="license.", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(body, f)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -233,6 +238,16 @@ def load(home: Path | None = None) -> Stored | None:
         return Stored(Signed("", ""))
     token = raw.get("token")
     return Stored(signed, token if isinstance(token, str) and token else None)
+
+
+def replace_if_unchanged(expected: Stored, new: Stored, home: Path | None = None) -> bool:
+    """Save a renewal only if the saved license is still the one it renewed. A sign-out or a new
+    sign-in, from this app or from `mabillon license` in another process, may have changed it
+    while the renewal was on the network; then the renewal is dropped, never written back."""
+    if load(home) != expected:
+        return False
+    save(new, home)
+    return True
 
 
 def clear(home: Path | None = None) -> None:

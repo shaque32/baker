@@ -121,9 +121,11 @@ class SignIn:
                 return None
             self._last_try = now
             try:
-                lic.save(self.server.renew(stored), self.home)
+                renewed = self.server.renew(stored)
             except Exception as err:  # noqa: BLE001 - offline is normal; the grace covers it
                 return f"The license was not renewed: {_message(err)}"
+            # Signed out or signed in again meanwhile (maybe in another process): keep that.
+            lic.replace_if_unchanged(stored, renewed, self.home)
             return None
 
     def sign_out(self) -> str:

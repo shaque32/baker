@@ -185,8 +185,10 @@ async function startSignin(request, env, now) {
   }
   if (env.LIMITER) {
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    const { success } = await env.LIMITER.limit({ key: `${ip}:${email}` });
-    if (!success) return page("Please wait a minute", "<p>Too many tries. Wait a minute.</p>", 429);
+    // Two budgets: one per address, so many IPs cannot flood one inbox, and one per IP.
+    const byEmail = await env.LIMITER.limit({ key: `email:${email}` });
+    const byIp = await env.LIMITER.limit({ key: `ip:${ip}` });
+    if (!byEmail.success || !byIp.success) return page("Please wait a minute", "<p>Too many tries. Wait a minute.</p>", 429);
   }
   const lic = await env.DB.prepare("SELECT * FROM licenses WHERE email = ?").bind(email).first();
   if (current(lic, now)) {
@@ -196,7 +198,13 @@ async function startSignin(request, env, now) {
     )
       .bind(await sha256(token), lic.id, q.state, q.challenge, q.return, iso(later(now, LINK_MINUTES)))
       .run();
-    await sendLink(env, email, `${env.ORIGIN}/signin/link?t=${token}`);
+    try {
+      await sendLink(env, email, `${env.ORIGIN}/signin/link?t=${token}`);
+    } catch (err) {
+      // A failed send must not change the answer, or an outage would show which addresses
+      // hold a license. Logged without the address; the link expires unused.
+      console.error(`sign-in email not sent for license ${lic.id}: ${err.message}`);
+    }
   }
   // The same answer either way, so this page never says which addresses hold a license.
   return page(

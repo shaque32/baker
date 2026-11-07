@@ -199,6 +199,21 @@ def test_renewal_when_due_once_an_hour_and_offline_is_fine(tmp_path, on):
     assert lic.verify(stored.signed, KEYS).issued_at == NOW + timedelta(days=2)
 
 
+def test_a_renewal_never_brings_back_a_license_signed_out_meanwhile(tmp_path, on):
+    """`mabillon license sign-out` (another process) clears the license while the screen's
+    renewal is on the network: the renewal is dropped, not written back."""
+
+    class SignedOutMeanwhile(FakeServer):
+        def renew(self, stored: lic.Stored) -> lic.Stored:
+            lic.clear(tmp_path)
+            return super().renew(stored)
+
+    s = signin(tmp_path, SignedOutMeanwhile(), clock=lambda: NOW + timedelta(days=2))
+    lic.save(lic.Stored(make(), "t" * 30), tmp_path)
+    assert s.renew_if_due() is None
+    assert lic.load(tmp_path) is None
+
+
 def test_sign_out_offline_still_signs_out_here(tmp_path, on):
     s = signin(tmp_path, FakeServer(fail=OSError("offline")))
     lic.save(lic.Stored(make(), "t" * 30), tmp_path)
@@ -301,3 +316,18 @@ def test_status_dates_are_utc(tmp_path):
     late = datetime(2026, 11, 6, 23, 30, tzinfo=UTC)
     s = lic.status(lic.Stored(make(issued=late)), late, KEYS)
     assert "6 November 2027" in s.message
+
+
+def test_a_command_line_audit_needs_a_license_too(tmp_path, on, monkeypatch, capsys):
+    from cli import main as cli_main
+
+    s = signin(tmp_path)
+    monkeypatch.setattr(cli_main, "_signin_for", lambda port: s)
+    opened: list[object] = []
+    monkeypatch.setattr(cli_main, "_open", lambda db: opened.append(db))
+    args = cli_main.parser().parse_args(["audit", "--db", str(tmp_path / "case.db"), "--fake"])
+    assert cli_main.cmd_audit(args) == 2
+    assert "Sign in" in capsys.readouterr().err
+    assert opened == []  # refused before the case is even opened
+    lic.save(lic.Stored(make(), "t" * 30), tmp_path)
+    assert cli_main._license_allows_audit()

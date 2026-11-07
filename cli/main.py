@@ -314,7 +314,22 @@ def cmd_name_account(a: argparse.Namespace) -> int:
     return 0
 
 
+def _license_allows_audit() -> bool:
+    """With sign-in on, a new audit from the command line needs a license, as on the screen.
+    While it is off (account.SIGNIN_ON) this never connects and always allows."""
+    import account
+
+    if not account.SIGNIN_ON:
+        return True
+    allowed, why = _signin_for(0).may_start_audit()  # type: ignore[attr-defined]
+    if not allowed:
+        print(f"audit: not started. {why}", file=sys.stderr)
+    return bool(allowed)
+
+
 def cmd_audit(a: argparse.Namespace) -> int:
+    if not _license_allows_audit():
+        return 2
     conn = _open(a.db)
     if a.fake:
         from eval.pipeline_fakes import fake_components

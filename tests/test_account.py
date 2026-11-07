@@ -150,7 +150,7 @@ def test_license_saved_for_this_account_only_and_loaded_back(tmp_path):
         assert path.parent.stat().st_mode & 0o777 == 0o700
     lic.save(lic.Stored(s.signed), tmp_path)  # replaced in one step
     assert lic.load(tmp_path) == lic.Stored(s.signed)
-    assert not path.with_suffix(".tmp").exists()
+    assert not list(path.parent.glob("*.tmp"))  # no half-written file left behind
     lic.clear(tmp_path)
     assert lic.load(tmp_path) is None
     lic.clear(tmp_path)  # twice is fine
